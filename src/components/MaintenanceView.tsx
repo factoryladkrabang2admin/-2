@@ -399,11 +399,11 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             <button
               type="button"
               onClick={() => setShowAnalyticsModal(true)}
-              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-              title={language === 'th' ? 'สถิติและการวิเคราะห์งานแจ้งซ่อม' : 'Maintenance Analytics'}
-              aria-label="Analytics"
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-orange-300"
+              title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
+              aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
-              <BarChart3 className="w-5 h-5" />
+              <BarChart3 className="w-5 h-5 text-orange-600 stroke-[2]" />
             </button>
 
             {/* 2. ลิงก์ Google Sheet */}
@@ -420,21 +420,21 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               </a>
             )}
 
-            {/* 3. ตัวกรองการค้นหา (Filter & Search Modal) */}
+            {/* 3. ตัวกรองการค้นหา */}
             <button
               type="button"
               onClick={() => setShowFilterModal(true)}
-              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs ${
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-orange-300 ${
                 activeFiltersCount > 0
-                  ? 'bg-amber-500 text-white border-amber-400 shadow-md ring-2 ring-amber-300'
-                  : 'bg-white/85 hover:bg-white text-orange-950 border-orange-200/80'
+                  ? 'bg-orange-600 text-white border-orange-400 shadow-md ring-2 ring-orange-300'
+                  : 'bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80'
               }`}
-              title={language === 'th' ? `ตัวกรองและการค้นหา (${activeFiltersCount} ตัวกรอง)` : 'Filters & Search'}
-              aria-label="Filters"
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
             >
-              <Filter className="w-5 h-5" />
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-orange-600'}`} />
               {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-orange-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}

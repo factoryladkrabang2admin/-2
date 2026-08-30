@@ -414,9 +414,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <button
               type="button"
               onClick={() => setShowAnalyticsModal(true)}
-              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-rose-950 border border-rose-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-              title={language === 'th' ? 'สถิติและภาพรวม (Analytics)' : 'Equipment Analytics'}
-              aria-label="Analytics"
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-rose-950 border border-rose-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-rose-300"
+              title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
+              aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
               <BarChart3 className="w-5 h-5 text-rose-600 stroke-[2]" />
             </button>
@@ -452,17 +452,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <button
               type="button"
               onClick={() => setShowFilterModal(true)}
-              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs ${
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-rose-300 ${
                 activeFiltersCount > 0
                   ? 'bg-rose-600 text-white border-rose-400 shadow-md ring-2 ring-rose-300'
-                  : 'bg-white/85 hover:bg-white text-rose-950 border-rose-200/80'
+                  : 'bg-white/85 hover:bg-white text-rose-950 border border-rose-200/80'
               }`}
-              title={language === 'th' ? `ตัวกรอง (${activeFiltersCount})` : 'Filters'}
-              aria-label="Filters"
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
             >
-              <Filter className="w-5 h-5" />
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-rose-600'}`} />
               {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}

@@ -99,6 +99,69 @@
   }
 }
 
+/* Light Brown & White Moving Gradient Header for Rags & Gloves (เศษผ้า - ถุงมือ) */
+.animated-rags-brown-header {
+  background: linear-gradient(-45deg, #f7f1eb, #ffffff, #ede0d4, #fbf7f4, #ddc7b4, #ffffff, #f7f1eb);
+  background-size: 300% 300%;
+  animation: ragsBrownGradientShift 14s ease infinite;
+}
+
+@keyframes ragsBrownGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Floating White Icon Animations for Gloves & Rags */
+@keyframes floatGloveRag1 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) rotate(8deg) scale(1.06);
+  }
+}
+
+@keyframes floatGloveRag2 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) rotate(-10deg) scale(1.08);
+  }
+}
+
+@keyframes floatGloveRag3 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) rotate(6deg) scale(1.04);
+  }
+}
+
+.animate-float-glove-1 {
+  animation: floatGloveRag1 5s ease-in-out infinite;
+}
+
+.animate-float-glove-2 {
+  animation: floatGloveRag2 7s ease-in-out infinite;
+}
+
+.animate-float-rag-1 {
+  animation: floatGloveRag3 6s ease-in-out infinite;
+}
+
+.animate-float-rag-2 {
+  animation: floatGloveRag1 8s ease-in-out infinite reverse;
+}
+
 /* Medium Yellow & White Moving Gradient Header for OT */
 .animated-ot-yellow-header {
   background: linear-gradient(-45deg, #fef9c3, #fefce8, #fef08a, #ffffff, #fde047, #fef9c3);

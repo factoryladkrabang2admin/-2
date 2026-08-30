@@ -232,16 +232,21 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
     return Array.from(monthsSet).sort().reverse();
   }, [orders, currentYearMonthStr]);
 
-  const hasActiveFilters = 
-    Boolean(advancedFilters.trackingCode.trim()) ||
-    advancedFilters.department !== 'all' ||
-    advancedFilters.stage !== 'all' ||
-    selectedStageFilter !== 'all' ||
-    advancedFilters.dateScope !== 'today' ||
-    advancedFilters.month !== 'current' ||
-    advancedFilters.year !== 'all' ||
-    Boolean(advancedFilters.startDate) ||
-    Boolean(advancedFilters.endDate);
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (advancedFilters.trackingCode.trim()) count++;
+    if (advancedFilters.department !== 'all') count++;
+    if (advancedFilters.stage !== 'all') count++;
+    if (selectedStageFilter !== 'all') count++;
+    if (advancedFilters.dateScope !== 'today') count++;
+    if (advancedFilters.month !== 'current') count++;
+    if (advancedFilters.year !== 'all') count++;
+    if (advancedFilters.startDate) count++;
+    if (advancedFilters.endDate) count++;
+    return count;
+  }, [advancedFilters, selectedStageFilter]);
+
+  const hasActiveFilters = activeFiltersCount > 0;
 
   // Scoped orders (Default to Current Day - วันปัจจุบัน, or Month, or custom date filter)
   const scopedOrders = useMemo(() => {
@@ -533,7 +538,7 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAnalyticsOpen(true)}
-              className="p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center bg-white/85 hover:bg-white text-sky-950 border border-sky-200 shadow-xs hover:border-sky-300"
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-sky-950 border border-sky-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-sky-300"
               title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
               aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
@@ -555,24 +560,26 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
               <Hand className="w-5 h-5 stroke-[2]" />
             </button>
 
-            {/* 3. ไอคอน ตัวกรองการค้นหา ไว้หน้ากลุ่มไอคอนมุมมองรายการ (Icon Only) */}
+            {/* 3. ไอคอน ตัวกรองการค้นหา */}
             <button
               type="button"
               onClick={() => {
                 setTempFilters(advancedFilters);
                 setIsFilterModalOpen(true);
               }}
-              className={`p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative ${
-                hasActiveFilters
-                  ? 'bg-sky-700 text-white shadow-md ring-2 ring-sky-400'
-                  : 'bg-white/85 hover:bg-white text-sky-950 border border-sky-200 shadow-xs'
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-sky-300 ${
+                activeFiltersCount > 0
+                  ? 'bg-sky-600 text-white border-sky-400 shadow-md ring-2 ring-sky-300'
+                  : 'bg-white/85 hover:bg-white text-sky-950 border border-sky-200/80'
               }`}
-              title={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filter Orders'}
-              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filter Orders'}
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
             >
-              <Filter className="w-5 h-5 stroke-[2]" />
-              {hasActiveFilters && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-white animate-pulse" />
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-sky-600'}`} />
+              {activeFiltersCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-sky-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
+                  {activeFiltersCount}
+                </span>
               )}
             </button>
 
@@ -1865,7 +1872,11 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
       <LaundryAnalyticsModal
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
-        orders={scopedOrders}
+        orders={orders}
+        initialDateScope={advancedFilters.dateScope}
+        initialMonth={advancedFilters.month}
+        initialDepartment={advancedFilters.department}
+        initialStage={advancedFilters.stage}
       />
     </div>
   );

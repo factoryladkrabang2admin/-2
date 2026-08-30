@@ -1508,7 +1508,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Modern Circular Charts Section: สัดส่วนสถานะงานบริการ & สัดส่วนงานผ้าตามแผนก */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Donut Chart 1: สัดส่วนสถานะงานบริการ (สลับดู งานซัก-อบผ้า หรือ ห้องประชุม & หัวข้อ ได้) */}
-        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between">
+        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between h-full">
+          {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-2">
             <div className="flex items-center gap-2.5">
               <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center shadow-xs ${
@@ -1559,9 +1560,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          <div className="py-6 flex flex-col sm:flex-row items-center justify-center gap-6">
-            {/* SVG Modern Donut */}
-            <div className="relative w-44 h-44 shrink-0 flex items-center justify-center">
+          {/* Centered Donut & Balanced Legend */}
+          <div className="py-6 flex flex-col items-center justify-center gap-6 flex-1">
+            {/* SVG Modern Donut - Centered & Uniform Size */}
+            <div className="relative w-48 h-48 sm:w-52 sm:h-52 shrink-0 flex items-center justify-center mx-auto">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
                 {/* Background Ring */}
                 <circle
@@ -1602,28 +1604,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center p-2">
                 {activeStatusHoverItem ? (
                   <div className="animate-in zoom-in-90 duration-150">
-                    <span className="text-xl sm:text-2xl font-black text-[#1a1c1c]">
+                    <span className="text-2xl sm:text-3xl font-black text-[#1a1c1c]">
                       {activeStatusHoverItem.percentage}%
                     </span>
-                    <p className="text-[10px] font-bold text-slate-500 truncate max-w-[90px]">
+                    <p className="text-[11px] font-bold text-slate-500 truncate max-w-[100px] mt-0.5">
                       {activeStatusHoverItem.count} {language === 'th' ? 'รายการ' : 'records'}
                     </p>
                   </div>
                 ) : statusChartTab === 'laundry' ? (
                   <div>
-                    <span className="text-xl sm:text-2xl font-black text-[#1a1c1c]">
+                    <span className="text-2xl sm:text-3xl font-black text-[#1a1c1c]">
                       {laundryCompletionRate}%
                     </span>
-                    <p className="text-[10px] font-bold text-slate-500">
+                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
                       {language === 'th' ? 'พร้อมส่งมอบ' : 'Ready Rate'}
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <span className="text-xl sm:text-2xl font-black text-sky-600">
+                    <span className="text-2xl sm:text-3xl font-black text-sky-600">
                       {meetingSummary.totalBookings}
                     </span>
-                    <p className="text-[10px] font-bold text-slate-500">
+                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
                       {language === 'th' ? 'การจองทั้งหมด' : 'Bookings'}
                     </p>
                   </div>
@@ -1631,8 +1633,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            {/* Legend Column */}
-            <div className="flex-1 w-full space-y-2.5">
+            {/* Legend Grid - Neatly Centered & Structured */}
+            <div className="w-full space-y-2 max-w-md mx-auto">
               {statusSegmentsData.segments.map((seg) => {
                 const isHovered = hoveredStatusIndex === seg.idx;
                 const IconComponent = seg.icon;
@@ -1643,8 +1645,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     onMouseLeave={() => setHoveredStatusIndex(null)}
                     className={`flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer border ${
                       isHovered
-                        ? 'bg-slate-50 border-slate-300 shadow-2xs scale-[1.02]'
-                        : 'border-transparent hover:bg-slate-50/60'
+                        ? 'bg-slate-50 border-slate-300 shadow-2xs scale-[1.01]'
+                        : 'border-slate-100 hover:bg-slate-50/70'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1662,7 +1664,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <span className="text-xs font-black text-slate-900">
                         {seg.count}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md min-w-[42px] text-right">
+                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md min-w-[48px] text-right font-mono">
                         {seg.percentage}%
                       </span>
                     </div>
@@ -1674,8 +1676,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Donut Chart 2: สัดส่วนงานผ้าและห้องประชุมตามแผนก (Top 5) + แผนกอื่นๆ */}
-        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-2">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-xs">
                 <Building2 className="w-5 h-5 stroke-[2.2]" />
@@ -1689,11 +1692,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* Quick View All Departments Button in Header */}
+            <button
+              type="button"
+              onClick={() => setShowAllDeptsModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-all cursor-pointer border border-indigo-200/80 shadow-2xs hover:scale-105 active:scale-95"
+              title={language === 'th' ? 'ดูข้อมูลแผนกทั้งหมด' : 'View All Departments'}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>{language === 'th' ? `ดูทั้งหมด (${deptData.departmentsCount})` : `All (${deptData.departmentsCount})`}</span>
+            </button>
           </div>
 
-          <div className="py-6 flex flex-col sm:flex-row items-center justify-center gap-6">
-            {/* SVG Modern Donut */}
-            <div className="relative w-44 h-44 shrink-0 flex items-center justify-center">
+          {/* Centered Donut & Balanced Legend */}
+          <div className="py-6 flex flex-col items-center justify-center gap-6 flex-1">
+            {/* SVG Modern Donut - Centered & Uniform Size */}
+            <div className="relative w-48 h-48 sm:w-52 sm:h-52 shrink-0 flex items-center justify-center mx-auto">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
                 {/* Background Ring */}
                 <circle
@@ -1723,6 +1738,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       style={{
                         filter: isHovered ? `drop-shadow(0 0 6px ${seg.color}80)` : 'none'
                       }}
+                      onClick={() => {
+                        if (seg.isOthers) {
+                          setShowAllDeptsModal(true);
+                        } else {
+                          setSelectedDept(seg.name);
+                        }
+                      }}
                       onMouseEnter={() => setHoveredDeptIndex(seg.idx)}
                       onMouseLeave={() => setHoveredDeptIndex(null)}
                     />
@@ -1734,19 +1756,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center p-2">
                 {activeDeptHoverItem ? (
                   <div className="animate-in zoom-in-90 duration-150">
-                    <span className="text-xl sm:text-2xl font-black text-[#1a1c1c]">
+                    <span className="text-2xl sm:text-3xl font-black text-[#1a1c1c]">
                       {activeDeptHoverItem.percentage}%
                     </span>
-                    <p className="text-[10px] font-bold text-slate-500 truncate max-w-[90px]">
+                    <p className="text-[11px] font-bold text-slate-500 truncate max-w-[100px] mt-0.5">
                       {activeDeptHoverItem.pieces} {language === 'th' ? 'ชิ้น' : 'pcs'}
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <span className="text-xl sm:text-2xl font-black text-[#1a1c1c]">
+                    <span className="text-2xl sm:text-3xl font-black text-[#1a1c1c]">
                       {deptData.totalPieces.toLocaleString()}
                     </span>
-                    <p className="text-[10px] font-bold text-slate-500">
+                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
                       {language === 'th' ? 'ชิ้นผ้าทั้งหมด' : 'Total Pieces'}
                     </p>
                   </div>
@@ -1755,19 +1777,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {/* Legend Column (Top 5 + แผนกอื่นๆ) */}
-            <div className="flex-1 w-full space-y-2">
+            <div className="w-full space-y-1.5 max-w-md mx-auto">
               {deptData.segments.map((seg) => {
                 const isHovered = hoveredDeptIndex === seg.idx;
                 return (
                   <div
                     key={seg.name}
+                    onClick={() => {
+                      if (seg.isOthers) {
+                        setShowAllDeptsModal(true);
+                      } else {
+                        // Clicking on a top-5 dept can toggle filter or open detail
+                        if (selectedDept === seg.name) {
+                          setSelectedDept('ALL');
+                        } else {
+                          setSelectedDept(seg.name);
+                        }
+                      }
+                    }}
                     onMouseEnter={() => setHoveredDeptIndex(seg.idx)}
                     onMouseLeave={() => setHoveredDeptIndex(null)}
                     className={`flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer border ${
-                      isHovered
-                        ? 'bg-slate-50 border-slate-300 shadow-2xs scale-[1.02]'
-                        : 'border-transparent hover:bg-slate-50/60'
+                      seg.isOthers 
+                        ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-100/70 hover:border-amber-300' 
+                        : isHovered
+                          ? 'bg-slate-50 border-slate-300 shadow-2xs scale-[1.01]'
+                          : 'border-slate-100 hover:bg-slate-50/70'
                     }`}
+                    title={seg.isOthers ? (language === 'th' ? 'คลิกเพื่อดูข้อมูลแผนกทั้งหมด' : 'Click to view all departments') : undefined}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <div
@@ -1775,9 +1812,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         style={{ backgroundColor: seg.color }}
                       />
                       <div className="min-w-0">
-                        <span className="text-xs truncate block font-semibold text-slate-700">
-                          {seg.name}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs truncate font-semibold text-slate-700">
+                            {seg.name}
+                          </span>
+                          {seg.isOthers && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded inline-flex items-center gap-0.5">
+                              {language === 'th' ? 'คลิกดูทั้งหมด' : 'View all'}
+                              <ChevronRight className="w-2.5 h-2.5" />
+                            </span>
+                          )}
+                        </div>
                         {seg.meetings > 0 && !seg.isOthers && (
                           <span className="text-[10px] text-sky-600 block">
                             {seg.meetings} {language === 'th' ? 'การประชุม' : 'meetings'}
@@ -1790,7 +1835,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <span className="text-xs font-black text-slate-900">
                         {seg.pieces} {language === 'th' ? 'ชิ้น' : 'pcs'}
                       </span>
-                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md min-w-[42px] text-right">
+                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md min-w-[48px] text-right font-mono">
                         {seg.percentage}%
                       </span>
                     </div>

@@ -558,15 +558,16 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
             </div>
 
             {/* Action Buttons Toolbar: ICON ONLY */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
               {/* Analytics Button (Icon only) */}
               <button
                 type="button"
                 onClick={() => setIsAnalyticsModalOpen(true)}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/90 hover:bg-white text-blue-700 border border-blue-200/90 shadow-2xs hover:shadow-xs flex items-center justify-center transition-all cursor-pointer"
-                title={language === 'th' ? 'สถิติการตรวจและกราฟ' : 'Analytics & Charts'}
+                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-blue-950 border border-blue-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-blue-300"
+                title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
+                aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
               >
-                <BarChart3 className="w-4 h-4 text-blue-600" />
+                <BarChart3 className="w-5 h-5 text-blue-600 stroke-[2]" />
               </button>
 
               {/* Google Sheets Link Button (Icon only) */}
@@ -574,26 +575,28 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
                 href={CHLORINE_SHEET_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/90 hover:bg-white text-emerald-800 border border-emerald-200/90 shadow-2xs hover:shadow-xs flex items-center justify-center transition-all"
+                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-blue-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-blue-300"
                 title={language === 'th' ? 'เปิด Google Sheets ต้นฉบับ' : 'Open Google Sheets'}
+                aria-label="Google Sheet"
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <FileSpreadsheet className="w-5 h-5 text-emerald-700 stroke-[2]" />
               </a>
 
-              {/* Filter Button (Icon only with Badge) */}
+              {/* Filter Button */}
               <button
                 type="button"
                 onClick={() => setIsFilterModalOpen(true)}
-                className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl border shadow-2xs hover:shadow-xs flex items-center justify-center transition-all cursor-pointer ${
+                className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-blue-300 ${
                   activeFiltersCount > 0
-                    ? 'bg-[#002045] text-white border-[#002045]'
-                    : 'bg-white/90 hover:bg-white text-slate-700 border-slate-200/90'
+                    ? 'bg-blue-600 text-white border-blue-400 shadow-md ring-2 ring-blue-300'
+                    : 'bg-white/85 hover:bg-white text-blue-950 border border-blue-200/80'
                 }`}
-                title={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filters'}
+                title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+                aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
               >
-                <Filter className={`w-4 h-4 ${activeFiltersCount > 0 ? 'text-amber-400' : 'text-slate-600'}`} />
+                <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-blue-600'}`} />
                 {activeFiltersCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-amber-950 font-black text-2xs flex items-center justify-center shadow-xs">
+                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
                     {activeFiltersCount}
                   </span>
                 )}

@@ -38,7 +38,9 @@ import {
   Activity,
   X,
   Percent,
-  Bell
+  Bell,
+  Filter,
+  Hand
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -111,6 +113,20 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
   // Current Month Key (e.g. "2026-08")
   const currentMonthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
 
+  // Filter States
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [filterMode, setFilterMode] = useState<'all' | 'has_data' | 'has_discard' | 'has_wash'>('all');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterMinWeight, setFilterMinWeight] = useState<string>('');
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterMode !== 'all') count++;
+    if (filterSearch.trim()) count++;
+    if (filterMinWeight && parseFloat(filterMinWeight) > 0) count++;
+    return count;
+  }, [filterMode, filterSearch, filterMinWeight]);
+
   // Current month's records
   const records = useMemo(() => {
     if (monthlyData[currentMonthKey] && monthlyData[currentMonthKey].length > 0) {
@@ -118,6 +134,36 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
     }
     return createEmptyMonthRecords(selectedYear, selectedMonth);
   }, [monthlyData, currentMonthKey, selectedYear, selectedMonth]);
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      const beforeTotal = (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0);
+      const afterTotal = (r.afterWashRagsKg || 0) + (r.afterWashGlovesKg || 0);
+      const discardTotal = (r.discardRagsKg || 0) + (r.discardGlovesKg || 0);
+      const grandTotal = beforeTotal + afterTotal + discardTotal;
+
+      if (filterMode === 'has_data' && grandTotal === 0 && !r.note) {
+        return false;
+      }
+      if (filterMode === 'has_discard' && discardTotal === 0) {
+        return false;
+      }
+      if (filterMode === 'has_wash' && (beforeTotal === 0 && afterTotal === 0)) {
+        return false;
+      }
+      if (filterSearch.trim()) {
+        const q = filterSearch.trim().toLowerCase();
+        const matchDay = String(r.day).includes(q);
+        const matchNote = (r.note || '').toLowerCase().includes(q);
+        if (!matchDay && !matchNote) return false;
+      }
+      if (filterMinWeight && parseFloat(filterMinWeight) > 0) {
+        const minW = parseFloat(filterMinWeight);
+        if (grandTotal < minW) return false;
+      }
+      return true;
+    });
+  }, [records, filterMode, filterSearch, filterMinWeight]);
 
   // Modal for quick day entry
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
@@ -505,10 +551,30 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
         </div>
       )}
 
-      {/* Top Header Banner matching page aesthetic */}
-      <div className="bg-gradient-to-r from-[#003b22] via-[#056038] to-[#047857] rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-15 pointer-events-none flex items-center justify-end pr-10">
-          <Layers className="w-56 h-56 text-emerald-200" />
+      {/* Top Header Banner: Animated Light Brown and White Gradient with Floating White Glove & Rag Icons */}
+      <div className="animated-rags-brown-header rounded-2xl p-6 shadow-lg border border-[#e8d5c4] relative overflow-hidden text-[#3e2723]">
+        {/* Animated Floating White Glove and Rag/Cloth Icons in Background */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+          {/* Floating White Glove 1 */}
+          <div className="absolute top-2 right-36 opacity-30 animate-float-glove-1">
+            <Hand className="w-24 h-24 text-white drop-shadow-md transform -rotate-12" />
+          </div>
+          {/* Floating White Rag/Cloth 1 */}
+          <div className="absolute -bottom-4 right-10 opacity-35 animate-float-rag-1">
+            <Layers className="w-36 h-36 text-white drop-shadow-md transform rotate-6" />
+          </div>
+          {/* Floating White Glove 2 */}
+          <div className="absolute top-1/2 right-80 -translate-y-1/2 opacity-20 animate-float-glove-2 hidden sm:block">
+            <Hand className="w-16 h-16 text-white drop-shadow-sm transform rotate-45" />
+          </div>
+          {/* Floating White Rag 2 */}
+          <div className="absolute top-3 left-1/3 opacity-25 animate-float-rag-2 hidden md:block">
+            <Layers className="w-20 h-20 text-white drop-shadow-sm transform -rotate-15" />
+          </div>
+          {/* Subtle sparkles */}
+          <div className="absolute bottom-3 left-1/2 opacity-40 animate-pulse hidden lg:block">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
         </div>
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -518,7 +584,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 <button
                   type="button"
                   onClick={onBackToPipeline}
-                  className="px-3 py-1 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border border-white/30 active:scale-95 shadow-2xs"
+                  className="px-3 py-1 rounded-full bg-white/70 hover:bg-white text-[#5d4037] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-[#d7ccc8] active:scale-95 shadow-2xs"
                   title={language === 'th' ? 'กลับไปหน้ารายการซัก-อบผ้า' : 'Back to Laundry Orders'}
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -526,70 +592,93 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 </button>
               )}
 
-              {saveSuccessNotice && (
-                <span className="px-2.5 py-0.5 rounded-full bg-white text-emerald-800 text-xs font-bold animate-pulse flex items-center gap-1">
-                  <Check className="w-3 h-3 text-emerald-600" />
-                  {language === 'th' ? 'บันทึกแล้ว' : 'Saved'}
-                </span>
-              )}
+              {/* Read-Only Google Sheets live indicator */}
+              <span className="px-2.5 py-0.5 rounded-full bg-white/80 text-[#6d4c41] border border-[#d7ccc8] text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-[#8d5b4c]" />
+                <span>{language === 'th' ? 'โหมดอ่านอย่างเดียว (ลิงก์ Google Sheets)' : 'Read-Only (Google Sheets Live)'}</span>
+              </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-              {language === 'th' ? 'เศษผ้า - ถุงมือ' : 'Rags & Gloves Log (เศษผ้า - ถุงมือ)'}
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#3e2723] flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8d5b4c] to-[#5d4037] text-white flex items-center justify-center shadow-md">
+                <Hand className="w-6 h-6 stroke-[2.2]" />
+              </div>
+              <span>{language === 'th' ? 'เศษผ้า - ถุงมือ' : 'Rags & Gloves Log (เศษผ้า - ถุงมือ)'}</span>
             </h1>
-            <p className="text-xs sm:text-sm text-emerald-100 mt-1 max-w-2xl">
+            <p className="text-xs sm:text-sm text-[#5d4037] mt-1 max-w-2xl font-medium">
               {language === 'th' 
-                ? 'ตารางบันทึกข้อมูลน้ำหนักการคัดทิ้ง, ชั่งก่อนซัก และชั่งหลังซัก ประจำวัน (หน่วย: KG)' 
-                : 'Daily log for weights of discarded, pre-wash, and post-wash rags and industrial gloves (KG)'}
+                ? 'ตารางแสดงข้อมูลน้ำหนักการคัดทิ้ง, ชั่งก่อนซัก และชั่งหลังซัก ประจำวัน จาก Google Sheets (หน่วย: KG)' 
+                : 'Daily record of discarded, pre-wash, and post-wash rags & gloves synced from Google Sheets (KG)'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Statistics Icon Button */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* 1. Statistics Icon Button */}
             <button
               type="button"
               onClick={() => setStatsModalOpen(true)}
-              className="p-2.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white border border-white/20 rounded-xl transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs flex items-center justify-center"
-              title={language === 'th' ? 'สถิติและสรุปผล' : 'Statistics & Summary'}
-              aria-label={language === 'th' ? 'สถิติและสรุปผล' : 'Statistics & Summary'}
+              className="p-2.5 rounded-xl bg-white/90 hover:bg-white text-[#3e2723] border border-[#d7ccc8] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-[#bcaaa4]"
+              title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
+              aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
-              <BarChart3 className="w-4 h-4 text-emerald-200" />
+              <BarChart3 className="w-5 h-5 text-[#6d4c41] stroke-[2]" />
             </button>
 
-            {/* Google Sheets Icon Button (เฉพาะผู้ดูแลและแอดมินเท่านั้น) */}
+            {/* 2. Filter Icon Button */}
+            <button
+              type="button"
+              onClick={() => setIsFilterModalOpen(true)}
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs ${
+                activeFiltersCount > 0
+                  ? 'bg-[#6d4c41] text-white border-[#5d4037] shadow-md ring-2 ring-[#a1887f]'
+                  : 'bg-white/90 hover:bg-white text-[#3e2723] border border-[#d7ccc8] hover:border-[#bcaaa4]'
+              }`}
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
+            >
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-[#6d4c41]'}`} />
+              {activeFiltersCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#6d4c41] text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </button>
+
+            {/* 3. Google Sheets Icon Button (เฉพาะผู้ดูแลและแอดมินเท่านั้น) */}
             {isAdmin && (
               <a 
                 href={RAGS_GLOVES_SHEET_URL} 
                 target="_blank" 
                 rel="noreferrer"
-                className="p-2.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white border border-white/20 rounded-xl transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs flex items-center justify-center"
+                className="p-2.5 rounded-xl bg-white/90 hover:bg-white text-[#6d4c41] border border-[#d7ccc8] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-[#bcaaa4]"
                 title={language === 'th' ? 'เปิด Google Sheets (เฉพาะผู้ดูแลและแอดมิน)' : 'Open Google Sheets (Admin Only)'}
-                aria-label={language === 'th' ? 'เปิด Google Sheets' : 'Open Google Sheets'}
+                aria-label="Google Sheet"
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                <FileSpreadsheet className="w-5 h-5 text-[#6d4c41] stroke-[2]" />
               </a>
             )}
 
-            {/* Print Icon-Only Button */}
+            {/* 4. Print Icon-Only Button */}
             <button
+              type="button"
               onClick={handlePrint}
-              className="p-2.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white border border-white/20 rounded-xl transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs flex items-center justify-center"
+              className="p-2.5 rounded-xl bg-white/90 hover:bg-white text-[#3e2723] border border-[#d7ccc8] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-[#bcaaa4]"
               title={language === 'th' ? 'พิมพ์รายการ' : 'Print'}
               aria-label={language === 'th' ? 'พิมพ์รายการ' : 'Print'}
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-5 h-5 text-[#6d4c41]" />
             </button>
 
-            {/* QR CODE Icon-Only Button (Admin / Supervisor Only) */}
+            {/* 5. QR CODE Icon-Only Button (Admin / Supervisor Only) */}
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => setQrModalOpen(true)}
-                className="p-2.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white border border-white/20 rounded-xl transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs flex items-center justify-center"
+                className="p-2.5 rounded-xl bg-white/90 hover:bg-white text-[#3e2723] border border-[#d7ccc8] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-[#bcaaa4]"
                 title={language === 'th' ? 'QR Code แบบฟอร์มบันทึกข้อมูล (เฉพาะผู้ดูแล/แอดมิน)' : 'QR Code Form Entry (Admin Only)'}
                 aria-label={language === 'th' ? 'QR Code แบบฟอร์มบันทึกข้อมูล' : 'QR Code Form Entry'}
               >
-                <QrCode className="w-4 h-4 text-emerald-100" />
+                <QrCode className="w-5 h-5 text-[#6d4c41]" />
               </button>
             )}
           </div>
@@ -663,7 +752,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 setSelectedMonth(prev => prev - 1);
               }
             }}
-            className="p-2 text-[#43474e] hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors border border-gray-200 cursor-pointer"
+            className="p-2 text-[#43474e] hover:bg-slate-100 rounded-lg transition-colors border border-gray-200 cursor-pointer"
             title="เดือนก่อนหน้า"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -674,7 +763,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-              className="appearance-none pl-8 pr-8 py-2 bg-[#f0fdf4] text-emerald-950 font-bold text-xs sm:text-sm rounded-xl border border-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs"
+              className="appearance-none pl-8 pr-8 py-2 bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#8d5b4c] cursor-pointer shadow-2xs"
             >
               {thaiMonths.map((mName, idx) => (
                 <option key={idx} value={idx}>
@@ -682,7 +771,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 </option>
               ))}
             </select>
-            <Calendar className="w-4 h-4 text-emerald-700 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Calendar className="w-4 h-4 text-[#8d5b4c] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           {/* Year Selector Dropdown */}
@@ -690,7 +779,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-              className="appearance-none pl-3 pr-7 py-2 bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs"
+              className="appearance-none pl-3 pr-7 py-2 bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#8d5b4c] cursor-pointer shadow-2xs"
             >
               {yearsList.map((y) => (
                 <option key={y} value={y}>
@@ -711,7 +800,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 setSelectedMonth(prev => prev + 1);
               }
             }}
-            className="p-2 text-[#43474e] hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors border border-gray-200 cursor-pointer"
+            className="p-2 text-[#43474e] hover:bg-slate-100 rounded-lg transition-colors border border-gray-200 cursor-pointer"
             title="เดือนถัดไป"
           >
             <ChevronRight className="w-5 h-5" />
@@ -728,37 +817,9 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
             title="ไปยังเดือนปัจจุบัน"
           >
-            <CalendarDays className="w-3.5 h-3.5 text-emerald-700" />
+            <CalendarDays className="w-3.5 h-3.5 text-[#8d5b4c]" />
             <span>{language === 'th' ? 'เดือนปัจจุบัน' : 'Today'}</span>
           </button>
-
-          {/* Log Record Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const currentDayNum = Math.min(new Date().getDate(), records.length || 31);
-              const found = records.find(r => r.day === currentDayNum) || records[0];
-              if (found) {
-                handleOpenDayModal(found);
-              } else {
-                setEntryDay(currentDayNum);
-                setQuickEntryOpen(true);
-              }
-            }}
-            className="px-3.5 py-2 bg-[#00a854] hover:bg-[#008f47] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 ml-1"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{language === 'th' ? 'เพิ่มข้อมูลประจำวัน' : 'Log Day Record'}</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs text-[#74777f] flex-wrap justify-between sm:justify-end">
-          {lastSyncedTime && (
-            <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 font-medium flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>{language === 'th' ? `อัปเดตล่าสุด: ${lastSyncedTime.toLocaleTimeString('th-TH')}` : `Last synced: ${lastSyncedTime.toLocaleTimeString()}`}</span>
-            </span>
-          )}
         </div>
       </div>
 
@@ -880,7 +941,14 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
             </thead>
 
             <tbody>
-              {records.map((record) => {
+              {filteredRecords.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-slate-500 font-medium bg-slate-50">
+                    {language === 'th' ? 'ไม่พบข้อมูลตามตัวกรองที่เลือก' : 'No records match the active filter criteria.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredRecords.map((record) => {
                 const rowNet = getRowNet(record);
                 const isCurrentDay = record.day === new Date().getDate() && selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear();
 
@@ -888,99 +956,55 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                   <tr 
                     key={record.day}
                     className={`border-b border-black transition-colors ${
-                      isCurrentDay ? 'bg-amber-50/70' : 'bg-white hover:bg-sky-50/50'
+                      isCurrentDay ? 'bg-amber-50/70' : 'bg-white hover:bg-amber-50/30'
                     }`}
                   >
-                    {/* Day / Date (1 to daysInMonth) */}
+                    {/* Day / Date (1 to daysInMonth) - Read-only */}
                     <td 
-                      onClick={() => handleOpenDayModal(record)}
-                      className={`border-r border-black py-1 px-2 text-center font-bold cursor-pointer hover:bg-gray-100 ${
-                        isCurrentDay ? 'bg-amber-100/60 text-amber-900' : 'text-black'
+                      className={`border-r border-black py-1.5 px-2 text-center font-bold select-none ${
+                        isCurrentDay ? 'bg-amber-100/70 text-amber-950' : 'text-black'
                       }`}
-                      title={language === 'th' ? `คลิกเพื่อเปิดกรอกแบบละเอียดวันที่ ${record.day}` : `Click to open details for day ${record.day}`}
                     >
                       <span>{record.day}</span>
                     </td>
 
-                    {/* 1. คัดทิ้ง: เศษผ้า */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.discardRagsKg === 0 ? '' : record.discardRagsKg}
-                        onChange={(e) => handleCellChange(record.day, 'discardRagsKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black"
-                      />
+                    {/* 1. คัดทิ้ง: เศษผ้า (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-medium bg-white">
+                      {record.discardRagsKg > 0 ? record.discardRagsKg : ''}
                     </td>
 
-                    {/* 1. คัดทิ้ง: ถุงมือ */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.discardGlovesKg === 0 ? '' : record.discardGlovesKg}
-                        onChange={(e) => handleCellChange(record.day, 'discardGlovesKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black"
-                      />
+                    {/* 1. คัดทิ้ง: ถุงมือ (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-medium bg-white">
+                      {record.discardGlovesKg > 0 ? record.discardGlovesKg : ''}
                     </td>
 
-                    {/* 2. ก่อนซัก: เศษผ้า */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.beforeWashRagsKg === 0 ? '' : record.beforeWashRagsKg}
-                        onChange={(e) => handleCellChange(record.day, 'beforeWashRagsKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black font-medium"
-                      />
+                    {/* 2. ก่อนซัก: เศษผ้า (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-semibold bg-white">
+                      {record.beforeWashRagsKg > 0 ? record.beforeWashRagsKg : ''}
                     </td>
 
-                    {/* 2. ก่อนซัก: ถุงมือ */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.beforeWashGlovesKg === 0 ? '' : record.beforeWashGlovesKg}
-                        onChange={(e) => handleCellChange(record.day, 'beforeWashGlovesKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black font-medium"
-                      />
+                    {/* 2. ก่อนซัก: ถุงมือ (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-semibold bg-white">
+                      {record.beforeWashGlovesKg > 0 ? record.beforeWashGlovesKg : ''}
                     </td>
 
-                    {/* 3. หลังซัก: เศษผ้า */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.afterWashRagsKg === 0 ? '' : record.afterWashRagsKg}
-                        onChange={(e) => handleCellChange(record.day, 'afterWashRagsKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black font-semibold"
-                      />
+                    {/* 3. หลังซัก: เศษผ้า (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-semibold bg-white">
+                      {record.afterWashRagsKg > 0 ? record.afterWashRagsKg : ''}
                     </td>
 
-                    {/* 3. หลังซัก: ถุงมือ */}
-                    <td className="border-r border-black p-0 h-7 bg-white">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={record.afterWashGlovesKg === 0 ? '' : record.afterWashGlovesKg}
-                        onChange={(e) => handleCellChange(record.day, 'afterWashGlovesKg', e.target.value)}
-                        className="w-full h-full text-center bg-transparent border-0 focus:bg-amber-50 focus:outline-none text-xs text-black font-semibold"
-                      />
+                    {/* 3. หลังซัก: ถุงมือ (Read-only) */}
+                    <td className="border-r border-black py-1 px-2 text-center text-xs text-black font-semibold bg-white">
+                      {record.afterWashGlovesKg > 0 ? record.afterWashGlovesKg : ''}
                     </td>
 
-                    {/* รวม สุทธิ */}
+                    {/* รวม สุทธิ (Read-only) */}
                     <td className="py-1 px-2 text-center text-xs text-black font-normal bg-white">
                       {rowNet > 0 ? rowNet : 0}
                     </td>
                   </tr>
                 );
-              })}
+              }))}
 
               {/* BOTTOM TOTAL ROW: Matching colors and style in image */}
               <tr className="border-t-2 border-black font-bold text-xs select-none h-8">
@@ -1028,193 +1052,6 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
           </table>
         </div>
       </div>
-
-      {/* Quick Entry Modal */}
-      {quickEntryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  {entryDay}
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-[#002045]">
-                    {language === 'th' ? `บันทึกข้อมูลวันที่ ${entryDay} ${currentMonthName} ${displayYear}` : `Record Day ${entryDay} - ${currentMonthName} ${displayYear}`}
-                  </h3>
-                  <p className="text-xs text-[#74777f]">
-                    {language === 'th' ? 'กรอกค่าน้ำหนัก เศษผ้า และ ถุงมือ (กก.)' : 'Enter weights for rags & gloves (kg)'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setQuickEntryOpen(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleQuickEntrySubmit} className="space-y-4">
-              {/* Day selection */}
-              <div>
-                <label className="block text-xs font-semibold text-[#002045] mb-1">
-                  {language === 'th' ? `วันที่ (1 - ${records.length})` : `Day of Month (1 - ${records.length})`}
-                </label>
-                <select
-                  value={entryDay}
-                  onChange={(e) => {
-                    const d = parseInt(e.target.value);
-                    setEntryDay(d);
-                    const found = records.find(r => r.day === d);
-                    if (found) {
-                      setEntryDiscardRags(found.discardRagsKg.toString());
-                      setEntryDiscardGloves(found.discardGlovesKg.toString());
-                      setEntryBeforeRags(found.beforeWashRagsKg.toString());
-                      setEntryBeforeGloves(found.beforeWashGlovesKg.toString());
-                      setEntryAfterRags(found.afterWashRagsKg.toString());
-                      setEntryAfterGloves(found.afterWashGlovesKg.toString());
-                      setEntryNote(found.note || '');
-                    }
-                  }}
-                  className="w-full px-3 py-2 text-xs bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg font-bold text-[#002045]"
-                >
-                  {Array.from({ length: records.length }, (_, i) => i + 1).map((d) => (
-                    <option key={d} value={d}>
-                      {language === 'th' ? `วันที่ ${d} ${currentMonthName}` : `Day ${d} ${currentMonthName}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 1. Discard section */}
-              <div className="bg-[#fff7ed] border border-[#ffedd5] p-3 rounded-xl">
-                <span className="text-xs font-bold text-orange-900 block mb-2">
-                  1. คัดทิ้ง / KG (Discard)
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-orange-800 mb-1">เศษผ้า (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryDiscardRags}
-                      onChange={(e) => setEntryDiscardRags(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-orange-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-orange-800 mb-1">ถุงมือ (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryDiscardGloves}
-                      onChange={(e) => setEntryDiscardGloves(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-orange-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. Before Wash section */}
-              <div className="bg-[#f0fdf4] border border-[#dcfce7] p-3 rounded-xl">
-                <span className="text-xs font-bold text-emerald-900 block mb-2">
-                  2. ก่อนซัก / KG (Before Wash)
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-emerald-800 mb-1">เศษผ้า (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryBeforeRags}
-                      onChange={(e) => setEntryBeforeRags(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-emerald-800 mb-1">ถุงมือ (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryBeforeGloves}
-                      onChange={(e) => setEntryBeforeGloves(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. After Wash section */}
-              <div className="bg-[#fefce8] border border-[#fef08a] p-3 rounded-xl">
-                <span className="text-xs font-bold text-amber-900 block mb-2">
-                  3. หลังซัก / KG (After Wash)
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-amber-800 mb-1">เศษผ้า (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryAfterRags}
-                      onChange={(e) => setEntryAfterRags(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-amber-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-amber-800 mb-1">ถุงมือ (กก.)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={entryAfterGloves}
-                      onChange={(e) => setEntryAfterGloves(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-white border border-amber-200 rounded-lg font-semibold text-gray-800"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Note */}
-              <div>
-                <label className="block text-xs font-semibold text-[#002045] mb-1">
-                  {language === 'th' ? 'หมายเหตุ (ถ้ามี)' : 'Note'}
-                </label>
-                <input
-                  type="text"
-                  value={entryNote}
-                  onChange={(e) => setEntryNote(e.target.value)}
-                  placeholder={language === 'th' ? 'เช่น แผนก A/2 กะเช้า' : 'e.g. Dept A/2 morning shift'}
-                  className="w-full px-3 py-2 text-xs bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setQuickEntryOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-[#43474e] hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                >
-                  {language === 'th' ? 'ยกเลิก' : 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold bg-[#00a854] hover:bg-[#008f47] text-white rounded-lg transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {language === 'th' ? 'บันทึกข้อมูล' : 'Save Record'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Statistics & Analytics Modal */}
       {statsModalOpen && (
@@ -1502,6 +1339,145 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 <Download className="w-3.5 h-3.5" />
                 <span>{language === 'th' ? 'บันทึกรูป QR' : 'Save QR'}</span>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Modal */}
+      {isFilterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-emerald-100 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-700 to-teal-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
+                  <Filter className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base sm:text-lg">
+                    {language === 'th' ? 'ตัวกรองข้อมูลเศษผ้า - ถุงมือ' : 'Filter Rags & Gloves'}
+                  </h3>
+                  <p className="text-xs text-emerald-100">
+                    {language === 'th' ? 'เลือกเงื่อนไขเพื่อกรองแถวในตาราง' : 'Select criteria to filter records'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFilterModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 overflow-y-auto">
+              {/* Filter Type */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {language === 'th' ? 'ประเภทข้อมูล' : 'Data Type'}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('all')}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      filterMode === 'all'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {language === 'th' ? 'ทั้งหมด (ทุกวัน 1-31)' : 'All Days'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('has_data')}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      filterMode === 'has_data'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {language === 'th' ? 'เฉพาะวันที่มีข้อมูล' : 'Logged Only'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('has_discard')}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      filterMode === 'has_discard'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {language === 'th' ? 'เฉพาะวันที่มีคัดทิ้ง' : 'Discard Only'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('has_wash')}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      filterMode === 'has_wash'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {language === 'th' ? 'เฉพาะวันที่มีการชั่งซัก' : 'Wash Only'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Search text */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {language === 'th' ? 'ค้นหาวันที่ หรือ หมายเหตุ' : 'Search Day or Note'}
+                </label>
+                <input
+                  type="text"
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                  placeholder={language === 'th' ? 'เช่น วันที่ 15 หรือ ข้อความหมายเหตุ...' : 'e.g. 15 or note keyword...'}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Minimum Weight */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {language === 'th' ? 'น้ำหนักรวมขั้นต่ำ (KG)' : 'Minimum Total Weight (KG)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={filterMinWeight}
+                  onChange={(e) => setFilterMinWeight(e.target.value)}
+                  placeholder="0.0"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('all');
+                  setFilterSearch('');
+                  setFilterMinWeight('');
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                {language === 'th' ? 'ล้างตัวกรองทั้งหมด' : 'Reset Filters'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFilterModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              >
+                {language === 'th' ? 'เสร็จสิ้น' : 'Apply'}
+              </button>
             </div>
           </div>
         </div>

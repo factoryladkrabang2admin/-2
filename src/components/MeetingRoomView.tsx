@@ -544,7 +544,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             <button
               type="button"
               onClick={() => setShowAnalyticsModal(true)}
-              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-purple-950 border border-purple-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-purple-950 border border-purple-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-purple-300"
               title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
               aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
@@ -565,21 +565,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               </a>
             )}
 
-            {/* 3. ตัวกรองการค้นหา (Filter & Search Modal) */}
+            {/* 3. ตัวกรองการค้นหา */}
             <button
               type="button"
               onClick={() => setShowFilterModal(true)}
-              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs ${
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-purple-300 ${
                 activeFiltersCount > 0
                   ? 'bg-purple-600 text-white border-purple-400 shadow-md ring-2 ring-purple-300'
-                  : 'bg-white/85 hover:bg-white text-purple-950 border-purple-200/80'
+                  : 'bg-white/85 hover:bg-white text-purple-950 border border-purple-200/80'
               }`}
-              title={language === 'th' ? `ตัวกรองและการค้นหา (${activeFiltersCount} ตัวกรอง)` : 'Filters & Search'}
-              aria-label="Filters"
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
             >
-              <Filter className="w-5 h-5" />
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-purple-700'}`} />
               {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}

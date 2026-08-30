@@ -462,9 +462,9 @@ export const OtView: React.FC<OtViewProps> = ({
                 e.stopPropagation();
                 setShowAnalyticsModal(true);
               }}
-              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-amber-950 border border-amber-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-              title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Charts'}
-              aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Charts'}
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-amber-950 border border-amber-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-amber-300"
+              title={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
+              aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
               <BarChart3 className="w-5 h-5 text-amber-700 stroke-[2]" />
             </button>
@@ -483,21 +483,21 @@ export const OtView: React.FC<OtViewProps> = ({
               </a>
             )}
 
-            {/* 3. ตัวกรองการค้นหา (Filter Modal) */}
+            {/* 3. ตัวกรองการค้นหา */}
             <button
               type="button"
               onClick={() => setShowFilterModal(true)}
-              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs ${
+              className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center relative shadow-xs hover:border-amber-300 ${
                 activeFiltersCount > 0
                   ? 'bg-amber-600 text-white border-amber-500 shadow-md ring-2 ring-amber-300'
-                  : 'bg-white/85 hover:bg-white text-amber-950 border-amber-200/80'
+                  : 'bg-white/85 hover:bg-white text-amber-950 border border-amber-200/80'
               }`}
-              title={language === 'th' ? `ตัวกรองและการค้นหา (${activeFiltersCount} ตัวกรอง)` : 'Filters & Search'}
-              aria-label="Filters"
+              title={language === 'th' ? (activeFiltersCount > 0 ? `ตัวกรองการค้นหา (${activeFiltersCount})` : 'ตัวกรองการค้นหา') : (activeFiltersCount > 0 ? `Filters (${activeFiltersCount})` : 'Filters')}
+              aria-label={language === 'th' ? 'ตัวกรองการค้นหา' : 'Filters'}
             >
-              <Filter className="w-5 h-5" />
+              <Filter className={`w-5 h-5 stroke-[2] ${activeFiltersCount > 0 ? 'text-white' : 'text-amber-700'}`} />
               {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center ring-2 ring-white shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}

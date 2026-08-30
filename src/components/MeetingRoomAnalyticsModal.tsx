@@ -8,7 +8,13 @@ import {
   Sparkles,
   CalendarCheck,
   TrendingUp,
-  Clock
+  Clock,
+  Filter,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  Tag
 } from 'lucide-react';
 import { MeetingRoomBooking } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,6 +34,19 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
   const [activeTab, setActiveTab] = useState<'rooms' | 'departments' | 'status'>('rooms');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
+  // Filter State
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [timeScope, setTimeScope] = useState<'all' | 'today' | 'this_month' | 'specific_month' | 'custom'>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState<string>('all');
+  const [selectedDept, setSelectedDept] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -39,15 +58,82 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const totalBookings = bookings.length;
-  const totalAttendees = useMemo(() => bookings.reduce((sum, b) => sum + (b.attendeesCount || 0), 0), [bookings]);
+  // Extract unique departments
+  const availableDepts = useMemo(() => {
+    const list = Array.from(
+      new Set(bookings.map((b) => (b.department || '').trim()).filter(Boolean))
+    ).sort();
+    return list;
+  }, [bookings]);
+
+  // Filter Bookings
+  const filteredBookings = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const currentYearMonth = todayStr.substring(0, 7);
+
+    return bookings.filter((b) => {
+      const recDate = (b.date || b.timestamp || '').trim();
+
+      // Time Scope
+      if (timeScope === 'today') {
+        if (recDate && !recDate.startsWith(todayStr)) return false;
+      } else if (timeScope === 'this_month') {
+        if (recDate && !recDate.startsWith(currentYearMonth)) return false;
+      } else if (timeScope === 'specific_month') {
+        if (recDate && !recDate.startsWith(selectedMonth)) return false;
+      } else if (timeScope === 'custom') {
+        if (startDate && recDate && recDate < startDate) return false;
+        if (endDate && recDate && recDate > endDate) return false;
+      }
+
+      // Room
+      if (selectedRoom !== 'all') {
+        if (selectedRoom === 'tpm1' && !b.room.toUpperCase().includes('TPM 1')) return false;
+        if (selectedRoom === 'tpm2' && !b.room.toUpperCase().includes('TPM 2')) return false;
+        if (selectedRoom === 'other' && (b.room.toUpperCase().includes('TPM 1') || b.room.toUpperCase().includes('TPM 2'))) return false;
+      }
+
+      // Department
+      if (selectedDept !== 'all') {
+        if ((b.department || '').trim() !== selectedDept) return false;
+      }
+
+      // Status
+      if (selectedStatus !== 'all') {
+        if (b.status !== selectedStatus) return false;
+      }
+
+      return true;
+    });
+  }, [bookings, timeScope, selectedMonth, startDate, endDate, selectedRoom, selectedDept, selectedStatus]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (timeScope !== 'all') count++;
+    if (selectedRoom !== 'all') count++;
+    if (selectedDept !== 'all') count++;
+    if (selectedStatus !== 'all') count++;
+    return count;
+  }, [timeScope, selectedRoom, selectedDept, selectedStatus]);
+
+  const handleResetFilters = () => {
+    setTimeScope('all');
+    setStartDate('');
+    setEndDate('');
+    setSelectedRoom('all');
+    setSelectedDept('all');
+    setSelectedStatus('all');
+  };
+
+  const totalBookings = filteredBookings.length;
+  const totalAttendees = useMemo(() => filteredBookings.reduce((sum, b) => sum + (b.attendeesCount || 0), 0), [filteredBookings]);
   const avgAttendees = totalBookings > 0 ? (totalAttendees / totalBookings).toFixed(1) : '0';
 
   // 1. Room Distribution Data (TPM 1 vs TPM 2 vs Other)
   const roomData = useMemo(() => {
-    const tpm1 = bookings.filter((b) => b.room.toUpperCase().includes('TPM 1'));
-    const tpm2 = bookings.filter((b) => b.room.toUpperCase().includes('TPM 2'));
-    const other = bookings.filter((b) => !b.room.toUpperCase().includes('TPM 1') && !b.room.toUpperCase().includes('TPM 2'));
+    const tpm1 = filteredBookings.filter((b) => b.room.toUpperCase().includes('TPM 1'));
+    const tpm2 = filteredBookings.filter((b) => b.room.toUpperCase().includes('TPM 2'));
+    const other = filteredBookings.filter((b) => !b.room.toUpperCase().includes('TPM 1') && !b.room.toUpperCase().includes('TPM 2'));
 
     const items = [
       {
@@ -92,12 +178,12 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
     }
 
     return items;
-  }, [bookings, totalBookings]);
+  }, [filteredBookings, totalBookings]);
 
   // 2. Department Distribution Data
   const deptData = useMemo(() => {
     const deptMap: Record<string, { count: number; attendees: number }> = {};
-    bookings.forEach((b) => {
+    filteredBookings.forEach((b) => {
       const dept = (b.department || 'ไม่ระบุ').trim();
       if (!deptMap[dept]) {
         deptMap[dept] = { count: 0, attendees: 0 };
@@ -127,7 +213,7 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
         percentage: totalBookings > 0 ? Math.round((data.count / totalBookings) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
-  }, [bookings, totalBookings]);
+  }, [filteredBookings, totalBookings]);
 
   // 3. Status Distribution Data
   const statusData = useMemo(() => {
@@ -137,7 +223,7 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
       'รอเริ่มวันนี้': 0,
       'นัดหมายล่วงหน้า': 0,
     };
-    bookings.forEach((b) => {
+    filteredBookings.forEach((b) => {
       const s = b.status || 'นัดหมายล่วงหน้า';
       sMap[s] = (sMap[s] || 0) + 1;
     });
@@ -158,7 +244,7 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
         percentage: totalBookings > 0 ? Math.round((count / totalBookings) * 100) : 0,
       }))
       .filter((item) => item.count > 0);
-  }, [bookings, totalBookings]);
+  }, [filteredBookings, totalBookings]);
 
   // Select active dataset for circular donut chart
   const currentChartItems = useMemo(() => {
@@ -214,24 +300,221 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
               </div>
               <p className="text-xs text-blue-200/90 mt-0.5">
                 {language === 'th' 
-                  ? 'กราฟวงกลมแสดงสัดส่วนการใช้ห้องประชุม แผนก และผู้เข้าร่วม' 
-                  : 'Circular donut graphs showing room usage breakdown, departments & attendees'}
+                  ? `วิเคราะห์จาก ${totalBookings} รายการ${bookings.length !== totalBookings ? ` จากทั้งหมด ${bookings.length} รายการ` : ''}` 
+                  : `Analyzed from ${totalBookings} bookings${bookings.length !== totalBookings ? ` of total ${bookings.length}` : ''}`}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Filter Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                isFilterOpen || activeFiltersCount > 0
+                  ? 'bg-amber-400 text-blue-950 font-black ring-2 ring-amber-200'
+                  : 'bg-white/15 hover:bg-white/25 text-white border border-white/25'
+              }`}
+              title={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+            >
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</span>
+              {activeFiltersCount > 0 && (
+                <span className="w-5 h-5 rounded-full bg-blue-950 text-amber-300 text-[10px] font-black flex items-center justify-center">
+                  {activeFiltersCount}
+                </span>
+              )}
+              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Expandable Filter Box */}
+        {isFilterOpen && (
+          <div className="bg-blue-50/70 border-b border-blue-200 p-4 sm:p-5 animate-in slide-in-from-top-2 duration-150 shrink-0">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-blue-600" />
+                <span className="text-xs font-black text-blue-950 uppercase tracking-wider">
+                  {language === 'th' ? 'ตั้งค่าตัวกรองข้อมูลสำหรับสถิติห้องประชุม' : 'Filter Meeting Room Analytics'}
+                </span>
+              </div>
+              {activeFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{language === 'th' ? 'ล้างตัวกรองทั้งหมด' : 'Reset Filters'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Time Scope */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'th' ? 'ช่วงเวลา (Time Scope)' : 'Time Scope'}
+                </label>
+                <select
+                  value={timeScope}
+                  onChange={(e) => setTimeScope(e.target.value as any)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="all">{language === 'th' ? 'ทั้งหมด (All Time)' : 'All Time'}</option>
+                  <option value="today">{language === 'th' ? 'วันนี้ (Today)' : 'Today'}</option>
+                  <option value="this_month">{language === 'th' ? 'เดือนปัจจุบัน (This Month)' : 'This Month'}</option>
+                  <option value="specific_month">{language === 'th' ? 'เลือกเดือนระบุ' : 'Specific Month'}</option>
+                  <option value="custom">{language === 'th' ? 'กำหนดช่วงวันที่เอง' : 'Custom Date Range'}</option>
+                </select>
+              </div>
+
+              {/* 2. Room */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'th' ? 'ห้องประชุม (Meeting Room)' : 'Room'}
+                </label>
+                <select
+                  value={selectedRoom}
+                  onChange={(e) => setSelectedRoom(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="all">{language === 'th' ? 'ทุกห้อง (All Rooms)' : 'All Rooms'}</option>
+                  <option value="tpm1">ห้องประชุม TPM 1</option>
+                  <option value="tpm2">ห้องประชุม TPM 2</option>
+                  <option value="other">ห้องอื่นๆ</option>
+                </select>
+              </div>
+
+              {/* 3. Department */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'th' ? 'แผนก/ฝ่าย (Department)' : 'Department'}
+                </label>
+                <select
+                  value={selectedDept}
+                  onChange={(e) => setSelectedDept(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="all">{language === 'th' ? 'ทุกแผนก (All)' : 'All Depts'}</option>
+                  {availableDepts.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 4. Status */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'th' ? 'สถานะการประชุม (Status)' : 'Status'}
+                </label>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="all">{language === 'th' ? 'ทุกสถานะ (All)' : 'All Statuses'}</option>
+                  <option value="เสร็จสิ้นแล้ว">{language === 'th' ? 'เสร็จสิ้นแล้ว' : 'Completed'}</option>
+                  <option value="กำลังประชุม">{language === 'th' ? 'กำลังประชุม' : 'In Meeting'}</option>
+                  <option value="รอเริ่มวันนี้">{language === 'th' ? 'รอเริ่มวันนี้' : 'Starts Today'}</option>
+                  <option value="นัดหมายล่วงหน้า">{language === 'th' ? 'นัดหมายล่วงหน้า' : 'Upcoming'}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Extra Date Pickers */}
+            {timeScope === 'specific_month' && (
+              <div className="mt-3 pt-3 border-t border-blue-200 flex items-center gap-3">
+                <label className="text-xs font-bold text-slate-700">{language === 'th' ? 'เลือกเดือน-ปี:' : 'Select Month:'}</label>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
+                />
+              </div>
+            )}
+
+            {timeScope === 'custom' && (
+              <div className="mt-3 pt-3 border-t border-blue-200 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600">{language === 'th' ? 'ตั้งแต่วันที่:' : 'From:'}</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600">{language === 'th' ? 'ถึงวันที่:' : 'To:'}</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Modal Body with Scroll */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
+          {/* Active Filter Chips Bar */}
+          {activeFiltersCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50 rounded-2xl border border-blue-200 text-xs">
+              <span className="font-bold text-blue-950 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-blue-600" />
+                {language === 'th' ? 'เงื่อนไขที่เลือก:' : 'Active Filters:'}
+              </span>
+
+              {timeScope !== 'all' && (
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-blue-950 font-semibold shadow-2xs">
+                  📅 {timeScope === 'today' ? (language === 'th' ? 'วันนี้' : 'Today') : timeScope === 'this_month' ? (language === 'th' ? 'เดือนนี้' : 'This Month') : timeScope === 'specific_month' ? selectedMonth : `${startDate || '...'} ~ ${endDate || '...'}`}
+                </span>
+              )}
+
+              {selectedRoom !== 'all' && (
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-blue-950 font-semibold shadow-2xs">
+                  🚪 {selectedRoom === 'tpm1' ? 'TPM 1' : selectedRoom === 'tpm2' ? 'TPM 2' : 'ห้องอื่นๆ'}
+                </span>
+              )}
+
+              {selectedDept !== 'all' && (
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-blue-950 font-semibold shadow-2xs">
+                  🏢 {selectedDept}
+                </span>
+              )}
+
+              {selectedStatus !== 'all' && (
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-blue-950 font-semibold shadow-2xs">
+                  ⚡ {selectedStatus}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="ml-auto text-xs font-bold text-blue-900 hover:text-rose-600 transition-colors cursor-pointer px-2 py-0.5"
+              >
+                {language === 'th' ? 'ล้างทั้งหมด' : 'Clear'}
+              </button>
+            </div>
+          )}
+
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-100 flex items-center gap-3">
