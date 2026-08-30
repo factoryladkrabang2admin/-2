@@ -27,16 +27,23 @@ import {
   Shirt,
   Sparkle,
   Package,
-  Check
+  Check,
+  QrCode,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
-import { EquipmentRecord, EquipmentSubCategory } from '../types';
+import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   fetchEquipmentRecordsBySubCategory,
   CLEANING_EQUIPMENT_SHEET_URL,
   GOWN_EQUIPMENT_SHEET_URL,
   KEYS_EQUIPMENT_SHEET_URL,
-  LADDER_EQUIPMENT_SHEET_URL
+  LADDER_EQUIPMENT_SHEET_URL,
+  CLEANING_EQUIPMENT_FORM_URL,
+  GOWN_EQUIPMENT_FORM_URL,
+  KEYS_EQUIPMENT_FORM_URL,
+  LADDER_EQUIPMENT_FORM_URL
 } from '../services/googleSheetSyncService';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { EquipmentDetailModal } from './EquipmentDetailModal';
@@ -60,8 +67,13 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Active Sub-category Tab
   const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>('cleaning');
 
-  // View mode: 'table' | 'grid' | 'board'
-  const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>('table');
+  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' on mobile and tablet < 1024px, 'table' on desktop)
+  const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      return 'grid';
+    }
+    return 'table';
+  });
 
   // Equipment records state
   const [records, setRecords] = useState<EquipmentRecord[]>([]);
@@ -99,6 +111,40 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         return CLEANING_EQUIPMENT_SHEET_URL;
     }
   }, [activeSubCategory]);
+
+  // Google Form Link lookup for QR Code
+  const currentFormUrl = useMemo(() => {
+    switch (activeSubCategory) {
+      case 'cleaning':
+        return CLEANING_EQUIPMENT_FORM_URL;
+      case 'gown':
+        return GOWN_EQUIPMENT_FORM_URL;
+      case 'keys':
+        return KEYS_EQUIPMENT_FORM_URL;
+      case 'ladder':
+        return LADDER_EQUIPMENT_FORM_URL;
+      default:
+        return CLEANING_EQUIPMENT_FORM_URL;
+    }
+  }, [activeSubCategory]);
+
+  const currentSubCategoryName = useMemo(() => {
+    switch (activeSubCategory) {
+      case 'cleaning':
+        return language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies';
+      case 'gown':
+        return language === 'th' ? 'เสื้อกาวน์' : 'Gowns';
+      case 'keys':
+        return language === 'th' ? 'กุญแจ' : 'Keys';
+      case 'ladder':
+        return language === 'th' ? 'บันไดทรง A' : 'A-Frame Ladder';
+      default:
+        return '';
+    }
+  }, [activeSubCategory, language]);
+
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [qrCopied, setQrCopied] = useState<boolean>(false);
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser);
 
@@ -288,25 +334,32 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     },
   ];
 
-  // Export CSV
+  // Export CSV (นำคอลัมน์ แผนก, สถานะ ออก และแยกรายการอุปกรณ์และจำนวนเป็นแถวๆ เพื่อง่ายต่อการค้นหา)
   const handleExportCsv = () => {
     if (filteredRecords.length === 0) return;
-    const header = ['ลำดับ', 'วันที่', 'ผู้เบิก/ยืม', 'แผนก', 'การกระทำ', 'รายการอุปกรณ์', 'จำนวน', 'สถานะ', 'หมายเหตุ'];
+    const header = ['ลำดับ', 'วันที่', 'ผู้เบิก/ยืม', 'การกระทำ', 'รายการอุปกรณ์', 'จำนวน', 'หมายเหตุ'];
     const csvRows = [header.join(',')];
+    let rowSeq = 1;
 
-    filteredRecords.forEach((r, idx) => {
-      const row = [
-        idx + 1,
-        `"${r.date || ''}"`,
-        `"${r.requesterName || ''}"`,
-        `"${r.department || ''}"`,
-        `"${r.actionType || ''}"`,
-        `"${(r.itemSummary || '').replace(/"/g, '""')}"`,
-        r.totalQuantity || 1,
-        `"${r.status || ''}"`,
-        `"${(r.note || '').replace(/"/g, '""')}"`
-      ];
-      csvRows.push(row.join(','));
+    filteredRecords.forEach((r) => {
+      // ตรวจสอบรายการย่อยใน itemsList เพื่อแยกเป็นแถวๆ
+      const itemsToExport: EquipmentItemDetail[] = (r.itemsList && r.itemsList.length > 0)
+        ? r.itemsList
+        : [{ name: r.itemSummary || 'อุปกรณ์', quantity: r.totalQuantity || 1 }];
+
+      itemsToExport.forEach((item) => {
+        const noteText = (item.note || r.note || '').replace(/"/g, '""');
+        const row = [
+          rowSeq++,
+          `"${r.date || ''}"`,
+          `"${(r.requesterName || '').replace(/"/g, '""')}"`,
+          `"${(r.actionType || '').replace(/"/g, '""')}"`,
+          `"${(item.name || '').replace(/"/g, '""')}"`,
+          item.quantity || 1,
+          `"${noteText}"`
+        ];
+        csvRows.push(row.join(','));
+      });
     });
 
     const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -415,7 +468,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               )}
             </button>
 
-            {/* View Switcher */}
+            {/* View Switcher with integrated QR Code Button */}
             <div className="flex items-center bg-white/85 p-1 rounded-xl backdrop-blur-md border border-rose-200/80 shadow-xs">
               <button
                 type="button"
@@ -452,6 +505,18 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 title={language === 'th' ? 'มุมมองกระดานขั้นตอน (Board)' : 'Board View'}
               >
                 <Columns className="w-4 h-4" />
+              </button>
+
+              {/* เส้นคั่นและไอคอน QR Code อยู่ในกล่องเดียวกับมุมมอง */}
+              <div className="w-[1px] h-4 bg-rose-200 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="p-2 rounded-lg transition-all cursor-pointer text-rose-900 hover:text-rose-950 hover:bg-rose-100/70 active:scale-95 group relative"
+                title={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
+                aria-label={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
+              >
+                <QrCode className="w-4 h-4 text-rose-700 transition-transform group-hover:scale-110" />
               </button>
             </div>
           </div>
@@ -1030,6 +1095,118 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               >
                 {language === 'th' ? 'ปรับใช้ตัวกรอง' : 'Apply Filters'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Google Form Modal */}
+      {showQrModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl shadow-2xl border border-rose-100 w-full max-w-md overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white flex items-center justify-center shadow-md">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {language === 'th' ? `QR Code แบบฟอร์ม${currentSubCategoryName}` : `${currentSubCategoryName} Form QR Code`}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {language === 'th' ? 'สแกนเพื่อบันทึกข้อมูลผ่าน Google Form' : 'Scan to submit via Google Form'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                title={language === 'th' ? 'ปิด' : 'Close'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* QR Code Image Container */}
+            <div className="py-5 flex flex-col items-center justify-center text-center">
+              <div className="p-4 bg-gradient-to-b from-rose-50 to-white rounded-2xl border-2 border-rose-200/80 shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(currentFormUrl)}&margin=8`}
+                  alt={`QR Code ${currentSubCategoryName}`}
+                  className="w-52 h-52 sm:w-60 sm:h-60 rounded-xl bg-white shadow-inner"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+
+              <div className="mt-4 px-3 py-1.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200/80 text-[11px] font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+                <span>{language === 'th' ? 'สแกนด้วยกล้องมือถือเพื่อเปิดแบบฟอร์มทันที' : 'Scan with mobile camera to open form instantly'}</span>
+              </div>
+
+              {/* URL Box */}
+              <div className="mt-3.5 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-left">
+                <span className="text-xs font-mono text-slate-600 truncate flex-1 select-all">
+                  {currentFormUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(currentFormUrl);
+                    setQrCopied(true);
+                    setTimeout(() => setQrCopied(false), 2500);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                    qrCopied 
+                      ? 'bg-emerald-600 text-white' 
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                  }`}
+                  title={language === 'th' ? 'คัดลอกลิงก์' : 'Copy Link'}
+                >
+                  {qrCopied ? (
+                    <>
+                      <Check className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอกแล้ว' : 'Copied'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+              <a
+                href={currentFormUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-700 hover:to-red-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-rose-700/20 transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'เปิดแบบฟอร์ม' : 'Open Form'}</span>
+              </a>
+
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(currentFormUrl)}&margin=10`}
+                download={`equipment-${activeSubCategory}-form-qr-code.png`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'บันทึกรูป QR' : 'Save QR'}</span>
+              </a>
             </div>
           </div>
         </div>

@@ -23,14 +23,19 @@ import {
   Check,
   FileSpreadsheet,
   PieChart,
-  BarChart3
+  BarChart3,
+  QrCode,
+  ExternalLink,
+  Copy,
+  Download
 } from 'lucide-react';
 import { MeetingRoomBooking, MeetingStatus } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   fetchGoogleSheetMeetingRoomBookings, 
   calculateMeetingStatus,
-  MEETING_ROOM_SHEET_URL
+  MEETING_ROOM_SHEET_URL,
+  MEETING_ROOM_FORM_URL
 } from '../services/googleSheetSyncService';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { MeetingRoomDetailModal } from './MeetingRoomDetailModal';
@@ -119,6 +124,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   // Modals
   const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState<boolean>(false);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [copiedQrLink, setCopiedQrLink] = useState<boolean>(false);
 
   // Sorting
   const [sortBy, setSortBy] = useState<'seq_desc' | 'seq_asc' | 'date_desc' | 'date_asc'>('seq_desc');
@@ -367,21 +374,41 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     return nonRoomFilteredBookings.length;
   }, [hasActiveFilters, todayBookings.length, nonRoomFilteredBookings.length]);
 
-  // Filtered and Sorted Bookings
+  // Helper to get sortable timestamp value for booking
+  const getBookingTimestampValue = (b: MeetingRoomBooking): number => {
+    const d = parseBookingDate(b.bookingDate);
+    if (d) {
+      if (b.startTime) {
+        const parts = b.startTime.split(':');
+        if (parts.length >= 2) {
+          d.setHours(parseInt(parts[0], 10) || 0, parseInt(parts[1], 10) || 0, 0, 0);
+        }
+      }
+      return d.getTime();
+    }
+    return b.seq || 0;
+  };
+
+  // Filtered and Sorted Bookings - Defaults to latest data first
   const filteredBookings = useMemo(() => {
     return [...baseFilteredBookings].sort((a, b) => {
-      if (sortBy === 'seq_desc') return b.seq - a.seq;
       if (sortBy === 'seq_asc') return a.seq - b.seq;
-      if (sortBy === 'date_desc') {
-        const da = parseBookingDate(a.bookingDate)?.getTime() || 0;
-        const db = parseBookingDate(b.bookingDate)?.getTime() || 0;
-        return db - da;
-      }
       if (sortBy === 'date_asc') {
-        const da = parseBookingDate(a.bookingDate)?.getTime() || 0;
-        const db = parseBookingDate(b.bookingDate)?.getTime() || 0;
-        return da - db;
+        const da = getBookingTimestampValue(a);
+        const db = getBookingTimestampValue(b);
+        if (da !== db) return da - db;
+        return a.seq - b.seq;
       }
+      if (sortBy === 'date_desc') {
+        const da = getBookingTimestampValue(a);
+        const db = getBookingTimestampValue(b);
+        if (db !== da) return db - da;
+        return b.seq - a.seq;
+      }
+      // Default latest (seq_desc / latest submission & date)
+      const da = getBookingTimestampValue(a);
+      const db = getBookingTimestampValue(b);
+      if (db !== da) return db - da;
       return b.seq - a.seq;
     });
   }, [baseFilteredBookings, sortBy]);
@@ -615,6 +642,18 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               >
                 <CalendarDays className="w-4 h-4" />
               </button>
+
+              {/* เส้นคั่นและไอคอน QR Code หลังไอคอนมุมมองปฏิทิน */}
+              <div className="w-[1px] h-4 bg-purple-200 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="p-2 rounded-lg transition-all cursor-pointer text-purple-900 hover:text-purple-950 hover:bg-purple-100/70 active:scale-95 group relative"
+                title={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
+                aria-label={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
+              >
+                <QrCode className="w-4 h-4 text-purple-700 transition-transform group-hover:scale-110" />
+              </button>
             </div>
           </div>
         </div>
@@ -846,7 +885,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                        <th className="py-3 px-3 text-center w-12">#</th>
                         <th className="py-3 px-3.5">{language === 'th' ? 'ห้องประชุม' : 'Room'}</th>
                         <th className="py-3 px-3 text-center">{language === 'th' ? 'วันที่' : 'Date'}</th>
                         <th className="py-3 px-3 text-center">{language === 'th' ? 'เวลา' : 'Time'}</th>
@@ -854,7 +892,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                         <th className="py-3 px-3.5">{language === 'th' ? 'แผนก / ฝ่าย' : 'Department'}</th>
                         <th className="py-3 px-3 text-center">{language === 'th' ? 'จำนวน' : 'Attendees'}</th>
                         <th className="py-3 px-3">{language === 'th' ? 'เบอร์โทร' : 'Phone'}</th>
-                        <th className="py-3 px-3 text-center">{language === 'th' ? 'สถานะ' : 'Status'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -866,9 +903,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             onClick={() => setSelectedBooking(booking)}
                             className="hover:bg-blue-50/40 transition-colors cursor-pointer"
                           >
-                            <td className="py-3 px-3 text-center font-mono font-bold text-slate-500">
-                              {booking.seq}
-                            </td>
                             <td className="py-3 px-3.5">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] border ${
                                 isT1
@@ -899,9 +933,6 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                             </td>
                             <td className="py-3 px-3 font-mono text-slate-600 whitespace-nowrap">
                               {booking.phoneNumber ? `โทร. ${booking.phoneNumber}` : '-'}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              {getStatusPill(booking.status)}
                             </td>
                           </tr>
                         );
@@ -1359,6 +1390,118 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         onClose={() => setShowAnalyticsModal(false)}
         bookings={bookings}
       />
+
+      {/* Meeting Room Google Form QR Code Modal */}
+      {showQrModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl shadow-2xl border border-purple-100 w-full max-w-md overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-700 to-indigo-800 text-white flex items-center justify-center shadow-md">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Form QR Code'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {language === 'th' ? 'สแกนเพื่อกรอกข้อมูลการจองผ่าน Google Form' : 'Scan to submit booking via Google Form'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                title={language === 'th' ? 'ปิด' : 'Close'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* QR Code Image Container */}
+            <div className="py-5 flex flex-col items-center justify-center text-center">
+              <div className="p-4 bg-gradient-to-b from-purple-50 to-white rounded-2xl border-2 border-purple-200/80 shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(MEETING_ROOM_FORM_URL)}&margin=8`}
+                  alt="Meeting Room QR Code"
+                  className="w-52 h-52 sm:w-60 sm:h-60 rounded-xl bg-white shadow-inner"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+
+              <div className="mt-4 px-3 py-1.5 rounded-full bg-purple-50 text-purple-900 border border-purple-200/80 text-[11px] font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>{language === 'th' ? 'สแกนด้วยกล้องมือถือเพื่อเปิดแบบฟอร์มทันที' : 'Scan with mobile camera to open form instantly'}</span>
+              </div>
+
+              {/* URL Box */}
+              <div className="mt-3.5 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-left">
+                <span className="text-xs font-mono text-slate-600 truncate flex-1 select-all">
+                  {MEETING_ROOM_FORM_URL}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(MEETING_ROOM_FORM_URL);
+                    setCopiedQrLink(true);
+                    setTimeout(() => setCopiedQrLink(false), 2500);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                    copiedQrLink 
+                      ? 'bg-emerald-600 text-white' 
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                  }`}
+                  title={language === 'th' ? 'คัดลอกลิงก์' : 'Copy Link'}
+                >
+                  {copiedQrLink ? (
+                    <>
+                      <Check className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอกแล้ว' : 'Copied'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+              <a
+                href={MEETING_ROOM_FORM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-purple-800/20 transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'เปิดแบบฟอร์ม' : 'Open Form'}</span>
+              </a>
+
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(MEETING_ROOM_FORM_URL)}&margin=10`}
+                download="meeting-room-form-qr-code.png"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'บันทึกรูป QR' : 'Save QR'}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

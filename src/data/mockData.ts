@@ -185,11 +185,6 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
 
   const role = (user.role || '').toLowerCase().trim();
   
-  // If role specifically specifies general staff / employee without admin privileges
-  if (role.startsWith('รหัสพนักงาน') || role.startsWith('emp') || role.includes('พนักงาน') || role.includes('staff') || role.includes('operator')) {
-    return false;
-  }
-
   if (
     role === 'admin' ||
     role === 'administrator' ||
@@ -197,11 +192,18 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
     role.includes('ผู้ดูแลระบบ') ||
     role.includes('ผู้ดูแล') ||
     role.includes('แอดมิน') ||
+    role.includes('แอดมินเพจ') ||
+    role.includes('page admin') ||
     role.includes('supervisor') ||
     role.includes('manager') ||
     role.includes('หัวหน้า')
   ) {
     return true;
+  }
+
+  // If role specifically specifies general staff / employee without admin privileges
+  if (role.startsWith('รหัสพนักงาน') || role.startsWith('emp') || role.includes('พนักงาน') || role.includes('staff') || role.includes('operator')) {
+    return false;
   }
 
   return false;

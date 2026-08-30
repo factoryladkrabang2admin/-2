@@ -35,12 +35,16 @@ import {
   CheckCircle,
   XCircle,
   X,
-  Info
+  Info,
+  QrCode,
+  Copy,
+  Download
 } from 'lucide-react';
 import { ChlorineInspectionRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   CHLORINE_SHEET_URL, 
+  CHLORINE_FORM_URL,
   fetchGoogleSheetChlorineRecords,
   formatGoogleDriveImageUrl
 } from '../services/googleSheetSyncService';
@@ -199,7 +203,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // View & Filter state
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [buildingFilter, setBuildingFilter] = useState<'all' | 'อาคาร A' | 'อาคาร B'>('all');
   const [complianceTypeFilter, setComplianceTypeFilter] = useState<'all' | ComplianceType>('all');
@@ -222,6 +226,9 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
+  const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState<boolean>(false);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [copiedQrLink, setCopiedQrLink] = useState<boolean>(false);
 
   // Calendar selected date & modal for mobile/tablet
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string | null>(null);
@@ -634,12 +641,24 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
                 >
                   <CalendarDays className="w-4 h-4" />
                 </button>
+
+                {/* เส้นคั่นและไอคอน QR Code หลังไอคอนมุมมองปฏิทิน */}
+                <div className="w-[1px] h-4 bg-slate-200 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="p-1.5 rounded-lg transition-colors cursor-pointer text-blue-700 hover:text-blue-900 hover:bg-blue-50 active:scale-95 group relative"
+                  title={language === 'th' ? 'QR Code แบบฟอร์มสุ่มตรวจคลอรีน' : 'Chlorine Inspection Google Form QR Code'}
+                  aria-label={language === 'th' ? 'QR Code แบบฟอร์มสุ่มตรวจคลอรีน' : 'Chlorine Inspection Google Form QR Code'}
+                >
+                  <QrCode className="w-4 h-4 transition-transform group-hover:scale-110" />
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Bottom Row inside Header: 2 Stat Boxes (1. รายการตรวจทั้งหมด, 2. สุ่มตรวจอาคาร A & B รวมในกล่องเดียว) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Bottom Row inside Header: 3 Stat Boxes (1. รายการตรวจทั้งหมด, 2. สุ่มตรวจอาคาร A & B รวมในกล่องเดียว, 3. เกณฑ์การส่งข้อมูลประจำสัปดาห์ (วันจันทร์ - อาทิตย์)) */}
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-blue-200/60">
             {/* Box 1: รายการตรวจทั้งหมด */}
             <div 
               onClick={() => {
@@ -647,83 +666,132 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
                 setComplianceTypeFilter('all');
                 setCurrentPage(1);
               }}
-              className="bg-white/90 hover:bg-white backdrop-blur-xs border border-blue-200/90 rounded-2xl p-3.5 sm:px-4 sm:py-3 shadow-2xs transition-all flex items-center justify-between cursor-pointer group"
+              className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
+                buildingFilter === 'all' && complianceTypeFilter === 'all'
+                  ? 'bg-white/95 border-blue-400 shadow-md ring-2 ring-blue-300 scale-[1.02]'
+                  : 'bg-white/75 hover:bg-white/90 border-blue-200/80 shadow-xs'
+              }`}
             >
-              <div>
-                <span className="text-2xs sm:text-xs font-bold text-slate-500 block">
-                  {language === 'th' ? 'รายการตรวจทั้งหมด' : 'Total Records'}
-                </span>
-                <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
-                  {totalCount}
-                </span>
-                <span className="text-2xs text-slate-400 block mt-0.5">
-                  {language === 'th' ? 'บันทึกในระบบทั้งหมด' : 'All logged records'}
-                </span>
+              <div className="flex items-center justify-between text-blue-900 text-xs font-bold mb-1.5">
+                <span>{language === 'th' ? 'รายการตรวจทั้งหมด' : 'Total Records'}</span>
+                <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <FlaskConical className="w-4 h-4 text-blue-800" />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <FlaskConical className="w-5 h-5" />
-              </div>
+              <p className="text-2xl sm:text-3xl font-black text-[#002045] font-mono">{totalCount}</p>
+              <span className="text-[11px] text-blue-800/80 block mt-0.5">
+                {language === 'th' ? 'บันทึกในระบบทั้งหมด' : 'All logged records'}
+              </span>
             </div>
 
             {/* Box 2: สุ่มตรวจอาคาร A และ อาคาร B รวมในกล่องเดียวกัน */}
             <div 
-              className="bg-white/90 hover:bg-white backdrop-blur-xs border border-slate-200/90 hover:border-slate-300 rounded-2xl p-3.5 sm:px-4 sm:py-3 shadow-2xs transition-all flex items-center justify-between group"
+              className="p-4 rounded-2xl backdrop-blur-md border bg-white/75 hover:bg-white/90 border-blue-200/80 shadow-xs transition-all flex flex-col justify-between"
             >
-              <div className="space-y-1.5 flex-1 pr-2">
-                <span className="text-2xs sm:text-xs font-bold text-slate-600 block">
-                  {language === 'th' ? 'สุ่มตรวจอาคาร A และ อาคาร B' : 'Inspections (Building A & B)'}
-                </span>
-                
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBuildingFilter(buildingFilter === 'อาคาร A' ? 'all' : 'อาคาร A');
-                      setComplianceTypeFilter('all');
-                      setCurrentPage(1);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl text-xs font-mono font-black border transition-all cursor-pointer flex items-center gap-1.5 ${
-                      buildingFilter === 'อาคาร A'
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
-                        : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
-                    }`}
-                    title={language === 'th' ? 'คลิกเพื่อกรองอาคาร A' : 'Filter Building A'}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    <span>อาคาร A: {buildingACount}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBuildingFilter(buildingFilter === 'อาคาร B' ? 'all' : 'อาคาร B');
-                      setComplianceTypeFilter('all');
-                      setCurrentPage(1);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl text-xs font-mono font-black border transition-all cursor-pointer flex items-center gap-1.5 ${
-                      buildingFilter === 'อาคาร B'
-                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
-                        : 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'
-                    }`}
-                    title={language === 'th' ? 'คลิกเพื่อกรองอาคาร B' : 'Filter Building B'}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
-                    <span>อาคาร B: {buildingBCount}</span>
-                  </button>
+              <div className="flex items-center justify-between text-blue-900 text-xs font-bold mb-1.5">
+                <span>{language === 'th' ? 'สุ่มตรวจอาคาร A และ อาคาร B' : 'Inspections (Building A & B)'}</span>
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-indigo-700" />
                 </div>
+              </div>
+              
+              <div className="flex items-center gap-2 my-1">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBuildingFilter(buildingFilter === 'อาคาร A' ? 'all' : 'อาคาร A');
+                    setComplianceTypeFilter('all');
+                    setCurrentPage(1);
+                  }}
+                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${
+                    buildingFilter === 'อาคาร A'
+                      ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-300'
+                      : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                  }`}
+                  title={language === 'th' ? 'คลิกเพื่อกรองอาคาร A' : 'Filter Building A'}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>อาคาร A</span>
+                  </span>
+                  <span className="text-sm font-black font-mono">{buildingACount}</span>
+                </button>
 
-                <span className="text-2xs text-slate-400 block">
-                  {buildingFilter !== 'all' 
-                    ? (language === 'th' ? `กำลังกรองเฉพาะ${buildingFilter}` : `Filtered by ${buildingFilter}`)
-                    : (language === 'th' ? `รวมทั้งสองอาคาร ${buildingACount + buildingBCount} รายการ` : `Total ${buildingACount + buildingBCount} records`)}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBuildingFilter(buildingFilter === 'อาคาร B' ? 'all' : 'อาคาร B');
+                    setComplianceTypeFilter('all');
+                    setCurrentPage(1);
+                  }}
+                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${
+                    buildingFilter === 'อาคาร B'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-300'
+                      : 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'
+                  }`}
+                  title={language === 'th' ? 'คลิกเพื่อกรองอาคาร B' : 'Filter Building B'}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    <span>อาคาร B</span>
+                  </span>
+                  <span className="text-sm font-black font-mono">{buildingBCount}</span>
+                </button>
+              </div>
+
+              <span className="text-[11px] text-blue-700/90 block mt-0.5 truncate">
+                {buildingFilter !== 'all' 
+                  ? (language === 'th' ? `กำลังกรองเฉพาะ ${buildingFilter}` : `Filtered by ${buildingFilter}`)
+                  : (language === 'th' ? `รวมทั้งสองอาคาร ${buildingACount + buildingBCount} รายการ` : `Total ${buildingACount + buildingBCount} records`)}
+              </span>
+            </div>
+
+            {/* Box 3: เกณฑ์การส่งข้อมูลประจำสัปดาห์ (วันจันทร์ - อาทิตย์) */}
+            <div 
+              onClick={() => setIsWeeklyModalOpen(true)}
+              className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer flex flex-col justify-between ${
+                weeklyComplianceStats.isAllCompliant
+                  ? 'bg-emerald-50/70 hover:bg-emerald-50/90 border-emerald-300 shadow-xs'
+                  : 'bg-amber-50/70 hover:bg-amber-50/90 border-amber-300 shadow-xs'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                <span className={weeklyComplianceStats.isAllCompliant ? 'text-emerald-950' : 'text-amber-950'}>
+                  {language === 'th' ? 'เกณฑ์การส่งข้อมูลประจำสัปดาห์ (วันจันทร์ - อาทิตย์)' : 'Weekly Submission Compliance (Mon - Sun)'}
+                </span>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                  weeklyComplianceStats.isAllCompliant ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {weeklyComplianceStats.isAllCompliant ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4" />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-baseline gap-2 my-0.5">
+                <p className={`text-2xl sm:text-3xl font-black font-mono ${
+                  weeklyComplianceStats.isAllCompliant ? 'text-emerald-800' : 'text-amber-800'
+                }`}>
+                  {weeklyComplianceStats.completedItemsCount} / 4
+                </p>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${
+                  weeklyComplianceStats.isAllCompliant 
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                }`}>
+                  {weeklyComplianceStats.isAllCompliant ? 'ครบ 8/8 ครั้ง' : `ขาดอีก ${weeklyComplianceStats.totalMissingSubmissions} ครั้ง`}
                 </span>
               </div>
 
-              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-                <Building2 className="w-5 h-5 text-indigo-600" />
-              </div>
+              <span className={`text-[11px] block mt-0.5 truncate ${
+                weeklyComplianceStats.isAllCompliant ? 'text-emerald-700/90' : 'text-amber-700/90'
+              }`}>
+                {formatThaiShortDate(activeWeek.monday)} - {formatThaiShortDate(activeWeek.sunday)} (คลิกดูรายละเอียด)
+              </span>
             </div>
           </div>
         </div>
@@ -1392,6 +1460,246 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
         </div>
       )}
 
+      {/* Weekly Compliance Detail Modal */}
+      {isWeeklyModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setIsWeeklyModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+                  <CalendarIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900">
+                    {language === 'th' ? 'เกณฑ์การส่งข้อมูลประจำสัปดาห์ (วันจันทร์ - อาทิตย์)' : 'Weekly Submission Compliance (Mon - Sun)'}
+                  </h3>
+                  <p className="text-2xs text-slate-500 font-medium mt-0.5">
+                    {language === 'th' 
+                      ? 'เกณฑ์: ต้องส่งข้อมูลครบ 4 รายการ (ส่งผล A, ส่งผล B, สุ่มตรวจ A, สุ่มตรวจ B) สัปดาห์ละ 2 ครั้ง (รวม 8 ครั้ง)'
+                      : 'Target: 2 submissions/week for each of the 4 items (Total 8 submissions)'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsWeeklyModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-200/80 hover:bg-slate-300 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+              {/* Week Selector Bar */}
+              <div className="flex items-center justify-between bg-slate-100 p-2.5 rounded-2xl border border-slate-200/80">
+                <button
+                  type="button"
+                  onClick={handlePrevWeek}
+                  disabled={availableWeeks.findIndex(w => w.key === activeWeek.key) >= availableWeeks.length - 1}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>{language === 'th' ? 'สัปดาห์ก่อน' : 'Prev'}</span>
+                </button>
+
+                <div className="flex items-center gap-2 text-xs font-black text-slate-800">
+                  <CalendarIcon className="w-4 h-4 text-blue-600" />
+                  <span>
+                    {formatThaiShortDate(activeWeek.monday)} - {formatThaiShortDate(activeWeek.sunday)}
+                  </span>
+                  {isCurrentWeek && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-3xs font-bold">
+                      {language === 'th' ? 'สัปดาห์ปัจจุบัน' : 'Current'}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextWeek}
+                  disabled={availableWeeks.findIndex(w => w.key === activeWeek.key) <= 0}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <span>{language === 'th' ? 'สัปดาห์ถัดไป' : 'Next'}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Status Banner */}
+              {!weeklyComplianceStats.isAllCompliant ? (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300/80 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-amber-500 text-white shrink-0 shadow-xs">
+                      <AlertTriangle className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-amber-950">
+                        {language === 'th' 
+                          ? `⚠️ สัปดาห์นี้ยังส่งไม่ครบตามเกณฑ์ (ขาดอีก ${weeklyComplianceStats.totalMissingSubmissions} ครั้ง)`
+                          : `⚠️ Missing submissions (${weeklyComplianceStats.totalMissingSubmissions} left)`}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-2xs font-bold text-amber-800">
+                          {language === 'th' ? 'ยังขาด:' : 'Missing:'}
+                        </span>
+                        {weeklyComplianceStats.missingItems.map(item => (
+                          <span 
+                            key={item.id}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-950 text-2xs font-bold border border-amber-300"
+                          >
+                            <span>{item.title}</span>
+                            <span className="text-amber-800 font-mono">({item.count}/{item.target})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="px-3 py-1 rounded-xl bg-amber-500 text-white text-xs font-black shrink-0 self-end sm:self-auto">
+                    {weeklyComplianceStats.completedItemsCount} / 4 {language === 'th' ? 'รายการครบ' : 'Done'}
+                  </span>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300/80 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-emerald-600 text-white shrink-0 shadow-xs">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-emerald-950">
+                        {language === 'th' 
+                          ? '✅ ส่งข้อมูลครบถ้วนตามเกณฑ์สัปดาห์นี้แล้ว (ครบทั้ง 4 รายการ)'
+                          : '✅ All weekly quota requirements completed!'}
+                      </h4>
+                      <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                        {language === 'th'
+                          ? `บันทึกข้อมูลแล้วทั้งหมด ${weeklyComplianceStats.totalSubmitted} ครั้งในสัปดาห์นี้`
+                          : `Total ${weeklyComplianceStats.totalSubmitted} submissions in this week`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="px-3 py-1 rounded-xl bg-emerald-600 text-white text-xs font-black shrink-0 self-end sm:self-auto">
+                    4 / 4 {language === 'th' ? 'ครบ 100%' : '100%'}
+                  </span>
+                </div>
+              )}
+
+              {/* 4 Compliance Item Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {weeklyComplianceStats.items.map((item) => {
+                  const isA = item.buildingName.includes('A');
+                  const isFilterActive = complianceTypeFilter === item.id;
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setComplianceTypeFilter(isFilterActive ? 'all' : item.id);
+                        setCurrentPage(1);
+                        setIsWeeklyModalOpen(false);
+                      }}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-xs group ${
+                        isFilterActive
+                          ? isA
+                            ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400'
+                            : 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-400'
+                          : item.isComplete
+                            ? 'bg-white border-emerald-200/90 hover:border-emerald-300'
+                            : item.count === 1
+                              ? 'bg-white border-amber-200/90 hover:border-amber-300'
+                              : 'bg-white border-rose-200/90 hover:border-rose-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className={`px-2 py-0.5 rounded-md text-2xs font-bold ${
+                          isA ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'
+                        }`}>
+                          {item.buildingName} • {item.categoryName}
+                        </span>
+
+                        {item.isComplete ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-100 text-emerald-800">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>{language === 'th' ? 'ครบแล้ว' : 'Done'}</span>
+                          </span>
+                        ) : item.count === 1 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold bg-amber-100 text-amber-800">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                            <span>{language === 'th' ? 'ขาดอีก 1' : '1 Left'}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold bg-rose-100 text-rose-800">
+                            <XCircle className="w-3 h-3 text-rose-600" />
+                            <span>{language === 'th' ? 'ยังไม่ส่ง' : '0/2'}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="text-sm font-black text-slate-900 mb-2">
+                        {item.title}
+                      </h4>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-slate-500">{language === 'th' ? 'ความคืบหน้า' : 'Progress'}</span>
+                          <span className={`font-mono text-sm ${
+                            item.isComplete ? 'text-emerald-600 font-black' : item.count === 1 ? 'text-amber-600 font-black' : 'text-rose-600 font-black'
+                          }`}>
+                            {item.count} / {item.target} ครั้ง
+                          </span>
+                        </div>
+
+                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              item.isComplete 
+                                ? 'bg-emerald-500' 
+                                : item.count === 1 
+                                  ? 'bg-amber-500' 
+                                  : 'bg-rose-400'
+                            }`}
+                            style={{ width: `${item.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-2xs text-blue-600 font-bold">
+                        <span>{language === 'th' ? 'คลิกเพื่อกรองรายการนี้ในตาราง' : 'Click to filter records'}</span>
+                        <Eye className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-2xs text-slate-500 font-medium px-2">
+                {language === 'th' ? `ข้อมูลในสัปดาห์นี้ทั้งหมด ${weeklyComplianceStats.totalSubmitted} ครั้ง` : `Total ${weeklyComplianceStats.totalSubmitted} submissions`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsWeeklyModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+              >
+                {language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       {selectedRecord && (
         <ChlorineDetailModal
@@ -1429,6 +1737,118 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
           setCurrentPage(1);
         }}
       />
+
+      {/* Chlorine Inspection Google Form QR Code Modal */}
+      {showQrModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl shadow-2xl border border-blue-100 w-full max-w-md overflow-hidden p-6 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {language === 'th' ? 'QR Code แบบฟอร์มสุ่มตรวจคลอรีน' : 'Chlorine Inspection Form QR Code'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {language === 'th' ? 'สแกนเพื่อบันทึกผลการตรวจผ่าน Google Form' : 'Scan to submit results via Google Form'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                title={language === 'th' ? 'ปิด' : 'Close'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* QR Code Image Container */}
+            <div className="py-5 flex flex-col items-center justify-center text-center">
+              <div className="p-4 bg-gradient-to-b from-blue-50 to-white rounded-2xl border-2 border-blue-200/80 shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(CHLORINE_FORM_URL)}&margin=8`}
+                  alt="Chlorine Inspection QR Code"
+                  className="w-52 h-52 sm:w-60 sm:h-60 rounded-xl bg-white shadow-inner"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+
+              <div className="mt-4 px-3 py-1.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200/80 text-[11px] font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>{language === 'th' ? 'สแกนด้วยกล้องมือถือเพื่อเปิดแบบฟอร์มทันที' : 'Scan with mobile camera to open form instantly'}</span>
+              </div>
+
+              {/* URL Box */}
+              <div className="mt-3.5 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-left">
+                <span className="text-xs font-mono text-slate-600 truncate flex-1 select-all">
+                  {CHLORINE_FORM_URL}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(CHLORINE_FORM_URL);
+                    setCopiedQrLink(true);
+                    setTimeout(() => setCopiedQrLink(false), 2500);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                    copiedQrLink 
+                      ? 'bg-emerald-600 text-white' 
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                  }`}
+                  title={language === 'th' ? 'คัดลอกลิงก์' : 'Copy Link'}
+                >
+                  {copiedQrLink ? (
+                    <>
+                      <Check className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอกแล้ว' : 'Copied'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+              <a
+                href={CHLORINE_FORM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-blue-700/20 transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'เปิดแบบฟอร์ม' : 'Open Form'}</span>
+              </a>
+
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(CHLORINE_FORM_URL)}&margin=10`}
+                download="chlorine-inspection-qr-code.png"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'บันทึกรูป QR' : 'Save QR'}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

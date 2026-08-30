@@ -21,13 +21,15 @@ import {
   Pin,
   PinOff,
   ShieldCheck,
-  Check
+  Check,
+  FileSpreadsheet,
+  ExternalLink
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { realtimeHub } from '../services/realtimeService';
-import { parseAnnouncementDate, sortAnnouncementsLatestFirst } from '../services/googleSheetSyncService';
+import { parseAnnouncementDate, sortAnnouncementsLatestFirst, ANNOUNCEMENTS_SHEET_URL } from '../services/googleSheetSyncService';
 
 interface AnnouncementsViewProps {
   announcements: AnnouncementItem[];
@@ -318,6 +320,22 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* Google Sheets Link Button (เฉพาะผู้ดูแลและแอดมินเพจ - แสดงเฉพาะไอคอน) */}
+          {isAdmin && (
+            <div className="flex items-center gap-2 self-start sm:self-center">
+              <a
+                href={ANNOUNCEMENTS_SHEET_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-emerald-700 hover:text-emerald-900 shadow-md hover:shadow-lg transition-all border border-emerald-300/80 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group"
+                title={language === 'th' ? 'เปิดดู Google Sheet ข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Open Announcements Google Sheet (Admin Only)'}
+                aria-label="Open Announcements Google Sheet"
+              >
+                <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              </a>
+            </div>
+          )}
         </div>
       </div>
 

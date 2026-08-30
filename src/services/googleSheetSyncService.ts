@@ -2013,6 +2013,7 @@ export async function fetchGoogleSheetWorkSchedule(): Promise<{
 // ==========================================
 export const MEETING_ROOM_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1SHDNqj6e-n1jmMfSl4UV5f6d6sCs_HZv_X00AlP8njA/edit?gid=860478872#gid=860478872';
 export const MEETING_ROOM_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1SHDNqj6e-n1jmMfSl4UV5f6d6sCs_HZv_X00AlP8njA/export?format=csv&gid=860478872';
+export const MEETING_ROOM_FORM_URL = 'https://docs.google.com/forms/d/1hgxOSqH1ck4D8BlpwokgmrWhAAf-YN4jFaof_0Rx6u0/edit';
 
 export const FALLBACK_MEETING_ROOM_CSV = `ประทับเวลา,เลือกห้องประชุม,วันที่,เวลาที่เริ่ม,เวลาสิ้นสุด,เรื่องที่ประชุม/อบรม,แผนก/ฝ่าย,จำนวน (คน),เบอร์โทร
 "24/8/2026, 15:17:57",TPM 1,3/8/2026,10:30:00,11:30:00,ประชุมแผนกธุรการลาดกระบัง 2,ทรัพยากรบุคคล,9,4510
@@ -2662,15 +2663,19 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
 
 export const CLEANING_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/edit?gid=1432727518#gid=1432727518';
 export const CLEANING_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/export?format=csv&gid=1432727518';
+export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1zFktbx7mqm2RVoW6ffYFnLctdd8Z622trcKyN8BmoxI/edit';
 
 export const GOWN_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902';
 export const GOWN_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/export?format=csv&gid=1537050902';
+export const GOWN_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1k937Yb3vV_Q6a3sevJ-JkFkOF6KCWPF03MaXACwvxF8/edit';
 
 export const KEYS_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221';
 export const KEYS_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/export?format=csv&gid=546384221';
+export const KEYS_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1RQkG2Yr3mhcUnuwZPJJ4iSW3lzS62RpY7fi4F4v-b0s/edit';
 
 export const LADDER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/edit?gid=1183570474#gid=1183570474';
 export const LADDER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/export?format=csv&gid=1183570474';
+export const LADDER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1Lv2zhIFc0iWIf1F06Y6s0TNWTDwzMQ85YlCnZ5Z2NpE/edit?usp=drive_web&ouid=116671584161777218123';
 
 export interface EquipmentSyncResult {
   success: boolean;
@@ -3152,6 +3157,7 @@ export async function fetchEquipmentRecordsBySubCategory(subCategory: EquipmentS
 // ============================================================================
 export const CHLORINE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1nZrikbFdB32H7tjR7QM1vorHvXyRpEHew2YuTDTXMBc/edit?gid=788853334#gid=788853334';
 export const CHLORINE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1nZrikbFdB32H7tjR7QM1vorHvXyRpEHew2YuTDTXMBc/export?format=csv&gid=788853334';
+export const CHLORINE_FORM_URL = 'https://docs.google.com/forms/d/1kJ8awsn6uJtzb8zBaL-IIbj2vMn8F37mWsp4usdgLbQ/edit';
 
 export const CHLORINE_FALLBACK_CSV = `ประทับเวลา,ชื่อผู้ผสมสาร - ผู้สุ่มตรวจ,กรุณาระบุวันที่,เลือกพื้นที่,อัพรูป
 11/3/2026, 9:10:00,นพเก้า,11/3/2026,ส่งผลอาคาร B,https://drive.google.com/open?id=1jV_PtxJwC0VW5qkIhNk6dCza0jlwKXip
