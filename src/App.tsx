@@ -34,6 +34,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { HelpModal } from './components/HelpModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginModal } from './components/LoginModal';
+import { FloatingMobileMenu } from './components/FloatingMobileMenu';
 import { realtimeHub, RealtimeMessage } from './services/realtimeService';
 import { fetchGoogleSheetLaundryOrders, fetchGoogleSheetMaintenanceTickets, fetchGoogleSheetOtRecords, fetchGoogleSheetAnnouncements, GOOGLE_SHEET_URL } from './services/googleSheetSyncService';
 
@@ -989,6 +990,21 @@ export default function App() {
         onClose={() => setLoginModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
         isDismissible={true}
+      />
+
+      {/* Floating Draggable Quick Menu for Mobile and Tablet Portrait */}
+      <FloatingMobileMenu
+        isAuthenticated={isAuthenticated}
+        currentUser={currentUser}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenSettings={() => {
+          setSettingsInitialTab('general');
+          setSettingsModalOpen(true);
+        }}
+        onOpenProfile={() => setProfileModalOpen(true)}
+        onToggleNotifications={() => setNotificationsOpen(true)}
+        onLogin={() => setLoginModalOpen(true)}
+        onLogout={handleLogout}
       />
     </div>
   );

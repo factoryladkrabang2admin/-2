@@ -118,14 +118,8 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
   const [filterMode, setFilterMode] = useState<'all' | 'has_data' | 'has_discard' | 'has_wash'>('all');
   const [filterSearch, setFilterSearch] = useState('');
   const [filterMinWeight, setFilterMinWeight] = useState<string>('');
-
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (filterMode !== 'all') count++;
-    if (filterSearch.trim()) count++;
-    if (filterMinWeight && parseFloat(filterMinWeight) > 0) count++;
-    return count;
-  }, [filterMode, filterSearch, filterMinWeight]);
+  const [filterStartDay, setFilterStartDay] = useState<number>(1);
+  const [filterEndDay, setFilterEndDay] = useState<number>(31);
 
   // Current month's records
   const records = useMemo(() => {
@@ -135,8 +129,25 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
     return createEmptyMonthRecords(selectedYear, selectedMonth);
   }, [monthlyData, currentMonthKey, selectedYear, selectedMonth]);
 
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterMode !== 'all') count++;
+    if (filterSearch.trim()) count++;
+    if (filterMinWeight && parseFloat(filterMinWeight) > 0) count++;
+    if (filterStartDay > 1 || filterEndDay < (records.length || 31)) count++;
+    return count;
+  }, [filterMode, filterSearch, filterMinWeight, filterStartDay, filterEndDay, records.length]);
+
   const filteredRecords = useMemo(() => {
+    const minD = Math.min(filterStartDay, filterEndDay);
+    const maxD = Math.max(filterStartDay, filterEndDay);
+
     return records.filter((r) => {
+      // Day bounds
+      if (filterStartDay > 1 || filterEndDay < (records.length || 31)) {
+        if (r.day < minD || r.day > maxD) return false;
+      }
+
       const beforeTotal = (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0);
       const afterTotal = (r.afterWashRagsKg || 0) + (r.afterWashGlovesKg || 0);
       const discardTotal = (r.discardRagsKg || 0) + (r.discardGlovesKg || 0);
@@ -163,7 +174,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
       }
       return true;
     });
-  }, [records, filterMode, filterSearch, filterMinWeight]);
+  }, [records, filterMode, filterSearch, filterMinWeight, filterStartDay, filterEndDay]);
 
   // Modal for quick day entry
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
@@ -326,40 +337,153 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
     );
   }, [records]);
 
-  // Overall metric cards
+  // Total stats for main view
   const totalBeforeWashAll = totals.beforeWashRags + totals.beforeWashGloves;
   const totalAfterWashAll = totals.afterWashRags + totals.afterWashGloves;
   const totalDiscardAll = totals.discardRags + totals.discardGloves;
   const yieldRate = totalBeforeWashAll > 0 ? ((totalAfterWashAll / totalBeforeWashAll) * 100).toFixed(1) : '100';
 
+  // Statistics Modal Filter State
+  const [statsFilterOpen, setStatsFilterOpen] = useState(false);
+  const [statsFilterDayRange, setStatsFilterDayRange] = useState<'all' | 'first_half' | 'second_half' | 'custom'>('all');
+  const [statsStartDay, setStatsStartDay] = useState<number>(1);
+  const [statsEndDay, setStatsEndDay] = useState<number>(31);
+  const [statsFilterMode, setStatsFilterMode] = useState<'all' | 'has_data' | 'has_discard' | 'has_wash'>('all');
+  const [statsFilterMinWeight, setStatsFilterMinWeight] = useState<string>('');
+
+  // Keep statsEndDay in sync with month length when month changes
+  useEffect(() => {
+    if (records.length > 0) {
+      if (statsFilterDayRange === 'all') {
+        setStatsStartDay(1);
+        setStatsEndDay(records.length);
+      } else if (statsFilterDayRange === 'first_half') {
+        setStatsStartDay(1);
+        setStatsEndDay(15);
+      } else if (statsFilterDayRange === 'second_half') {
+        setStatsStartDay(16);
+        setStatsEndDay(records.length);
+      } else {
+        setStatsEndDay((prev) => Math.min(prev, records.length));
+      }
+    }
+  }, [records.length, statsFilterDayRange]);
+
+  const statsActiveFilterCount = useMemo(() => {
+    let count = 0;
+    const maxDays = records.length || 31;
+    if (statsFilterDayRange !== 'all' || statsStartDay > 1 || statsEndDay < maxDays) count++;
+    if (statsFilterMode !== 'all') count++;
+    if (statsFilterMinWeight && parseFloat(statsFilterMinWeight) > 0) count++;
+    return count;
+  }, [statsFilterDayRange, statsStartDay, statsEndDay, statsFilterMode, statsFilterMinWeight, records.length]);
+
+  const handleResetStatsFilters = () => {
+    setStatsFilterDayRange('all');
+    setStatsStartDay(1);
+    setStatsEndDay(records.length || 31);
+    setStatsFilterMode('all');
+    setStatsFilterMinWeight('');
+  };
+
+  // Filtered records for the Stats Modal
+  const statsFilteredRecords = useMemo(() => {
+    const minD = Math.min(statsStartDay, statsEndDay);
+    const maxD = Math.max(statsStartDay, statsEndDay);
+
+    return records.filter((r) => {
+      // Day range filter
+      if (statsFilterDayRange === 'first_half') {
+        if (r.day < 1 || r.day > 15) return false;
+      } else if (statsFilterDayRange === 'second_half') {
+        if (r.day < 16 || r.day > (records.length || 31)) return false;
+      } else if (statsFilterDayRange === 'custom') {
+        if (r.day < minD || r.day > maxD) return false;
+      } else if (statsFilterDayRange === 'all') {
+        // if user adjusted start/end day while in 'all', respect the bounds if modified
+        if (statsStartDay > 1 || statsEndDay < (records.length || 31)) {
+          if (r.day < minD || r.day > maxD) return false;
+        }
+      }
+
+      // Filter Mode
+      const beforeTotal = (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0);
+      const afterTotal = (r.afterWashRagsKg || 0) + (r.afterWashGlovesKg || 0);
+      const discardTotal = (r.discardRagsKg || 0) + (r.discardGlovesKg || 0);
+      const grandTotal = beforeTotal + afterTotal + discardTotal;
+
+      if (statsFilterMode === 'has_data' && grandTotal === 0 && !r.note) return false;
+      if (statsFilterMode === 'has_discard' && discardTotal === 0) return false;
+      if (statsFilterMode === 'has_wash' && beforeTotal === 0 && afterTotal === 0) return false;
+
+      // Min weight
+      if (statsFilterMinWeight && parseFloat(statsFilterMinWeight) > 0) {
+        if (grandTotal < parseFloat(statsFilterMinWeight)) return false;
+      }
+
+      return true;
+    });
+  }, [records, statsFilterDayRange, statsStartDay, statsEndDay, statsFilterMode, statsFilterMinWeight]);
+
+  // Statistics Totals calculation for the Stats modal (using statsFilteredRecords)
+  const statsTotals = useMemo(() => {
+    return statsFilteredRecords.reduce(
+      (acc, r) => {
+        acc.discardRags += r.discardRagsKg || 0;
+        acc.discardGloves += r.discardGlovesKg || 0;
+        acc.beforeWashRags += r.beforeWashRagsKg || 0;
+        acc.beforeWashGloves += r.beforeWashGlovesKg || 0;
+        acc.afterWashRags += r.afterWashRagsKg || 0;
+        acc.afterWashGloves += r.afterWashGlovesKg || 0;
+        acc.netTotal += getRowNet(r);
+        return acc;
+      },
+      {
+        discardRags: 0,
+        discardGloves: 0,
+        beforeWashRags: 0,
+        beforeWashGloves: 0,
+        afterWashRags: 0,
+        afterWashGloves: 0,
+        netTotal: 0,
+      }
+    );
+  }, [statsFilteredRecords]);
+
+  const statsTotalBeforeWashAll = statsTotals.beforeWashRags + statsTotals.beforeWashGloves;
+  const statsTotalAfterWashAll = statsTotals.afterWashRags + statsTotals.afterWashGloves;
+  const statsTotalDiscardAll = statsTotals.discardRags + statsTotals.discardGloves;
+  const statsYieldRate = statsTotalBeforeWashAll > 0 ? ((statsTotalAfterWashAll / statsTotalBeforeWashAll) * 100).toFixed(1) : '100';
+
   // Statistics calculation for the Stats modal
   const statsAnalysis = useMemo(() => {
     let activeDays = 0;
-    let peakDay = 1;
+    let peakDay = statsFilteredRecords.length > 0 ? statsFilteredRecords[0].day : 1;
     let peakKg = 0;
-    records.forEach((r) => {
-      const dayTotal = (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0);
-      if (dayTotal > 0 || (r.afterWashRagsKg || 0) > 0 || (r.discardRagsKg || 0) > 0) {
+    statsFilteredRecords.forEach((r) => {
+      const dayBeforeTotal = (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0);
+      const dayTotal = dayBeforeTotal + (r.afterWashRagsKg || 0) + (r.discardRagsKg || 0);
+      if (dayTotal > 0 || (r.note && r.note.trim().length > 0)) {
         activeDays++;
       }
-      if (dayTotal > peakKg) {
-        peakKg = dayTotal;
+      if (dayBeforeTotal > peakKg) {
+        peakKg = dayBeforeTotal;
         peakDay = r.day;
       }
     });
 
-    const avgDailyKg = activeDays > 0 ? (totalBeforeWashAll / activeDays).toFixed(1) : '0';
-    const ragsPct = totalBeforeWashAll > 0 ? Math.round((totals.beforeWashRags / totalBeforeWashAll) * 100) : 50;
-    const glovesPct = totalBeforeWashAll > 0 ? 100 - ragsPct : 50;
+    const avgDailyKg = activeDays > 0 ? (statsTotalBeforeWashAll / activeDays).toFixed(1) : '0';
+    const ragsPct = statsTotalBeforeWashAll > 0 ? Math.round((statsTotals.beforeWashRags / statsTotalBeforeWashAll) * 100) : 50;
+    const glovesPct = statsTotalBeforeWashAll > 0 ? 100 - ragsPct : 50;
 
-    const ragsYield = totals.beforeWashRags > 0 ? ((totals.afterWashRags / totals.beforeWashRags) * 100).toFixed(1) : '100';
-    const glovesYield = totals.beforeWashGloves > 0 ? ((totals.afterWashGloves / totals.beforeWashGloves) * 100).toFixed(1) : '100';
+    const ragsYield = statsTotals.beforeWashRags > 0 ? ((statsTotals.afterWashRags / statsTotals.beforeWashRags) * 100).toFixed(1) : '100';
+    const glovesYield = statsTotals.beforeWashGloves > 0 ? ((statsTotals.afterWashGloves / statsTotals.beforeWashGloves) * 100).toFixed(1) : '100';
 
-    const ragsDiscardRate = totals.beforeWashRags + totals.discardRags > 0 
-      ? ((totals.discardRags / (totals.beforeWashRags + totals.discardRags)) * 100).toFixed(1) 
+    const ragsDiscardRate = statsTotals.beforeWashRags + statsTotals.discardRags > 0 
+      ? ((statsTotals.discardRags / (statsTotals.beforeWashRags + statsTotals.discardRags)) * 100).toFixed(1) 
       : '0';
-    const glovesDiscardRate = totals.beforeWashGloves + totals.discardGloves > 0 
-      ? ((totals.discardGloves / (totals.beforeWashGloves + totals.discardGloves)) * 100).toFixed(1) 
+    const glovesDiscardRate = statsTotals.beforeWashGloves + statsTotals.discardGloves > 0 
+      ? ((statsTotals.discardGloves / (statsTotals.beforeWashGloves + statsTotals.discardGloves)) * 100).toFixed(1) 
       : '0';
 
     return {
@@ -374,7 +498,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
       ragsDiscardRate,
       glovesDiscardRate,
     };
-  }, [records, totals, totalBeforeWashAll]);
+  }, [statsFilteredRecords, statsTotals, statsTotalBeforeWashAll]);
 
   // Quick entry submit
   const handleQuickEntrySubmit = (e: React.FormEvent) => {
@@ -1056,46 +1180,288 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
       {/* Statistics & Analytics Modal */}
       {statsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shadow-2xs">
                   <BarChart3 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#002045]">
-                    {language === 'th' ? `รายงานสถิติ เศษผ้า - ถุงมือ` : `Rags & Gloves Analytics`}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-bold text-[#002045]">
+                      {language === 'th' ? `รายงานสถิติ เศษผ้า - ถุงมือ` : `Rags & Gloves Analytics`}
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                      {statsFilterDayRange === 'all' && statsStartDay === 1 && statsEndDay >= (records.length || 31)
+                        ? (language === 'th' ? `ทั้งเดือน (${statsFilteredRecords.length} วัน)` : `All Month (${statsFilteredRecords.length} days)`)
+                        : (language === 'th' ? `วันที่ ${statsStartDay} - ${statsEndDay} (${statsFilteredRecords.length} วัน)` : `Days ${statsStartDay} - ${statsEndDay} (${statsFilteredRecords.length} days)`)}
+                    </span>
+                  </div>
                   <p className="text-xs text-[#74777f]">
                     {language === 'th' 
-                      ? `ประจำเดือน ${currentMonthName} ${displayYear}` 
-                      : `Month: ${currentMonthName} ${displayYear}`}
+                      ? `ประจำเดือน ${currentMonthName} ${displayYear} • กรองข้อมูลตามช่วงวันที่และเงื่อนไข` 
+                      : `Month: ${currentMonthName} ${displayYear} • Filtered by date range & conditions`}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setStatsModalOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="flex items-center gap-2">
+                {/* Filter Icon Button (Icon Only) */}
+                <button
+                  type="button"
+                  onClick={() => setStatsFilterOpen(!statsFilterOpen)}
+                  className={`relative w-9 h-9 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs ${
+                    statsFilterOpen || statsActiveFilterCount > 0
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                  }`}
+                  title={language === 'th' ? (statsActiveFilterCount > 0 ? `ตัวกรองข้อมูลสถิติ (${statsActiveFilterCount})` : 'ตัวกรองข้อมูลสถิติ') : (statsActiveFilterCount > 0 ? `Filters (${statsActiveFilterCount})` : 'Filters')}
+                  aria-label={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+                >
+                  <Filter className={`w-4 h-4 stroke-[2.2] ${statsFilterOpen || statsActiveFilterCount > 0 ? 'text-white' : 'text-slate-700'}`} />
+                  {statsActiveFilterCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] flex items-center justify-center shadow-xs ring-1 ring-white">
+                      {statsActiveFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsModalOpen(false)}
+                  className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center justify-center"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            {/* Quick Metrics Grid */}
+            {/* Expandable Filter Box inside Stats Modal */}
+            {statsFilterOpen && (
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 sm:p-5 mb-5 animate-in slide-in-from-top-2 duration-150 shadow-sm">
+                <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-emerald-200/60">
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="w-4 h-4 text-emerald-800" />
+                    <span className="text-xs font-bold text-emerald-950">
+                      {language === 'th' ? 'ตัวกรองข้อมูลสถิติ (ช่วงวันที่ และ เงื่อนไข)' : 'Analytics Filter Settings'}
+                    </span>
+                  </div>
+                  {statsActiveFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetStatsFilters}
+                      className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-white/80 hover:bg-white px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>{language === 'th' ? 'ล้างตัวกรองทั้งหมด' : 'Reset All'}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  {/* 1. Date Range Section */}
+                  <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/70 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-bold text-emerald-950">
+                        {language === 'th' ? '1. ช่วงวันที่ (เริ่มต้น - สิ้นสุด)' : '1. Date Range'}
+                      </label>
+                      <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded">
+                        {language === 'th' ? `วันที่ ${statsStartDay} ถึง ${statsEndDay}` : `Days ${statsStartDay} - ${statsEndDay}`}
+                      </span>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="grid grid-cols-4 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatsFilterDayRange('all');
+                          setStatsStartDay(1);
+                          setStatsEndDay(records.length || 31);
+                        }}
+                        className={`px-1.5 py-1.5 rounded-lg font-bold text-[10.5px] transition-all cursor-pointer text-center ${
+                          statsFilterDayRange === 'all'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'ทั้งเดือน' : 'All'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatsFilterDayRange('first_half');
+                          setStatsStartDay(1);
+                          setStatsEndDay(15);
+                        }}
+                        className={`px-1.5 py-1.5 rounded-lg font-bold text-[10.5px] transition-all cursor-pointer text-center ${
+                          statsFilterDayRange === 'first_half'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? '1-15' : '1-15'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatsFilterDayRange('second_half');
+                          setStatsStartDay(16);
+                          setStatsEndDay(records.length || 31);
+                        }}
+                        className={`px-1.5 py-1.5 rounded-lg font-bold text-[10.5px] transition-all cursor-pointer text-center ${
+                          statsFilterDayRange === 'second_half'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? '16-สิ้นเดือน' : '16-End'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsFilterDayRange('custom')}
+                        className={`px-1.5 py-1.5 rounded-lg font-bold text-[10.5px] transition-all cursor-pointer text-center ${
+                          statsFilterDayRange === 'custom'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'กำหนดเอง' : 'Custom'}
+                      </button>
+                    </div>
+
+                    {/* Start Day & End Day Inputs */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                          {language === 'th' ? 'ตั้งแต่วันที่:' : 'From Day:'}
+                        </label>
+                        <select
+                          value={statsStartDay}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setStatsStartDay(val);
+                            setStatsFilterDayRange('custom');
+                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-emerald-300 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          {Array.from({ length: records.length || 31 }, (_, i) => i + 1).map((d) => (
+                            <option key={`start-day-${d}`} value={d}>
+                              {language === 'th' ? `วันที่ ${d}` : `Day ${d}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                          {language === 'th' ? 'ถึงวันที่:' : 'To Day:'}
+                        </label>
+                        <select
+                          value={statsEndDay}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setStatsEndDay(val);
+                            setStatsFilterDayRange('custom');
+                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-emerald-300 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          {Array.from({ length: records.length || 31 }, (_, i) => i + 1).map((d) => (
+                            <option key={`end-day-${d}`} value={d}>
+                              {language === 'th' ? `วันที่ ${d}` : `Day ${d}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Data Condition & Minimum Weight */}
+                  <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/70 space-y-2.5">
+                    <label className="block text-[11px] font-bold text-emerald-950">
+                      {language === 'th' ? '2. เงื่อนไขข้อมูล' : '2. Data Condition'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setStatsFilterMode('all')}
+                        className={`px-2 py-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                          statsFilterMode === 'all'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'ทุกวัน' : 'All'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsFilterMode('has_data')}
+                        className={`px-2 py-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                          statsFilterMode === 'has_data'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'มีข้อมูล' : 'Has Data'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsFilterMode('has_wash')}
+                        className={`px-2 py-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                          statsFilterMode === 'has_wash'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'มีชั่งซัก' : 'Has Wash'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsFilterMode('has_discard')}
+                        className={`px-2 py-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                          statsFilterMode === 'has_discard'
+                            ? 'bg-emerald-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-emerald-200 hover:bg-emerald-100/50'
+                        }`}
+                      >
+                        {language === 'th' ? 'มีคัดทิ้ง' : 'Has Discard'}
+                      </button>
+                    </div>
+
+                    {/* Min Weight Filter */}
+                    <div className="pt-1">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                        {language === 'th' ? 'น้ำหนักรวมขั้นต่ำ (KG):' : 'Min Weight (KG):'}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={statsFilterMinWeight}
+                        onChange={(e) => setStatsFilterMinWeight(e.target.value)}
+                        placeholder="0.0"
+                        className="w-full px-2 py-1.5 rounded-lg border border-emerald-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Metrics Grid (Dynamic by selected filter) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-              <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-200">
+              <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-200">
                 <span className="text-[11px] text-slate-500 font-medium block mb-1">
-                  {language === 'th' ? 'วันที่บันทึก' : 'Active Days'}
+                  {language === 'th' ? 'วันที่บันทึก (ตามตัวกรอง)' : 'Active Days'}
                 </span>
                 <p className="text-lg font-bold text-slate-900">
-                  {statsAnalysis.activeDays} <span className="text-xs font-normal text-slate-500">/ {records.length} วัน</span>
+                  {statsAnalysis.activeDays} <span className="text-xs font-normal text-slate-500">/ {statsFilteredRecords.length} วัน</span>
                 </p>
               </div>
 
-              <div className="bg-[#f0fdf4] p-3 rounded-xl border border-emerald-200">
+              <div className="bg-[#f0fdf4] p-3.5 rounded-xl border border-emerald-200">
                 <span className="text-[11px] text-emerald-700 font-medium block mb-1">
                   {language === 'th' ? 'เฉลี่ยต่อวัน' : 'Daily Average'}
                 </span>
@@ -1104,7 +1470,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 </p>
               </div>
 
-              <div className="bg-[#eff6ff] p-3 rounded-xl border border-blue-200">
+              <div className="bg-[#eff6ff] p-3.5 rounded-xl border border-blue-200">
                 <span className="text-[11px] text-blue-700 font-medium block mb-1">
                   {language === 'th' ? 'ยอดสูงสุดต่อวัน' : 'Peak Day'}
                 </span>
@@ -1113,28 +1479,28 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                 </p>
               </div>
 
-              <div className="bg-[#faf5ff] p-3 rounded-xl border border-purple-200">
+              <div className="bg-[#faf5ff] p-3.5 rounded-xl border border-purple-200">
                 <span className="text-[11px] text-purple-700 font-medium block mb-1">
                   {language === 'th' ? 'อัตราผลผลิต (Yield)' : 'Overall Yield'}
                 </span>
                 <p className="text-lg font-bold text-purple-900">
-                  {yieldRate}%
+                  {statsYieldRate}%
                 </p>
               </div>
             </div>
 
-            {/* Material Breakdown Comparison */}
+            {/* Material Breakdown Comparison (Dynamic by selected filter) */}
             <div className="space-y-4 mb-5">
               <h4 className="text-xs font-bold text-[#002045] uppercase tracking-wider flex items-center gap-1.5">
                 <Activity className="w-4 h-4 text-emerald-600" />
-                <span>{language === 'th' ? 'เปรียบเทียบสัดส่วน: เศษผ้า vs ถุงมือ' : 'Material Comparison: Rags vs Gloves'}</span>
+                <span>{language === 'th' ? 'เปรียบเทียบสัดส่วน: เศษผ้า vs ถุงมือ (ตามช่วงวันที่เลือก)' : 'Material Comparison: Rags vs Gloves (Filtered Range)'}</span>
               </h4>
 
               {/* Volume Distribution Bar */}
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-2">
-                  <span>เศษผ้า (Rags): {totals.beforeWashRags.toFixed(1)} KG ({statsAnalysis.ragsPct}%)</span>
-                  <span>ถุงมือ (Gloves): {totals.beforeWashGloves.toFixed(1)} KG ({statsAnalysis.glovesPct}%)</span>
+                  <span>เศษผ้า (Rags): {statsTotals.beforeWashRags.toFixed(1)} KG ({statsAnalysis.ragsPct}%)</span>
+                  <span>ถุงมือ (Gloves): {statsTotals.beforeWashGloves.toFixed(1)} KG ({statsAnalysis.glovesPct}%)</span>
                 </div>
                 <div className="w-full h-3.5 bg-gray-200 rounded-full overflow-hidden flex">
                   <div 
@@ -1166,15 +1532,15 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                   <div className="space-y-1.5 text-xs text-emerald-950">
                     <div className="flex justify-between">
                       <span className="text-gray-600">ชั่งก่อนซัก:</span>
-                      <span className="font-bold">{totals.beforeWashRags.toFixed(1)} KG</span>
+                      <span className="font-bold">{statsTotals.beforeWashRags.toFixed(1)} KG</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">ชั่งหลังซัก:</span>
-                      <span className="font-bold">{totals.afterWashRags.toFixed(1)} KG</span>
+                      <span className="font-bold">{statsTotals.afterWashRags.toFixed(1)} KG</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">คัดทิ้ง:</span>
-                      <span className="font-bold text-rose-700">{totals.discardRags.toFixed(1)} KG ({statsAnalysis.ragsDiscardRate}%)</span>
+                      <span className="font-bold text-rose-700">{statsTotals.discardRags.toFixed(1)} KG ({statsAnalysis.ragsDiscardRate}%)</span>
                     </div>
                   </div>
                 </div>
@@ -1193,18 +1559,116 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                   <div className="space-y-1.5 text-xs text-blue-950">
                     <div className="flex justify-between">
                       <span className="text-gray-600">ชั่งก่อนซัก:</span>
-                      <span className="font-bold">{totals.beforeWashGloves.toFixed(1)} KG</span>
+                      <span className="font-bold">{statsTotals.beforeWashGloves.toFixed(1)} KG</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">ชั่งหลังซัก:</span>
-                      <span className="font-bold">{totals.afterWashGloves.toFixed(1)} KG</span>
+                      <span className="font-bold">{statsTotals.afterWashGloves.toFixed(1)} KG</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">คัดทิ้ง:</span>
-                      <span className="font-bold text-rose-700">{totals.discardGloves.toFixed(1)} KG ({statsAnalysis.glovesDiscardRate}%)</span>
+                      <span className="font-bold text-rose-700">{statsTotals.discardGloves.toFixed(1)} KG ({statsAnalysis.glovesDiscardRate}%)</span>
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Daily Log Breakdown Table (ตามตัวกรองที่เลือก) */}
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-[#002045] flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-emerald-600" />
+                  <span>{language === 'th' ? `ตารางรายละเอียดรายวันตามตัวกรอง (${statsFilteredRecords.length} วัน)` : `Daily Records Breakdown (${statsFilteredRecords.length} days)`}</span>
+                </h4>
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {language === 'th' ? `ยอดสุทธิรวม: ${statsTotals.netTotal.toFixed(1)} KG` : `Net Total: ${statsTotals.netTotal.toFixed(1)} KG`}
+                </span>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs max-h-56 overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="py-2 px-2.5 text-center w-14">{language === 'th' ? 'วันที่' : 'Day'}</th>
+                      <th className="py-2 px-2 text-center bg-rose-50/80 text-rose-900">{language === 'th' ? 'คัดทิ้ง (ผ้า/ถุงมือ)' : 'Discard'}</th>
+                      <th className="py-2 px-2 text-center bg-emerald-50/80 text-emerald-900">{language === 'th' ? 'ก่อนซัก (ผ้า/ถุงมือ)' : 'Before Wash'}</th>
+                      <th className="py-2 px-2 text-center bg-amber-50/80 text-amber-900">{language === 'th' ? 'หลังซัก (ผ้า/ถุงมือ)' : 'After Wash'}</th>
+                      <th className="py-2 px-2 text-center bg-slate-200/80 text-slate-900">{language === 'th' ? 'สุทธิ (KG)' : 'Net (KG)'}</th>
+                      <th className="py-2 px-2.5">{language === 'th' ? 'หมายเหตุ' : 'Note'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {statsFilteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-slate-400 text-xs">
+                          {language === 'th' ? 'ไม่พบข้อมูลตามเงื่อนไขตัวกรองที่เลือก' : 'No records match the selected filter'}
+                        </td>
+                      </tr>
+                    ) : (
+                      statsFilteredRecords.map((r) => {
+                        const rowNet = getRowNet(r);
+                        const hasActivity = (r.discardRagsKg || 0) + (r.discardGlovesKg || 0) + (r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0) + (r.afterWashRagsKg || 0) + (r.afterWashGlovesKg || 0) > 0 || (r.note && r.note.trim());
+                        return (
+                          <tr key={`stat-row-${r.day}`} className={`hover:bg-slate-50/80 transition-colors ${hasActivity ? 'bg-white' : 'bg-slate-50/40 text-slate-400'}`}>
+                            <td className="py-1.5 px-2.5 text-center font-bold text-slate-800">
+                              {r.day}
+                            </td>
+                            <td className="py-1.5 px-2 text-center text-rose-700">
+                              {(r.discardRagsKg || 0) + (r.discardGlovesKg || 0) > 0 ? (
+                                <span className="font-semibold">{r.discardRagsKg || 0} / {r.discardGlovesKg || 0}</span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-center text-emerald-800">
+                              {(r.beforeWashRagsKg || 0) + (r.beforeWashGlovesKg || 0) > 0 ? (
+                                <span className="font-semibold">{r.beforeWashRagsKg || 0} / {r.beforeWashGlovesKg || 0}</span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-center text-amber-800">
+                              {(r.afterWashRagsKg || 0) + (r.afterWashGlovesKg || 0) > 0 ? (
+                                <span className="font-semibold">{r.afterWashRagsKg || 0} / {r.afterWashGlovesKg || 0}</span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-center font-bold text-slate-900 bg-slate-50/50">
+                              {rowNet > 0 ? rowNet : '-'}
+                            </td>
+                            <td className="py-1.5 px-2.5 text-slate-600 truncate max-w-[150px]">
+                              {r.note || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {statsFilteredRecords.length > 0 && (
+                    <tfoot className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300 sticky bottom-0 z-10">
+                      <tr>
+                        <td className="py-2 px-2.5 text-center font-bold">{language === 'th' ? 'รวม' : 'Total'}</td>
+                        <td className="py-2 px-2 text-center text-rose-700 font-bold">
+                          {statsTotals.discardRags.toFixed(1)} / {statsTotals.discardGloves.toFixed(1)}
+                        </td>
+                        <td className="py-2 px-2 text-center text-emerald-800 font-bold">
+                          {statsTotals.beforeWashRags.toFixed(1)} / {statsTotals.beforeWashGloves.toFixed(1)}
+                        </td>
+                        <td className="py-2 px-2 text-center text-amber-800 font-bold">
+                          {statsTotals.afterWashRags.toFixed(1)} / {statsTotals.afterWashGloves.toFixed(1)}
+                        </td>
+                        <td className="py-2 px-2 text-center text-slate-900 font-black bg-slate-200">
+                          {statsTotals.netTotal.toFixed(1)}
+                        </td>
+                        <td className="py-2 px-2.5 text-slate-500 font-normal">
+                          {statsFilteredRecords.length} {language === 'th' ? 'วัน' : 'days'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
               </div>
             </div>
 
@@ -1374,6 +1838,99 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
 
             {/* Body */}
             <div className="p-5 space-y-4 overflow-y-auto">
+              {/* Date Range Filter */}
+              <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-emerald-950">
+                    {language === 'th' ? 'ช่วงวันที่' : 'Day Range'}
+                  </label>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-white px-2 py-0.5 rounded border border-emerald-200">
+                    {language === 'th' ? `วันที่ ${filterStartDay} - ${filterEndDay}` : `Days ${filterStartDay} - ${filterEndDay}`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterStartDay(1);
+                      setFilterEndDay(records.length || 31);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                      filterStartDay === 1 && filterEndDay >= (records.length || 31)
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-100/50'
+                    }`}
+                  >
+                    {language === 'th' ? 'ทั้งเดือน' : 'All'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterStartDay(1);
+                      setFilterEndDay(15);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                      filterStartDay === 1 && filterEndDay === 15
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-100/50'
+                    }`}
+                  >
+                    {language === 'th' ? 'วันที่ 1-15' : '1-15'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterStartDay(16);
+                      setFilterEndDay(records.length || 31);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                      filterStartDay === 16 && filterEndDay >= (records.length || 31)
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-100/50'
+                    }`}
+                  >
+                    {language === 'th' ? 'วันที่ 16-สิ้นเดือน' : '16-End'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-slate-600 mb-1">
+                      {language === 'th' ? 'ตั้งแต่วันที่:' : 'From Day:'}
+                    </label>
+                    <select
+                      value={filterStartDay}
+                      onChange={(e) => setFilterStartDay(parseInt(e.target.value, 10))}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {Array.from({ length: records.length || 31 }, (_, i) => i + 1).map((d) => (
+                        <option key={`main-filter-start-${d}`} value={d}>
+                          {language === 'th' ? `วันที่ ${d}` : `Day ${d}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-slate-600 mb-1">
+                      {language === 'th' ? 'ถึงวันที่:' : 'To Day:'}
+                    </label>
+                    <select
+                      value={filterEndDay}
+                      onChange={(e) => setFilterEndDay(parseInt(e.target.value, 10))}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {Array.from({ length: records.length || 31 }, (_, i) => i + 1).map((d) => (
+                        <option key={`main-filter-end-${d}`} value={d}>
+                          {language === 'th' ? `วันที่ ${d}` : `Day ${d}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* Filter Type */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -1389,7 +1946,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {language === 'th' ? 'ทั้งหมด (ทุกวัน 1-31)' : 'All Days'}
+                    {language === 'th' ? 'ทั้งหมด (ทุกแถว)' : 'All Records'}
                   </button>
                   <button
                     type="button"
@@ -1466,6 +2023,8 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                   setFilterMode('all');
                   setFilterSearch('');
                   setFilterMinWeight('');
+                  setFilterStartDay(1);
+                  setFilterEndDay(records.length || 31);
                 }}
                 className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
               >

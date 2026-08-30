@@ -307,31 +307,30 @@ export const MeetingRoomAnalyticsModal: React.FC<MeetingRoomAnalyticsModalProps>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Filter Toggle Button */}
+            {/* Filter Toggle Button (Icon Only) */}
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+              className={`relative w-10 h-10 rounded-2xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs ${
                 isFilterOpen || activeFiltersCount > 0
-                  ? 'bg-amber-400 text-blue-950 font-black ring-2 ring-amber-200'
-                  : 'bg-white/15 hover:bg-white/25 text-white border border-white/25'
+                  ? 'bg-amber-400 text-blue-950 border-amber-300 font-black ring-2 ring-amber-200'
+                  : 'bg-white/15 hover:bg-white/25 text-white border-white/30'
               }`}
-              title={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+              title={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter Analytics'}
+              aria-label={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filters'}
             >
-              <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</span>
+              <Filter className={`w-5 h-5 stroke-[2.2] ${isFilterOpen || activeFiltersCount > 0 ? 'text-blue-950' : 'text-white'}`} />
               {activeFiltersCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-blue-950 text-amber-300 text-[10px] font-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-blue-950 font-black text-[10px] flex items-center justify-center shadow-xs ring-2 ring-blue-900">
                   {activeFiltersCount}
                 </span>
               )}
-              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              className="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer flex items-center justify-center border border-white/20 active:scale-95"
               aria-label="Close"
             >
               <X className="w-5 h-5" />

@@ -227,25 +227,24 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Filter Toggle Button */}
+            {/* Filter Toggle Button (Icon Only) */}
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+              className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
                 isFilterOpen || activeFiltersCount > 0
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white font-black ring-2 ring-orange-400/40'
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white font-black ring-2 ring-orange-400/40 shadow-sm'
                   : 'bg-white hover:bg-orange-100/80 text-orange-950 border border-orange-200'
               }`}
-              title={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+              title={language === 'th' ? `ตัวกรองข้อมูลสถิติ${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}` : `Filter Analytics${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
+              aria-label={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter'}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</span>
               {activeFiltersCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-white text-orange-900 text-[10px] font-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-white text-orange-900 text-[9px] font-black flex items-center justify-center border border-orange-300 shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}
-              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
 
             <button

@@ -16,7 +16,6 @@ import {
   RotateCcw,
   Tag,
   CalendarDays,
-  Printer,
   Sparkles,
   Layers,
   Clock,
@@ -431,25 +430,24 @@ export const WorkScheduleAnalyticsModal: React.FC<WorkScheduleAnalyticsModalProp
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Filter Toggle Button */}
+            {/* Filter Toggle Button (Icon Only) */}
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+              className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
                 isFilterOpen || activeFiltersCount > 0
-                  ? 'bg-amber-400 text-emerald-950 font-black ring-2 ring-amber-200'
+                  ? 'bg-amber-400 text-emerald-950 font-black ring-2 ring-amber-200 shadow-sm'
                   : 'bg-white/15 hover:bg-white/25 text-white border border-white/25'
               }`}
-              title={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+              title={language === 'th' ? `ตัวกรองข้อมูลสถิติ${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}` : `Filter Analytics${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
+              aria-label={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter'}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</span>
               {activeFiltersCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-emerald-950 text-amber-300 text-[10px] font-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-emerald-950 text-amber-300 text-[9px] font-black flex items-center justify-center border border-amber-200 shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}
-              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
 
             <button
@@ -927,20 +925,11 @@ export const WorkScheduleAnalyticsModal: React.FC<WorkScheduleAnalyticsModalProp
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-white text-slate-700 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-          >
-            <Printer className="w-4 h-4" />
-            <span>{language === 'th' ? 'พิมพ์รายงานสถิติ' : 'Print Analytics'}</span>
-          </button>
-
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 rounded-xl bg-[#064e3b] hover:bg-[#047857] text-white font-bold text-sm shadow-md cursor-pointer transition-all"
+            className="px-6 py-2.5 rounded-xl bg-[#064e3b] hover:bg-[#047857] text-white font-bold text-sm shadow-md cursor-pointer transition-all active:scale-95"
           >
             {language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
           </button>

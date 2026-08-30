@@ -135,8 +135,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         </div>
       </div>
 
-      {/* Right: Actions & User Avatar */}
-      <div className="flex items-center gap-2 md:gap-3">
+      {/* Right: Actions & User Avatar (Desktop only; moved to Floating Draggable Menu on mobile & portrait tablet) */}
+      <div className="hidden lg:flex items-center gap-2 md:gap-3">
         {/* Services & Portals Dropdown (สวัสดิการ + Zycoda) - Restricted to Admin and Page Managers Only (In front of Language Switcher) */}
         {(isUserAdmin || isSuperAdmin || currentUser?.isAdmin) && (
           <div className="relative">

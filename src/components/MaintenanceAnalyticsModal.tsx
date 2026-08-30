@@ -254,25 +254,24 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Filter Toggle Button */}
+            {/* Filter Toggle Button (Icon Only) */}
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+              className={`relative w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95 ${
                 isFilterOpen || activeFiltersCount > 0
-                  ? 'bg-amber-400 text-[#7c2d12] font-black ring-2 ring-amber-200'
+                  ? 'bg-amber-400 text-[#7c2d12] ring-2 ring-amber-200 shadow-sm'
                   : 'bg-white/15 hover:bg-white/25 text-white border border-white/25'
               }`}
-              title={language === 'th' ? 'ตัวกรองข้อมูลสถิติ' : 'Filter Analytics'}
+              title={language === 'th' ? `ตัวกรองข้อมูลสถิติ${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}` : `Filter Analytics${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
+              aria-label={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter'}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</span>
               {activeFiltersCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-[#7c2d12] text-amber-300 text-[10px] font-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#7c2d12] text-amber-300 text-[9px] font-black flex items-center justify-center border border-amber-200 shadow-xs">
                   {activeFiltersCount}
                 </span>
               )}
-              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
 
             <button
@@ -905,10 +904,7 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
-          <span className="text-xs text-slate-500 font-medium">
-            {language === 'th' ? 'กด Esc หรือคลิกภายนอกเพื่อปิด' : 'Press Esc or click outside to close'}
-          </span>
+        <div className="p-4 sm:p-5 bg-white border-t border-slate-200 flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}

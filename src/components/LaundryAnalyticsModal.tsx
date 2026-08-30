@@ -346,33 +346,31 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            {/* Filter Toggle Button in Statistics Header */}
+            {/* Filter Toggle Button in Statistics Header (Icon Only) */}
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`px-3.5 py-2 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-2 shadow-xs ${
+              className={`relative w-10 h-10 rounded-2xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs ${
                 isFilterOpen || activeFilterCount > 0
                   ? 'bg-white text-emerald-950 border-white font-bold shadow-md ring-2 ring-emerald-300/60'
-                  : 'bg-white/15 hover:bg-white/25 text-white border-white/30 font-semibold'
+                  : 'bg-white/15 hover:bg-white/25 text-white border-white/30'
               }`}
-              title={language === 'th' ? 'เปิด/ปิด กล่องเลือกตัวกรองข้อมูลสถิติ' : 'Toggle Filter Options'}
+              title={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter Data'}
               aria-label={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filters'}
             >
-              <Filter className={`w-4 h-4 stroke-[2.2] ${isFilterOpen || activeFilterCount > 0 ? 'text-emerald-700' : 'text-emerald-200'}`} />
-              <span className="text-xs">{language === 'th' ? 'ตัวกรองข้อมูล' : 'Filter Data'}</span>
+              <Filter className={`w-5 h-5 stroke-[2.2] ${isFilterOpen || activeFilterCount > 0 ? 'text-emerald-700' : 'text-white'}`} />
               {activeFilterCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center ring-1 ring-white">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-emerald-950 font-black text-[10px] flex items-center justify-center shadow-xs ring-2 ring-emerald-800">
                   {activeFilterCount}
                 </span>
               )}
-              {isFilterOpen ? <ChevronUp className="w-3.5 h-3.5 opacity-75" /> : <ChevronDown className="w-3.5 h-3.5 opacity-75" />}
             </button>
 
             {/* Close Button */}
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer border border-white/20 active:scale-95"
+              className="w-10 h-10 rounded-2xl bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer border border-white/20 active:scale-95"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -1163,10 +1161,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
-          <span className="text-xs text-slate-500 font-medium">
-            {language === 'th' ? 'กด Esc หรือคลิกภายนอกเพื่อปิด' : 'Press Esc or click outside to close'}
-          </span>
+        <div className="p-4 sm:p-5 bg-white border-t border-slate-200 flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}
