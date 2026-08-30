@@ -1,0 +1,6 @@
+{
+  "name": "ธุรการลาดกระบัง 2",
+  "description": "ระบบบริหารจัดการโรงงาน งานซักรีด ระบบห้องประชุม ระบบติดตามงานแจ้งซ่อมบำรุง และระบบตรวจสอบ OT ธุรการลาดกระบัง 2 (Ladkrabang 2 Administrative, Meeting Room, Maintenance & OT Tracking)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

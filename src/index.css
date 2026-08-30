@@ -1,0 +1,929 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: #1a1c1c;
+    background-color: #f9f9f9;
+  }
+}
+
+.card-shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.card-shadow-hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Custom Scrollbar for sleek enterprise tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Elegant Stable Medium Sky Blue & White Moving Gradient Header for Laundry */
+.animated-laundry-header {
+  background: linear-gradient(-45deg, #e0f2fe, #f0f9ff, #bae6fd, #ffffff, #e0f2fe);
+  background-size: 300% 300%;
+  animation: laundryGradientShift 12s ease infinite;
+}
+
+@keyframes laundryGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Medium Purple & White Moving Gradient Header for Meeting Room */
+.animated-meeting-purple-header {
+  background: linear-gradient(-45deg, #f3e8ff, #faf5ff, #e9d5ff, #ffffff, #d8b4fe, #f3e8ff);
+  background-size: 300% 300%;
+  animation: meetingPurpleGradientShift 12s ease infinite;
+}
+
+@keyframes meetingPurpleGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Medium Green & White Moving Gradient Header for Work Schedule */
+.animated-schedule-green-header {
+  background: linear-gradient(-45deg, #dcfce7, #f0fdf4, #bbf7d0, #ffffff, #86efac, #dcfce7);
+  background-size: 300% 300%;
+  animation: scheduleGreenGradientShift 12s ease infinite;
+}
+
+@keyframes scheduleGreenGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Medium Yellow & White Moving Gradient Header for OT */
+.animated-ot-yellow-header {
+  background: linear-gradient(-45deg, #fef9c3, #fefce8, #fef08a, #ffffff, #fde047, #fef9c3);
+  background-size: 300% 300%;
+  animation: otYellowGradientShift 12s ease infinite;
+}
+
+@keyframes otYellowGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Medium Red & White Moving Gradient Header for Equipment Requisition */
+.animated-equipment-red-header {
+  background: linear-gradient(-45deg, #ffe4e6, #fff1f2, #fecdd3, #ffffff, #fda4af, #ffe4e6);
+  background-size: 300% 300%;
+  animation: equipmentRedGradientShift 12s ease infinite;
+}
+
+@keyframes equipmentRedGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Gown & Glove Floating Motions */
+@keyframes gownFloatMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) rotate(5deg) scale(1.04);
+  }
+}
+
+@keyframes gloveFloatMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(10px) rotate(-6deg) scale(1.06);
+  }
+}
+
+@keyframes generalFloatMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) rotate(6deg) scale(1.03);
+  }
+}
+
+@keyframes generalFloatRevMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(10px) rotate(-6deg) scale(1.03);
+  }
+}
+
+.animate-gown-float {
+  animation: gownFloatMotion 6.5s ease-in-out infinite;
+}
+
+.animate-glove-float {
+  animation: gloveFloatMotion 5.8s ease-in-out infinite;
+}
+
+.animate-custom-float {
+  animation: generalFloatMotion 6s ease-in-out infinite;
+}
+
+.animate-custom-float-rev {
+  animation: generalFloatRevMotion 7s ease-in-out infinite;
+}
+
+/* Elegant Stable Light Green & White Gradient Header */
+.animated-green-header {
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 35%, #d1fae5 70%, #ffffff 100%);
+}
+
+/* Elegant Stable Soft Orange & White Gradient Header for Maintenance */
+.animated-orange-header {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 40%, #fed7aa 75%, #ffffff 100%);
+}
+
+/* Elegant Stable Soft Blue & Navy Gradient Header for OT */
+.animated-ot-header {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 40%, #bae6fd 75%, #ffffff 100%);
+}
+
+/* Medium Blue & White Moving Gradient Header for Chlorine Inspection */
+@keyframes chlorineFlowGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-chlorine-header {
+  background: linear-gradient(
+    120deg,
+    #dbeafe 0%,
+    #bfdbfe 25%,
+    #93c5fd 45%,
+    #e0f2fe 65%,
+    #ffffff 85%,
+    #60a5fa 100%
+  );
+  background-size: 280% 280%;
+  animation: chlorineFlowGradient 10s ease infinite;
+}
+
+@keyframes chlorineDropMotion {
+  0%, 100% {
+    transform: translateY(0px) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-16px) scale(1.1) rotate(12deg);
+  }
+}
+
+@keyframes chlorineFlaskMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(14px) rotate(-10deg);
+  }
+}
+
+@keyframes chlorineTubeMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) rotate(6deg) scale(1.05);
+  }
+}
+
+.animate-chlorine-drop {
+  animation: chlorineDropMotion 5.5s ease-in-out infinite;
+}
+
+.animate-chlorine-flask {
+  animation: chlorineFlaskMotion 6.8s ease-in-out infinite;
+}
+
+.animate-chlorine-tube {
+  animation: chlorineTubeMotion 7.2s ease-in-out infinite;
+}
+
+/* Floating animation keyframes for tools / repair icons */
+@keyframes toolFloatMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(8deg);
+  }
+}
+
+@keyframes toolFloatRevMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(14px) rotate(-8deg);
+  }
+}
+
+@keyframes toolSpinSlowMotion {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-tool-float {
+  animation: toolFloatMotion 6.5s ease-in-out infinite;
+}
+
+.animate-tool-float-rev {
+  animation: toolFloatRevMotion 7.5s ease-in-out infinite;
+}
+
+.animate-tool-spin {
+  animation: toolSpinSlowMotion 20s linear infinite;
+}
+
+.latkrabang-animated-gradient {
+  background: linear-gradient(
+    135deg,
+    #f0f9ff 0%,
+    #e0f2fe 18%,
+    #ffffff 38%,
+    #bae6fd 58%,
+    #f0fdf4 75%,
+    #e0f7fa 88%,
+    #f8fafc 100%
+  );
+}
+
+/* Floating Radial Glow Atmosphere Orbs */
+@keyframes latkrabangOrb1 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate(45px, -35px) scale(1.18);
+    opacity: 0.8;
+  }
+}
+
+@keyframes latkrabangOrb2 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(-40px, 30px) scale(1.15);
+    opacity: 0.75;
+  }
+}
+
+@keyframes latkrabangOrb3 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(30px, 40px) scale(1.2);
+    opacity: 0.85;
+  }
+}
+
+.latkrabang-orb-1 {
+  animation: latkrabangOrb1 16s ease-in-out infinite;
+}
+
+.latkrabang-orb-2 {
+  animation: latkrabangOrb2 20s ease-in-out infinite;
+}
+
+.latkrabang-orb-3 {
+  animation: latkrabangOrb3 18s ease-in-out infinite;
+}
+
+/* Floating Soap Bubbles with Iridescent Sheen */
+@keyframes latkrabangBubbleFloat {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(1);
+    opacity: 0.5;
+  }
+  33% {
+    transform: translateY(-16px) translateX(8px) scale(1.08);
+    opacity: 0.75;
+  }
+  66% {
+    transform: translateY(-30px) translateX(-6px) scale(0.95);
+    opacity: 0.6;
+  }
+}
+
+.latkrabang-bubble {
+  position: absolute;
+  animation: latkrabangBubbleFloat 8s ease-in-out infinite;
+}
+.latkrabang-bubble.b1 { animation-delay: 0s; animation-duration: 7s; }
+.latkrabang-bubble.b2 { animation-delay: 1.5s; animation-duration: 9s; }
+.latkrabang-bubble.b3 { animation-delay: 3s; animation-duration: 8.5s; }
+.latkrabang-bubble.b4 { animation-delay: 0.8s; animation-duration: 10s; }
+.latkrabang-bubble.b5 { animation-delay: 2.2s; animation-duration: 11s; }
+.latkrabang-bubble.b6 { animation-delay: 4s; animation-duration: 9.5s; }
+
+/* Floating Icon Motions (Cleaning, Laundry, Fruits, Flowers) */
+@keyframes floatGentleMotion {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(4deg);
+  }
+}
+
+@keyframes floatBobMotion {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-10px) translateX(6px) rotate(-3deg);
+  }
+  66% {
+    transform: translateY(6px) translateX(-4px) rotate(2deg);
+  }
+}
+
+@keyframes floatDriftMotion {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  50% {
+    transform: translateY(-18px) translateX(12px) rotate(6deg);
+  }
+}
+
+@keyframes floatSpinSlowMotion {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(180deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(360deg);
+  }
+}
+
+@keyframes floatPulseMotion {
+  0%, 100% {
+    transform: scale(1) translateY(0px);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.12) translateY(-8px);
+    opacity: 0.9;
+  }
+}
+
+.latkrabang-anim-float-gentle {
+  animation: floatGentleMotion 7s ease-in-out infinite;
+}
+
+.latkrabang-anim-float-bob {
+  animation: floatBobMotion 8.5s ease-in-out infinite;
+}
+
+.latkrabang-anim-float-drift {
+  animation: floatDriftMotion 10s ease-in-out infinite;
+}
+
+.latkrabang-anim-float-spin-slow {
+  animation: floatSpinSlowMotion 16s linear infinite;
+}
+
+.latkrabang-anim-float-pulse {
+  animation: floatPulseMotion 6.5s ease-in-out infinite;
+}
+
+.sidebar-animated-red-white-gradient {
+  background: linear-gradient(
+    145deg,
+    #fff1f2 0%,
+    #ffe4e6 20%,
+    #ffffff 45%,
+    #fecdd3 68%,
+    #fff5f5 85%,
+    #ffffff 100%
+  );
+}
+
+/* Sidebar Floating Bread Slow Animations */
+@keyframes breadSlowFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(6deg);
+  }
+}
+
+@keyframes breadGentleSway {
+  0%, 100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  33% {
+    transform: translate(6px, -10px) rotate(-5deg);
+  }
+  66% {
+    transform: translate(-4px, -18px) rotate(4deg);
+  }
+}
+
+@keyframes breadSlowRise {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(-16px) scale(1.1);
+    opacity: 0.85;
+  }
+}
+
+.sidebar-bread-anim-1 {
+  animation: breadSlowFloat 9s ease-in-out infinite;
+}
+
+.sidebar-bread-anim-2 {
+  animation: breadGentleSway 11s ease-in-out infinite;
+}
+
+.sidebar-bread-anim-3 {
+  animation: breadSlowRise 8s ease-in-out infinite;
+}
+
+.sidebar-bread-anim-4 {
+  animation: breadSlowFloat 12s ease-in-out infinite;
+}
+
+
+@keyframes floatOrb1 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(35px, -20px) scale(1.2);
+    opacity: 0.7;
+  }
+}
+
+@keyframes floatOrb2 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate(-30px, 20px) scale(1.15);
+    opacity: 0.6;
+  }
+}
+
+.animate-orb-1 {
+  animation: floatOrb1 9s ease-in-out infinite;
+}
+
+.animate-orb-2 {
+  animation: floatOrb2 12s ease-in-out infinite;
+}
+
+/* Laundry-Themed Animated Motion Effects */
+@keyframes laundrySpinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes laundryFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+@keyframes laundryFloatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(-3deg);
+  }
+}
+
+@keyframes bubbleFloat1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(10px, -18px) scale(1.2);
+    opacity: 0.85;
+  }
+}
+
+@keyframes bubbleFloat2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(0.9);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate(-12px, -24px) scale(1.15);
+    opacity: 0.8;
+  }
+}
+
+@keyframes bubbleFloat3 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1.1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(8px, -14px) scale(0.85);
+    opacity: 0.75;
+  }
+}
+
+@keyframes sparkleGlint {
+  0%, 100% {
+    transform: scale(0.8) rotate(0deg);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.2) rotate(45deg);
+    opacity: 0.95;
+  }
+}
+
+.animate-laundry-spin {
+  animation: laundrySpinSlow 16s linear infinite;
+}
+
+.animate-laundry-float {
+  animation: laundryFloat 5s ease-in-out infinite;
+}
+
+.animate-laundry-float-rev {
+  animation: laundryFloatReverse 6s ease-in-out infinite;
+}
+
+.animate-bubble-1 {
+  animation: bubbleFloat1 4.5s ease-in-out infinite;
+}
+
+.animate-bubble-2 {
+  animation: bubbleFloat2 5.5s ease-in-out infinite 1s;
+}
+
+.animate-bubble-3 {
+  animation: bubbleFloat3 6s ease-in-out infinite 2s;
+}
+
+.animate-sparkle-glint {
+  animation: sparkleGlint 3s ease-in-out infinite;
+}
+
+/* Dedicated Print Styles for Thermal Tag / Slip Printing */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  #printable-tag-slip,
+  #printable-tag-slip * {
+    visibility: visible;
+  }
+  
+  #printable-tag-slip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 80mm;
+    margin: 0 auto;
+    padding: 8px;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 999999;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 4mm;
+  }
+}
+
+/* =========================================================
+   Animated Rainbow Sidebar & Floating Bread Animations
+   ========================================================= */
+
+@keyframes rainbowSidebarShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-rainbow-sidebar {
+  background: linear-gradient(
+    135deg,
+    #ff1361 0%,
+    #fff800 16%,
+    #00e676 33%,
+    #00c9ff 50%,
+    #92fe9d 66%,
+    #9b51e0 83%,
+    #ff1361 100%
+  );
+  background-size: 350% 350%;
+  animation: rainbowSidebarShift 20s ease-in-out infinite;
+}
+
+@keyframes breadFloat1 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-16px) rotate(14deg) scale(1.08);
+  }
+}
+
+@keyframes breadFloat2 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(18px) rotate(-16deg) scale(1.06);
+  }
+}
+
+@keyframes breadFloat3 {
+  0%, 100% {
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translate(10px, -14px) rotate(10deg) scale(1.06);
+  }
+  66% {
+    transform: translate(-10px, 12px) rotate(-10deg) scale(0.96);
+  }
+}
+
+@keyframes breadBob {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.12);
+  }
+}
+
+@keyframes breadSpinWobble {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-10deg) scale(1.05);
+  }
+  75% {
+    transform: rotate(10deg) scale(1.05);
+  }
+}
+
+.animate-bread-float-1 {
+  animation: breadFloat1 6.5s ease-in-out infinite;
+}
+
+.animate-bread-float-2 {
+  animation: breadFloat2 8s ease-in-out infinite;
+}
+
+.animate-bread-float-3 {
+  animation: breadFloat3 9.5s ease-in-out infinite;
+}
+
+.animate-bread-bob {
+  animation: breadBob 3s ease-in-out infinite;
+}
+
+.animate-bread-wobble {
+  animation: breadSpinWobble 4s ease-in-out infinite;
+}
+
+@keyframes avatarBounce {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.02);
+  }
+}
+
+.animate-avatar-bounce {
+  animation: avatarBounce 2s ease-in-out infinite;
+}
+
+.rotate-y-90 {
+  transform: rotateY(90deg);
+}
+
+.rotate-y-0 {
+  transform: rotateY(0deg);
+}
+
+/* ==========================================
+   VIBRANT ANIMATED RAINBOW HEADER FOR ANNOUNCEMENTS & NEWS
+   ========================================== */
+@keyframes rainbowFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-rainbow-header {
+  background: linear-gradient(
+    -45deg,
+    #ff0844,
+    #ffb199,
+    #f6d365,
+    #fda085,
+    #84fab0,
+    #8fd3f4,
+    #a1c4fd,
+    #c2e9fb,
+    #e0c3fc,
+    #8ec5fc,
+    #ff9a9e,
+    #fecfef
+  );
+  background-size: 400% 400%;
+  animation: rainbowFlow 12s ease infinite;
+}
+
+@keyframes prIconFloat1 {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translateY(-16px) translateX(10px) rotate(12deg) scale(1.1);
+  }
+  66% {
+    transform: translateY(10px) translateX(-8px) rotate(-8deg) scale(0.95);
+  }
+}
+
+@keyframes prIconFloat2 {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
+  }
+  33% {
+    transform: translateY(14px) translateX(-12px) rotate(-10deg) scale(1.08);
+  }
+  66% {
+    transform: translateY(-12px) translateX(8px) rotate(14deg) scale(0.92);
+  }
+}
+
+@keyframes prIconFloat3 {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-20px) translateX(14px) rotate(18deg) scale(1.15);
+  }
+}
+
+@keyframes prIconFloat4 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(16px) rotate(-16deg) scale(1.05);
+  }
+}
+
+@keyframes prPulseGlow {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.2);
+  }
+}
+
+.animate-pr-icon-1 {
+  animation: prIconFloat1 6.5s ease-in-out infinite;
+}
+
+.animate-pr-icon-2 {
+  animation: prIconFloat2 8s ease-in-out infinite;
+}
+
+.animate-pr-icon-3 {
+  animation: prIconFloat3 7.2s ease-in-out infinite;
+}
+
+.animate-pr-icon-4 {
+  animation: prIconFloat4 9s ease-in-out infinite;
+}
+
+.animate-pr-pulse {
+  animation: prPulseGlow 4s ease-in-out infinite;
+}
+
