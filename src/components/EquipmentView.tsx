@@ -530,7 +530,12 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveSubCategory(tab.id)}
+                onClick={() => {
+                  setActiveSubCategory(tab.id);
+                  if (tab.id === 'cleaning' && selectedActionType === 'คืน') {
+                    setSelectedActionType('all');
+                  }
+                }}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer shadow-xs ${
                   isActive
                     ? 'bg-rose-700 text-white shadow-md ring-2 ring-rose-300 scale-[1.02]'
@@ -683,20 +688,22 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           >
             {language === 'th' ? 'เบิก' : 'Requisition'}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedActionType('คืน');
-              setCurrentPage(1);
-            }}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedActionType === 'คืน'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            {language === 'th' ? 'คืน' : 'Return'}
-          </button>
+          {activeSubCategory !== 'cleaning' && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedActionType('คืน');
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedActionType === 'คืน'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              {language === 'th' ? 'คืน' : 'Return'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -884,13 +891,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
           {/* C. BOARD / PIPELINE VIEW */}
           {viewMode === 'board' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className={`grid grid-cols-1 ${activeSubCategory === 'cleaning' ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-5`}>
               {/* Column 1: Requisitions (เบิก / ยืม) */}
               <div className="bg-amber-50/40 rounded-3xl p-4 border border-amber-200/80 space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-amber-200">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <h3 className="font-black text-amber-950 text-sm">{language === 'th' ? 'รายการเบิก / ยืมใช้งาน' : 'Requisitions'}</h3>
+                    <h3 className="font-black text-amber-950 text-sm">
+                      {activeSubCategory === 'cleaning'
+                        ? (language === 'th' ? 'รายการเบิกอุปกรณ์ทำความสะอาด' : 'Cleaning Requisitions')
+                        : (language === 'th' ? 'รายการเบิก / ยืมใช้งาน' : 'Requisitions')}
+                    </h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-amber-200/80 text-amber-950 font-black text-xs">
                     {filteredRecords.filter((r) => r.actionType !== 'คืน' && !r.status.includes('คืน')).length}
@@ -919,39 +930,41 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 </div>
               </div>
 
-              {/* Column 2: Returns (คืนแล้ว) */}
-              <div className="bg-emerald-50/40 rounded-3xl p-4 border border-emerald-200/80 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <h3 className="font-black text-emerald-950 text-sm">{language === 'th' ? 'คืนอุปกรณ์เรียบร้อย' : 'Returned'}</h3>
+              {/* Column 2: Returns (คืนแล้ว) - แสดงเฉพาะหัวข้อย่อยอื่นๆ */}
+              {activeSubCategory !== 'cleaning' && (
+                <div className="bg-emerald-50/40 rounded-3xl p-4 border border-emerald-200/80 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <h3 className="font-black text-emerald-950 text-sm">{language === 'th' ? 'คืนอุปกรณ์เรียบร้อย' : 'Returned'}</h3>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-200/80 text-emerald-950 font-black text-xs">
+                      {filteredRecords.filter((r) => r.actionType === 'คืน' || r.status.includes('คืน')).length}
+                    </span>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-200/80 text-emerald-950 font-black text-xs">
-                    {filteredRecords.filter((r) => r.actionType === 'คืน' || r.status.includes('คืน')).length}
-                  </span>
-                </div>
-                <div className="space-y-2.5 max-h-[650px] overflow-y-auto pr-1">
-                  {filteredRecords
-                    .filter((r) => r.actionType === 'คืน' || r.status.includes('คืน'))
-                    .map((r, idx) => (
-                      <div
-                        key={r.id || idx}
-                        onClick={() => setSelectedRecord(r)}
-                        className="bg-white rounded-2xl p-3.5 border border-emerald-200 shadow-2xs hover:shadow-md transition-all cursor-pointer space-y-2"
-                      >
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-slate-500">{r.date}</span>
-                          <span className="font-bold text-emerald-600">{r.totalQuantity || 1} ชิ้น</span>
+                  <div className="space-y-2.5 max-h-[650px] overflow-y-auto pr-1">
+                    {filteredRecords
+                      .filter((r) => r.actionType === 'คืน' || r.status.includes('คืน'))
+                      .map((r, idx) => (
+                        <div
+                          key={r.id || idx}
+                          onClick={() => setSelectedRecord(r)}
+                          className="bg-white rounded-2xl p-3.5 border border-emerald-200 shadow-2xs hover:shadow-md transition-all cursor-pointer space-y-2"
+                        >
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-semibold text-slate-500">{r.date}</span>
+                            <span className="font-bold text-emerald-600">{r.totalQuantity || 1} ชิ้น</span>
+                          </div>
+                          <p className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2">{r.itemSummary}</p>
+                          <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                            <span className="font-medium">{r.requesterName}</span>
+                            <span className="text-slate-400">{r.department}</span>
+                          </div>
                         </div>
-                        <p className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2">{r.itemSummary}</p>
-                        <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
-                          <span className="font-medium">{r.requesterName}</span>
-                          <span className="text-slate-400">{r.department}</span>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -1058,7 +1071,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 >
                   <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All'}</option>
                   <option value="เบิก">{language === 'th' ? 'เบิก / ยืม' : 'Requisition'}</option>
-                  <option value="คืน">{language === 'th' ? 'คืนแล้ว' : 'Returned'}</option>
+                  {activeSubCategory !== 'cleaning' && (
+                    <option value="คืน">{language === 'th' ? 'คืนแล้ว' : 'Returned'}</option>
+                  )}
                 </select>
               </div>
 

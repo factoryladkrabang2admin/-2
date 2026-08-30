@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LaundryOrder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { normalizeDate } from '../services/googleSheetSyncService';
@@ -14,7 +14,9 @@ import {
   Package, 
   X,
   Tag,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Filter,
+  Sparkles
 } from 'lucide-react';
 
 interface LaundryCalendarViewProps {
@@ -30,15 +32,33 @@ interface LaundryCalendarViewProps {
  * Extracts { year, month (0-indexed), day } from a LaundryOrder
  */
 export function extractOrderDate(order: LaundryOrder): { year: number; month: number; day: number } | null {
-  // 1. If order has explicit orderDate in YYYY-MM-DD
+  if (!order) return null;
+
+  // 1. If order has explicit orderDate in YYYY-MM-DD or DD/MM/YYYY
   if (order.orderDate) {
-    const parts = order.orderDate.split('-');
-    if (parts.length === 3) {
-      return {
-        year: parseInt(parts[0], 10),
-        month: parseInt(parts[1], 10) - 1, // 0-indexed month
-        day: parseInt(parts[2], 10),
-      };
+    if (order.orderDate.includes('-')) {
+      const parts = order.orderDate.split('-');
+      if (parts.length === 3) {
+        let y = parseInt(parts[0], 10);
+        if (y > 2400) y -= 543;
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+          return { year: y, month: m, day: d };
+        }
+      }
+    } else if (order.orderDate.includes('/')) {
+      const parts = order.orderDate.split('/');
+      if (parts.length === 3) {
+        let d = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10) - 1;
+        let y = parseInt(parts[2], 10);
+        if (y > 2400) y -= 543;
+        else if (y < 100) y += 2000;
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+          return { year: y, month: m, day: d };
+        }
+      }
     }
   }
 
@@ -55,12 +75,14 @@ export function extractOrderDate(order: LaundryOrder): { year: number; month: nu
     }
   }
 
-  // 3. Try parsing from ID: gsheet-YYYY-MM-DD-...
+  // 3. Try parsing from ID: gsheet-YYYY-MM-DD-... or gsheet-DD-MM-YYYY
   if (order.id) {
     const match = order.id.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (match) {
+      let y = parseInt(match[1], 10);
+      if (y > 2400) y -= 543;
       return {
-        year: parseInt(match[1], 10),
+        year: y,
         month: parseInt(match[2], 10) - 1,
         day: parseInt(match[3], 10),
       };
@@ -73,8 +95,27 @@ export function extractOrderDate(order: LaundryOrder): { year: number; month: nu
     if (normalized) {
       const parts = normalized.split('-');
       if (parts.length === 3) {
+        let y = parseInt(parts[0], 10);
+        if (y > 2400) y -= 543;
         return {
-          year: parseInt(parts[0], 10),
+          year: y,
+          month: parseInt(parts[1], 10) - 1,
+          day: parseInt(parts[2], 10),
+        };
+      }
+    }
+  }
+
+  // 5. Try parsing from notes if it contains date pattern
+  if (order.notes) {
+    const normalized = normalizeDate(undefined, order.notes);
+    if (normalized) {
+      const parts = normalized.split('-');
+      if (parts.length === 3) {
+        let y = parseInt(parts[0], 10);
+        if (y > 2400) y -= 543;
+        return {
+          year: y,
           month: parseInt(parts[1], 10) - 1,
           day: parseInt(parts[2], 10),
         };
@@ -91,27 +132,53 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
 }) => {
   const { language } = useLanguage();
   
-  // Initialize date from orders (e.g. Google Sheet date August 22, 2026) or fallback to current
-  const [currentDate, setCurrentDate] = useState(() => {
+  // Find initial date from orders (e.g. latest order date) or current date
+  const latestOrderDate = useMemo(() => {
+    let latest: { year: number; month: number; day: number } | null = null;
+    let maxTime = 0;
     for (const order of orders) {
       const parsed = extractOrderDate(order);
       if (parsed) {
-        return new Date(parsed.year, parsed.month, 1);
+        const time = new Date(parsed.year, parsed.month, parsed.day).getTime();
+        if (time > maxTime) {
+          maxTime = time;
+          latest = parsed;
+        }
       }
+    }
+    return latest;
+  }, [orders]);
+
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (latestOrderDate) {
+      return new Date(latestOrderDate.year, latestOrderDate.month, 1);
     }
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
 
   const [selectedDay, setSelectedDay] = useState<number | null>(() => {
-    for (const order of orders) {
-      const parsed = extractOrderDate(order);
-      if (parsed) {
-        return parsed.day;
-      }
+    if (latestOrderDate) {
+      return latestOrderDate.day;
     }
     return new Date().getDate();
   });
+
+  // Sync to latest order date if calendar starts with 0 orders in the viewed month but orders exist in other months
+  useEffect(() => {
+    if (latestOrderDate) {
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth();
+      const hasOrdersInCurrentView = orders.some(o => {
+        const p = extractOrderDate(o);
+        return p && p.year === currentYear && p.month === currentMonth;
+      });
+      if (!hasOrdersInCurrentView) {
+        setCurrentDate(new Date(latestOrderDate.year, latestOrderDate.month, 1));
+        setSelectedDay(latestOrderDate.day);
+      }
+    }
+  }, [orders, latestOrderDate]);
 
   const [showDayModal, setShowDayModal] = useState<boolean>(false);
 
@@ -148,12 +215,10 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
     setSelectedDay(null);
   };
 
-  const goToToday = () => {
-    const orderWithDate = orders.find((o) => extractOrderDate(o) !== null);
-    if (orderWithDate) {
-      const parsed = extractOrderDate(orderWithDate)!;
-      setCurrentDate(new Date(parsed.year, parsed.month, 1));
-      setSelectedDay(parsed.day);
+  const goToTodayOrLatest = () => {
+    if (latestOrderDate) {
+      setCurrentDate(new Date(latestOrderDate.year, latestOrderDate.month, 1));
+      setSelectedDay(latestOrderDate.day);
     } else {
       const today = new Date();
       setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -175,6 +240,22 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
     setShowDayModal(true);
   };
 
+  // List of all days in the current month that have orders
+  const daysWithOrders = useMemo(() => {
+    const dayMap = new Map<number, number>();
+    orders.forEach((order) => {
+      const parsed = extractOrderDate(order);
+      if (parsed && parsed.year === year && parsed.month === month) {
+        dayMap.set(parsed.day, (dayMap.get(parsed.day) || 0) + 1);
+      }
+    });
+    return Array.from(dayMap.entries()).sort((a, b) => a[0] - b[0]);
+  }, [orders, year, month]);
+
+  const totalMonthOrders = useMemo(() => {
+    return daysWithOrders.reduce((sum, [, count]) => sum + count, 0);
+  }, [daysWithOrders]);
+
   const selectedDayOrders = selectedDay ? getOrdersForDay(selectedDay) : [];
   const selectedDayWashingCount = selectedDayOrders.filter((o) => o.stage !== 'ready' && o.stage !== 'delivered').length;
   const selectedDayReadyCount = selectedDayOrders.filter((o) => o.stage === 'ready' || o.stage === 'delivered').length;
@@ -192,21 +273,34 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
             <Calendar className="w-5 h-5 text-[#66affe]" />
           </div>
           <div>
-            <h2 className="text-base sm:text-lg font-bold text-[#002045]">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-[#002045]">
+                {language === 'th' 
+                  ? `${monthNamesTh[month]} ${year + 543}` 
+                  : `${monthNamesEn[month]} ${year}`}
+              </h2>
+              {totalMonthOrders > 0 && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#0061a5] border border-blue-200">
+                  {totalMonthOrders} {language === 'th' ? 'รายการในเดือนนี้' : 'orders this month'}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
               {language === 'th' 
-                ? `${monthNamesTh[month]} ${year + 543}` 
-                : `${monthNamesEn[month]} ${year}`}
-            </h2>
+                ? `แสดงข้อมูลผ้าทุกวันในเดือน • แตะที่วันที่เพื่อดูรายการฉบับเต็ม` 
+                : `Showing laundry records across all days • Click any day to inspect details`}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={goToToday}
-            className="px-3 py-1.5 bg-[#f3f3f4] hover:bg-[#e2e8f0] text-[#002045] rounded-lg text-xs font-bold transition-colors cursor-pointer"
+            onClick={goToTodayOrLatest}
+            className="px-3 py-1.5 bg-[#f3f3f4] hover:bg-[#e2e8f0] text-[#002045] rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
           >
-            {language === 'th' ? 'วันที่ล่าสุด' : 'Latest Date'}
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>{language === 'th' ? 'วันที่มีข้อมูลล่าสุด' : 'Latest Date'}</span>
           </button>
 
           <div className="flex items-center bg-[#f3f3f4] rounded-lg p-0.5 border border-[#e2e8f0]">
@@ -230,6 +324,7 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
         </div>
       </div>
 
+
       {/* Main Calendar Grid */}
       <div className="bg-white rounded-2xl border border-[#e2e8f0] shadow-xs overflow-hidden">
         {/* Days of week header */}
@@ -248,7 +343,7 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
           {Array.from({ length: firstDayIndex }).map((_, i) => {
             const prevDayNum = daysInPrevMonth - firstDayIndex + i + 1;
             return (
-              <div key={`prev-${i}`} className="min-h-[64px] sm:min-h-[110px] p-1 sm:p-2 bg-[#fafafa]/60 text-[#c4c6cf] flex flex-col items-center sm:items-start">
+              <div key={`prev-${i}`} className="min-h-[64px] sm:min-h-[110px] p-1 sm:p-2 bg-[#fafafa]/60 text-[#c4c6cf] flex flex-col items-center sm:items-start select-none">
                 <span className="text-xs font-medium">{prevDayNum}</span>
               </div>
             );
@@ -263,6 +358,7 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
 
             const washingCount = dayOrders.filter((o) => o.stage !== 'ready' && o.stage !== 'delivered').length;
             const readyCount = dayOrders.filter((o) => o.stage === 'ready' || o.stage === 'delivered').length;
+            const totalPiecesInDay = dayOrders.reduce((sum, o) => sum + o.items.reduce((isum, item) => isum + item.quantity, 0), 0);
 
             return (
               <div
@@ -271,7 +367,9 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                 className={`min-h-[64px] sm:min-h-[110px] p-1 sm:p-2 transition-all cursor-pointer flex flex-col justify-between ${
                   isSelected
                     ? 'bg-blue-50/80 ring-2 ring-[#0061a5] ring-inset z-10'
-                    : 'hover:bg-slate-50'
+                    : dayOrders.length > 0
+                    ? 'bg-white hover:bg-blue-50/40'
+                    : 'bg-white/60 hover:bg-slate-50'
                 } ${isToday ? 'bg-amber-50/40' : ''}`}
               >
                 {/* Header row for Date & Counts */}
@@ -282,6 +380,8 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                       ? 'bg-[#ba1a1a] text-white shadow-xs'
                       : isSelected
                       ? 'bg-[#0061a5] text-white'
+                      : dayOrders.length > 0
+                      ? 'text-[#002045] font-extrabold'
                       : 'text-[#1a1c1c]'
                   }`}>
                     {dayNum}
@@ -301,8 +401,9 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                       </div>
 
                       {/* Desktop View: Show count pill with label on right */}
-                      <span className="hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#002045] text-white shadow-2xs">
-                        {dayOrders.length} {language === 'th' ? 'รายการ' : 'ord'}
+                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#002045] text-white shadow-2xs">
+                        <span>{dayOrders.length}</span>
+                        <span className="text-[9px] font-normal opacity-80">{language === 'th' ? 'รายการ' : 'ord'}</span>
                       </span>
                     </>
                   )}
@@ -312,6 +413,8 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                 <div className="hidden sm:block mt-1 space-y-1 overflow-hidden">
                   {dayOrders.slice(0, 2).map((order) => {
                     const isWashing = order.stage !== 'ready' && order.stage !== 'delivered';
+                    const garmentName = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
+                                        order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'Linen');
                     return (
                       <div
                         key={order.id}
@@ -319,19 +422,24 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                           e.stopPropagation();
                           onSelectOrder(order);
                         }}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate flex items-center gap-1 border transition-colors ${
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate flex items-center justify-between gap-1 border transition-colors ${
                           isWashing
                             ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
                             : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
                         }`}
-                        title={`${order.trackingCode} - ${order.customerRoomOrDept || order.customerName}`}
+                        title={`${order.trackingCode} - ${order.customerRoomOrDept || ''} (${garmentName})`}
                       >
-                        {isWashing ? (
-                          <Waves className="w-2.5 h-2.5 shrink-0 text-amber-600 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
-                        )}
-                        <span className="truncate font-semibold">{order.trackingCode}</span>
+                        <div className="flex items-center gap-1 min-w-0 truncate">
+                          {isWashing ? (
+                            <Waves className="w-2.5 h-2.5 shrink-0 text-amber-600 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
+                          )}
+                          <span className="truncate font-bold">{order.customerRoomOrDept || order.trackingCode}</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 shrink-0">
+                          {order.items.reduce((s, i) => s + i.quantity, 0)} ชิ้น
+                        </span>
                       </div>
                     );
                   })}
@@ -343,16 +451,23 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                   )}
                 </div>
 
-                {/* Summary dots */}
-                <div className="flex items-center justify-center sm:justify-start gap-1 mt-0.5 sm:mt-1 pt-0.5 sm:pt-1 border-t border-slate-100">
-                  {washingCount > 0 && (
-                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500" title={`${washingCount} กำลังซัก`} />
-                  )}
-                  {readyCount > 0 && (
-                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500" title={`${readyCount} ซักเสร็จ`} />
-                  )}
-                  {dayOrders.length === 0 && (
-                    <span className="w-1.5 h-1.5 opacity-0" />
+                {/* Summary dots & pieces */}
+                <div className="flex items-center justify-between gap-1 mt-0.5 sm:mt-1 pt-0.5 sm:pt-1 border-t border-slate-100 text-[9px] text-slate-400">
+                  <div className="flex items-center gap-1">
+                    {washingCount > 0 && (
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 inline-block" title={`${washingCount} กำลังซัก`} />
+                    )}
+                    {readyCount > 0 && (
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 inline-block" title={`${readyCount} ซักเสร็จ`} />
+                    )}
+                    {dayOrders.length === 0 && (
+                      <span className="w-1.5 h-1.5 opacity-0 inline-block" />
+                    )}
+                  </div>
+                  {dayOrders.length > 0 && (
+                    <span className="hidden sm:inline text-[9.5px] font-semibold text-slate-600">
+                      {totalPiecesInDay} ชิ้น
+                    </span>
                   )}
                 </div>
               </div>
@@ -363,7 +478,7 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
           {Array.from({
             length: (7 - ((firstDayIndex + daysInMonth) % 7)) % 7,
           }).map((_, i) => (
-            <div key={`next-${i}`} className="min-h-[64px] sm:min-h-[110px] p-1 sm:p-2 bg-[#fafafa]/60 text-[#c4c6cf] flex flex-col items-center sm:items-start">
+            <div key={`next-${i}`} className="min-h-[64px] sm:min-h-[110px] p-1 sm:p-2 bg-[#fafafa]/60 text-[#c4c6cf] flex flex-col items-center sm:items-start select-none">
               <span className="text-xs font-medium">{i + 1}</span>
             </div>
           ))}

@@ -343,6 +343,56 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
     });
   }, [baseFilteredOrders, advancedFilters.stage, selectedStageFilter]);
 
+  // Orders provided to Calendar View (not limited to today's date so user can view all days & months)
+  const calendarOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // 1. Search query
+      const matchesSearch =
+        !searchQuery ||
+        order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.trackingCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (order.customerRoomOrDept && order.customerRoomOrDept.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        order.serviceType.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // 2. Advanced Filter: Tracking Code
+      let matchesAdvTracking = true;
+      if (advancedFilters.trackingCode.trim()) {
+        const q = advancedFilters.trackingCode.trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const t = order.trackingCode.toLowerCase().replace(/[\s\-_]/g, '');
+        matchesAdvTracking = t.includes(q);
+      }
+
+      // 3. Advanced Filter: Department
+      let matchesAdvDept = true;
+      if (advancedFilters.department !== 'all') {
+        matchesAdvDept = (order.customerRoomOrDept || '') === advancedFilters.department;
+      }
+
+      // 4. Stage Filter
+      let matchesStage = true;
+      const effectiveStage = advancedFilters.stage !== 'all' ? advancedFilters.stage : selectedStageFilter;
+      if (effectiveStage === 'washing') {
+        matchesStage = order.stage !== 'ready' && order.stage !== 'delivered';
+      } else if (effectiveStage === 'ready') {
+        matchesStage = order.stage === 'ready' || order.stage === 'delivered';
+      }
+
+      // 5. Custom Year or Date Range (if user explicitly set them in Advanced Filter)
+      if (advancedFilters.year !== 'all' && getOrderYear(order) !== advancedFilters.year) {
+        return false;
+      }
+      const orderDateStr = getOrderDateString(order);
+      if (advancedFilters.startDate && orderDateStr && orderDateStr < advancedFilters.startDate) {
+        return false;
+      }
+      if (advancedFilters.endDate && orderDateStr && orderDateStr > advancedFilters.endDate) {
+        return false;
+      }
+
+      return matchesSearch && matchesAdvTracking && matchesAdvDept && matchesStage;
+    });
+  }, [orders, searchQuery, advancedFilters, selectedStageFilter]);
+
   // Helper to extract timestamp or date for sorting (latest first)
   const getOrderSortTimestamp = (order: LaundryOrder): number => {
     // 1. Try date extraction from receivedAt or ISO string
@@ -903,8 +953,16 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             </div>
           )}
 
-          {/* Empty State */}
-          {sortedFilteredOrders.length === 0 ? (
+          {/* VIEW 4: CALENDAR VIEW (มุมมองปฏิทิน - แสดงข้อมูลทุกวันในเดือนและเลือกดูวันอื่นได้) */}
+          {viewMode === 'calendar' ? (
+            <LaundryCalendarView
+              orders={calendarOrders}
+              onSelectOrder={onSelectOrder}
+              onOpenCreateOrder={onOpenCreateOrder}
+              onToggleStage={handleToggleStage}
+            />
+          ) : sortedFilteredOrders.length === 0 ? (
+            /* Empty State for other views */
             <div className="bg-white rounded-2xl p-12 text-center border border-[#e2e8f0]">
               <Shirt className="w-12 h-12 text-[#74777f]/40 mx-auto mb-3" />
               <h3 className="text-base font-bold text-[#002045]">{t.noOrdersFound}</h3>
@@ -912,14 +970,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                 {t.noOrdersDesc}
               </p>
             </div>
-          ) : viewMode === 'calendar' ? (
-            /* Calendar View */
-            <LaundryCalendarView
-              orders={sortedFilteredOrders}
-              onSelectOrder={onSelectOrder}
-              onOpenCreateOrder={onOpenCreateOrder}
-              onToggleStage={handleToggleStage}
-            />
           ) : viewMode === 'board' ? (
             /* ========================================================================= */
             /* VIEW: PIPELINE / BOARD VIEW (กระดานขั้นตอน 3 คอลัมน์ เหมือนหัวข้อการแจ้งซ่อม) */
