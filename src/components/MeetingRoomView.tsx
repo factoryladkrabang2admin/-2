@@ -643,17 +643,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                 <CalendarDays className="w-4 h-4" />
               </button>
 
-              {/* เส้นคั่นและไอคอน QR Code หลังไอคอนมุมมองปฏิทิน */}
-              <div className="w-[1px] h-4 bg-purple-200 mx-0.5" />
-              <button
-                type="button"
-                onClick={() => setShowQrModal(true)}
-                className="p-2 rounded-lg transition-all cursor-pointer text-purple-900 hover:text-purple-950 hover:bg-purple-100/70 active:scale-95 group relative"
-                title={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
-                aria-label={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
-              >
-                <QrCode className="w-4 h-4 text-purple-700 transition-transform group-hover:scale-110" />
-              </button>
+              {/* เส้นคั่นและไอคอน QR Code หลังไอคอนมุมมองปฏิทิน (จำกัดสิทธิ์เฉพาะผู้ดูแลและแอดมินเท่านั้น) */}
+              {canAccessGoogleSheet && (
+                <>
+                  <div className="w-[1px] h-4 bg-purple-200 mx-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="p-2 rounded-lg transition-all cursor-pointer text-purple-900 hover:text-purple-950 hover:bg-purple-100/70 active:scale-95 group relative"
+                    title={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
+                    aria-label={language === 'th' ? 'QR Code แบบฟอร์มจองห้องประชุม' : 'Meeting Room Google Form QR Code'}
+                  >
+                    <QrCode className="w-4 h-4 text-purple-700 transition-transform group-hover:scale-110" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
