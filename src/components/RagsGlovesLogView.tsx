@@ -782,16 +782,6 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
               </a>
             )}
 
-            {/* 4. Print Icon-Only Button */}
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="p-2.5 rounded-xl bg-white/90 hover:bg-white text-[#3e2723] border border-[#d7ccc8] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-[#bcaaa4]"
-              title={language === 'th' ? 'พิมพ์รายการ' : 'Print'}
-              aria-label={language === 'th' ? 'พิมพ์รายการ' : 'Print'}
-            >
-              <Printer className="w-5 h-5 text-[#6d4c41]" />
-            </button>
 
             {/* 5. QR CODE Icon-Only Button (Admin / Supervisor Only) */}
             {isAdmin && (
