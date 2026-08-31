@@ -15,7 +15,7 @@ export interface ChlorineInspectionRecord {
   note?: string;
 }
 
-export type EquipmentSubCategory = 'cleaning' | 'gown' | 'keys' | 'ladder';
+export type EquipmentSubCategory = 'cleaning' | 'softener' | 'gown' | 'keys' | 'ladder';
 
 export type EquipmentActionStatus = 'เบิก' | 'คืน' | 'ยืม' | 'อยู่ระหว่างใช้งาน' | 'เสร็จสิ้น' | 'คีย์เบิกแล้ว' | 'อนุมัติแล้ว' | 'รอคืน' | string;
 

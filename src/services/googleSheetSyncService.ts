@@ -62,7 +62,29 @@ export const FALLBACK_SHEET_CSV = `ประทับเวลา,กรุณ�
 30/8/2026,30/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,10.30,,
 30/8/2026,30/8/2026,ซักเสร็จแล้ว,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,10.30,2/1,เสื้อกาวน์สีเขียว
 30/8/2026,30/8/2026,อยู่ระหว่างการซัก,สุริยา,3/1,เสื้อกาวน์สีเขียว,18,11.45,,
-30/8/2026,30/8/2026,ซักเสร็จแล้ว,สุริยา,3/1,เสื้อกาวน์สีเขียว,18,11.45,3/1,เสื้อกาวน์สีเขียว`;
+30/8/2026,30/8/2026,ซักเสร็จแล้ว,สุริยา,3/1,เสื้อกาวน์สีเขียว,18,11.45,3/1,เสื้อกาวน์สีเขียว
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/5,เสื้อกาวน์สีเขียว,49,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีกรมท่า,12,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีเขียว,15,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/2,เสื้อกาวน์สีเขียว,30,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,10,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/2,เสื้อกาวน์สีเขียว,30,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/3,เสื้อกาวน์สีเขียว,29,12.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,A/3,เสื้อกาวน์สีเขียว,6,14.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/4,เสื้อกาวน์สีเขียว,29,14.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/1,เสื้อกาวน์สีเขียว,21,14.35,,,
+31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,B/1,เสื้อกาวน์สีเขียว,12,14.35,,,
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/5,เสื้อกาวน์สีเขียว,49
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/3,เสื้อกาวน์สีกรมท่า,12
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/3,เสื้อกาวน์สีเขียว,15
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/2,เสื้อกาวน์สีเขียว,30
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/1,เสื้อกาวน์สีเขียว,10
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/2,เสื้อกาวน์สีเขียว,30
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/3,เสื้อกาวน์สีเขียว,29
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,A/3,เสื้อกาวน์สีเขียว,6
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,B/1,เสื้อกาวน์สีเขียว,12
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/1,เสื้อกาวน์สีเขียว,21
+31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/4,เสื้อกาวน์สีเขียว,29`;
 
 export interface GoogleSheetSyncResult {
   success: boolean;
@@ -324,10 +346,12 @@ function getGarmentCategory(garmentName: string): LaundryItemDetail['category'] 
  * Rule:
  * 1. An entry with status 'อยู่ระหว่างการซัก' (or washing / in progress) creates a NEW intake order ticket.
  * 2. An entry with status 'ซักเสร็จแล้ว' (or completed / ready) pairs with and completes the earliest open 'washing' ticket
- *    for that (Date + Department + Garment Type) in FIFO order.
- * 3. If in 1 day there are multiple entries with the same Date, Department, and Garment Type (e.g. multiple batches / intakes):
+ *    for that (Date + Department + Garment Type + Exact Quantity) in FIFO order.
+ *    *เงื่อนไข: แผนก, ประเภทผ้า และจำนวน (Quantity) ต้องตรงกันทั้งฝั่งอยู่ระหว่างการซักและฝั่งซักเสร็จแล้ว จึงจะเปลี่ยนสถานะเป็นซักเสร็จแล้ว
+ * 3. If in 1 day there are multiple entries with the same Date, Department, and Garment Type:
  *    - Each intake is added as a NEW separate ticket without overwriting or conflicting with previous tickets.
- *    - Any subsequent completion pairs FIFO with pending intake tickets, or if none pending, creates a new completed ticket.
+ *    - Any subsequent completion pairs FIFO with pending intake tickets matching Date, Department, Garment, AND exact Quantity.
+ *    - If no pending order matches the exact quantity, it creates a separate completed ticket.
  * 4. Each ticket gets its own sequential Tracking Code (LKB2 - YYMMDDSS) and unique ID.
  */
 export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
@@ -350,11 +374,12 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
     const operator = (r[3] || '').trim();
     const dept1 = (r[4] || '').trim();
     const garment1 = (r[5] || '').trim();
-    const qtyCol = (r[6] || '').trim();
+    const qtyCol1 = (r[6] || '').trim();
     const deliveryTime = (r[7] || '').trim();
     const date2 = (r[8] || '').trim();
     const dept2 = (r[9] || '').trim();
     const garment2 = (r[10] || '').trim();
+    const qtyCol2 = (r[11] || '').trim();
 
     const rawDate = date1 || date2 || (timestamp ? timestamp.split(',')[0].split(' ')[0] : '');
     if (rawDate) {
@@ -404,7 +429,23 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
 
     if (!dept || !garment) return;
 
-    let parsedQty = parseInt(qtyCol, 10);
+    let parsedQty = parseInt(qtyCol1, 10);
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      parsedQty = parseInt(qtyCol2, 10);
+    }
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      for (let c = 0; c < r.length; c++) {
+        if (c === 0 || c === 1 || c === 8) continue; // skip timestamp & date
+        const val = (r[c] || '').trim();
+        if (/^\d+$/.test(val)) {
+          const num = parseInt(val, 10);
+          if (num > 0 && num < 10000) {
+            parsedQty = num;
+            break;
+          }
+        }
+      }
+    }
     const hasExplicitQty = !isNaN(parsedQty) && parsedQty > 0;
     const finalQty = hasExplicitQty ? parsedQty : 1;
 
@@ -434,27 +475,30 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
     // Check if there is an active pending 'washing' order waiting for completion
     const pendingList = pendingWashingOrders[key] || [];
 
+    // Find index of pending order that matches BOTH department, garment type AND exact quantity
+    let matchedPendingIdx = -1;
     if (isExplicitCompleted && pendingList.length > 0) {
-      // Pair with the earliest pending open order (FIFO queue)
-      const targetOrder = pendingList.shift()!;
+      matchedPendingIdx = pendingList.findIndex((o) => {
+        const orderQty = o.items[0]?.quantity ?? 1;
+        return orderQty === finalQty;
+      });
+    }
+
+    if (isExplicitCompleted && matchedPendingIdx !== -1) {
+      // Pair with the earliest pending open order matching department, garment, and quantity (FIFO)
+      const targetOrder = pendingList.splice(matchedPendingIdx, 1)[0];
       targetOrder.stage = 'ready';
       targetOrder.completedAt = timestamp || `${thaiDateStr} ${deliveryTime ? formatDeliveryTime(deliveryTime) : '12:35 น.'}`;
 
       if (deliveryTime) {
         targetOrder.estimatedCompletion = `${thaiDateStr}, ${formatDeliveryTime(deliveryTime)}`;
       }
-      // Only update quantity if the completion row explicitly provided a new quantity; otherwise keep the intake quantity!
-      if (hasExplicitQty && targetOrder.items.length > 0) {
-        targetOrder.items[0].quantity = parsedQty;
-        targetOrder.totalPrice = parsedQty * targetOrder.items[0].unitPrice;
-        targetOrder.totalWeightKg = parseFloat((parsedQty * 0.35).toFixed(1)) || 1.5;
-      }
 
       targetOrder.historyTimeline.push({
         stage: 'ready',
         label: 'ซักเสร็จแล้ว',
         timestamp: timestamp || (deliveryTime ? formatDeliveryTime(deliveryTime) : '12:35 น.'),
-        note: `อัปเดตสถานะ: ซักเสร็จแล้ว${deliveryTime ? ` (เวลาจัดส่ง: ${formatDeliveryTime(deliveryTime)})` : ''}`,
+        note: `อัปเดตสถานะ: ซักเสร็จแล้ว (ตรงตามเงื่อนไข: แผนก ${dept} • ${garment} • จำนวน ${finalQty} ชิ้น)${deliveryTime ? ` [เวลาจัดส่ง: ${formatDeliveryTime(deliveryTime)}]` : ''}`,
         operator: operator || targetOrder.customerName || 'ระบบอัตโนมัติ Google Sheet',
       });
     } else {
@@ -507,7 +551,7 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
           : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
         assignedMachine: 'Intake Station #01',
         waterTemp: 'Warm (40°C)',
-        notes: `ประเภทผ้า: ${garment} | แผนก: ${dept}`,
+        notes: `ประเภทผ้า: ${garment} | แผนก: ${dept} | จำนวน: ${finalQty} ชิ้น`,
         receivedAt: timestamp || `${thaiDateStr} เวลา 08:30 น.`,
         estimatedCompletion: estCompletion,
         completedAt: isExplicitCompleted ? (timestamp || `${thaiDateStr} 12:35 น.`) : undefined,
@@ -2687,6 +2731,10 @@ export const CLEANING_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheet
 export const CLEANING_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/export?format=csv&gid=1432727518';
 export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1zFktbx7mqm2RVoW6ffYFnLctdd8Z622trcKyN8BmoxI/edit';
 
+export const SOFTENER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217';
+export const SOFTENER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/export?format=csv&gid=1462351217';
+export const SOFTENER_EQUIPMENT_FORM_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217';
+
 export const GOWN_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902';
 export const GOWN_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/export?format=csv&gid=1537050902';
 export const GOWN_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1k937Yb3vV_Q6a3sevJ-JkFkOF6KCWPF03MaXACwvxF8/edit';
@@ -2699,6 +2747,54 @@ export const LADDER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/
 export const LADDER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/export?format=csv&gid=1183570474';
 export const LADDER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1Lv2zhIFc0iWIf1F06Y6s0TNWTDwzMQ85YlCnZ5Z2NpE/edit?usp=drive_web&ouid=116671584161777218123';
 
+export const SOFTENER_FALLBACK_CSV = `ประทับเวลา,วันที่,ชื่อผู้เบิก (ชื่อจริง),พื้นที่ในการใช้งาน
+"5/2/2026, 13:35:25",5/2/2026,พรนิภา,"A2, C1"
+"5/2/2026, 13:44:02",5/2/2026,สงกรานต์,"B1, B2"
+"18/2/2026, 6:23:59",18/2/2026,พรนิภา,"A2, C1"
+"18/2/2026, 13:12:49",18/2/2026,ณัฐภัทร,A1
+"19/2/2026, 10:41:08",19/2/2026,สงกรานต์,B1
+"2/3/2026, 12:05:20",2/3/2026,พรนิภา,"A2, C1"
+"11/3/2026, 10:07:25",11/3/2026,สงกรานต์,B1
+"13/3/2026, 9:59:44",13/3/2026,พรนิภา,A2
+"18/3/2026, 8:10:39",18/3/2026,ณัฐภัทร,A1
+"19/3/2026, 10:35:23",19/3/2026,สงกรานต์,B1
+"20/3/2026, 9:27:34",20/3/2026,สุดารัตน์,C1
+"20/3/2026, 9:28:08",20/3/2026,สงกรานต์,B1
+"27/3/2026, 8:42:53",27/3/2026,พรนิภา,A2
+"8/4/2026, 9:22:40",8/4/2026,พรนิภา,A2
+"9/4/2026, 9:38:33",9/4/2026,สุดารัตน์,B2
+"12/4/2026, 7:55:57",12/4/2026,สงกรานต์,B1
+"18/4/2026, 8:12:05",18/4/2026,ณัฐภัทร,A1
+"24/4/2026, 9:03:41",24/4/2026,สงกรานต์,B1
+"24/4/2026, 9:22:41",24/4/2026,พรนิภา,A2
+"25/4/2026, 9:58:30",25/4/2026,สุดารัตน์,B2
+"4/5/2026, 7:45:22",4/5/2026,สุดารัตน์,C1
+"6/5/2026, 11:21:08",6/5/2026,พรนิภา,"A1, A2"
+"11/5/2026, 9:23:08",11/5/2026,สุดารัตน์,B2
+"22/5/2026, 9:39:21",22/5/2026,สุดารัตน์,C1
+"22/5/2026, 9:40:58",22/5/2026,พรนิภา,"A1, A2"
+"2/6/2026, 7:08:45",2/6/2026,สุดารัตน์,C1
+"9/6/2026, 9:57:52",9/6/2026,สุดารัตน์,A1
+"13/6/2026, 7:05:52",13/6/2026,พรนิภา,A2
+"16/6/2026, 8:12:04",16/6/2026,สงกรานต์,B1
+"16/6/2026, 11:56:57",16/6/2026,สุดารัตน์,B2
+"20/6/2026, 9:29:48",20/6/2026,สุดารัตน์ ,B2
+"23/6/2026, 6:50:14",23/6/2026,สุดารัตน์ ,A1
+"29/6/2026, 6:55:09",29/6/2026,พรนิภา,A2
+"29/6/2026, 8:41:34",29/6/2026,สงกรานต์,B1
+"11/7/2026, 7:13:54",11/7/2026,พรนิภา,"A1, A2"
+"13/7/2026, 13:26:45",13/7/2026,สงกรานต์,B1
+"28/7/2026, 5:51:56",28/7/2026,พรนิภา,A2
+"28/7/2026, 7:23:49",28/7/2026,สงกรานต์,B1
+"30/7/2026, 11:36:03",30/7/2026,พรนิภา,A1
+"7/8/2026, 9:54:34",7/8/2026,สุดารัตน์,C1
+"13/8/2026, 13:40:28",13/8/2026,สงกรานต์,B1
+"14/8/2026, 9:34:51",14/8/2026,ยุพา,A1
+"14/8/2026, 9:36:20",14/8/2026,พรนิภา,A2
+"26/8/2026, 12:36:49",26/8/2026,สงกรานต์,B1
+"27/8/2026, 9:52:45",27/8/2026,ยุพา กำพังเทียม,A1
+"31/8/2026, 8:11:14",31/8/2026,สุดารัตน์,B2`;
+
 export interface EquipmentSyncResult {
   success: boolean;
   records: EquipmentRecord[];
@@ -2709,6 +2805,7 @@ export interface EquipmentSyncResult {
 
 // In-flight promises to prevent duplicate fetches
 let inFlightCleaningPromise: Promise<EquipmentSyncResult> | null = null;
+let inFlightSoftenerPromise: Promise<EquipmentSyncResult> | null = null;
 let inFlightGownPromise: Promise<EquipmentSyncResult> | null = null;
 let inFlightKeysPromise: Promise<EquipmentSyncResult> | null = null;
 let inFlightLadderPromise: Promise<EquipmentSyncResult> | null = null;
@@ -2786,6 +2883,72 @@ export function convertCleaningCsvToRecords(csvText: string): EquipmentRecord[] 
       itemsList,
       totalQuantity: totalQty,
       note,
+    });
+  }
+
+  // Sort newest first
+  return records.reverse();
+}
+
+/**
+ * Convert Softener (น้ำยาปรับผ้านุ่ม) CSV Rows to EquipmentRecord[]
+ */
+export function convertSoftenerCsvToRecords(csvText: string): EquipmentRecord[] {
+  const rows = parseCSV(csvText);
+  if (!rows || rows.length < 2) return [];
+
+  const headers = rows[0].map((h) => h.trim().toLowerCase());
+
+  let timeIdx = 0;
+  let dateIdx = 1;
+  let reqIdx = 2;
+  let areaIdx = 3;
+
+  headers.forEach((h, idx) => {
+    if (h.includes('ประทับเวลา') || h.includes('timestamp')) timeIdx = idx;
+    else if (h.includes('วันที่') || h.includes('date')) dateIdx = idx;
+    else if (h.includes('ชื่อ') || h.includes('ผู้เบิก')) reqIdx = idx;
+    else if (h.includes('พื้นที่') || h.includes('อาคาร') || h.includes('สถานที่') || h.includes('แผนก') || h.includes('area')) areaIdx = idx;
+  });
+
+  const records: EquipmentRecord[] = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every((c) => !c || !c.trim())) continue;
+
+    const timestamp = (row[timeIdx] || '').trim();
+    const rawDate = (row[dateIdx] || '').trim();
+    const requester = (row[reqIdx] || '').trim() || 'ไม่ระบุชื่อผู้เบิก';
+    const area = (row[areaIdx] || '').trim();
+
+    const date = rawDate || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
+
+    const itemsList: EquipmentItemDetail[] = [
+      {
+        name: 'น้ำยาปรับผ้านุ่ม',
+        quantity: 1,
+        note: area ? `พื้นที่ใช้งาน: ${area}` : undefined,
+      },
+    ];
+
+    const department = area ? `พื้นที่: ${area}` : 'ซักรีด / ส่วนกลาง';
+    const itemSummary = area ? `น้ำยาปรับผ้านุ่ม (พื้นที่ ${area})` : 'น้ำยาปรับผ้านุ่ม';
+
+    records.push({
+      id: `eq-softener-${i}-${date.replace(/\//g, '')}`,
+      seq: i,
+      subCategory: 'softener',
+      timestamp,
+      date,
+      requesterName: requester,
+      department,
+      actionType: 'เบิก',
+      status: 'เบิกแล้ว',
+      itemSummary,
+      itemsList,
+      totalQuantity: 1,
+      note: area ? `พื้นที่ในการใช้งาน: ${area}` : '',
     });
   }
 
@@ -3073,6 +3236,34 @@ export async function fetchGoogleSheetEquipmentCleaning(): Promise<EquipmentSync
 }
 
 /**
+ * Fetch Softener (น้ำยาปรับผ้านุ่ม) Records
+ */
+export async function fetchGoogleSheetEquipmentSoftener(): Promise<EquipmentSyncResult> {
+  if (inFlightSoftenerPromise) return inFlightSoftenerPromise;
+
+  const execute = async (): Promise<EquipmentSyncResult> => {
+    const urls = [
+      `/api/sheet-csv?sheetId=1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860&gid=1462351217`,
+      SOFTENER_EQUIPMENT_SHEET_CSV_URL,
+    ];
+    const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_eq_softener_csv_v1');
+    const records = csv ? convertSoftenerCsvToRecords(csv) : convertSoftenerCsvToRecords(SOFTENER_FALLBACK_CSV);
+    return {
+      success: true,
+      records,
+      rawRowsCount: records.length,
+      lastSyncedAt: new Date(),
+    };
+  };
+
+  inFlightSoftenerPromise = execute().finally(() => {
+    inFlightSoftenerPromise = null;
+  });
+
+  return inFlightSoftenerPromise;
+}
+
+/**
  * Fetch Gown Records
  */
 export async function fetchGoogleSheetEquipmentGown(): Promise<EquipmentSyncResult> {
@@ -3163,6 +3354,8 @@ export async function fetchEquipmentRecordsBySubCategory(subCategory: EquipmentS
   switch (subCategory) {
     case 'cleaning':
       return fetchGoogleSheetEquipmentCleaning();
+    case 'softener':
+      return fetchGoogleSheetEquipmentSoftener();
     case 'gown':
       return fetchGoogleSheetEquipmentGown();
     case 'keys':

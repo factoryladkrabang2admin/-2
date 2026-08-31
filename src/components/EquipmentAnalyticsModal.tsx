@@ -180,6 +180,8 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
     switch (sub) {
       case 'cleaning':
         return language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies';
+      case 'softener':
+        return language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener';
       case 'gown':
         return language === 'th' ? 'เสื้อกาวน์' : 'Gowns';
       case 'keys':
@@ -310,6 +312,7 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
                 >
                   <option value="all">{language === 'th' ? 'ทุกหมวดหมู่ (All)' : 'All Categories'}</option>
                   <option value="cleaning">{language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning'}</option>
+                  <option value="softener">{language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Softener'}</option>
                   <option value="gown">{language === 'th' ? 'เสื้อกาวน์' : 'Gowns'}</option>
                   <option value="keys">{language === 'th' ? 'กุญแจ' : 'Keys'}</option>
                   <option value="ladder">{language === 'th' ? 'บันไดทรง A' : 'Ladder'}</option>

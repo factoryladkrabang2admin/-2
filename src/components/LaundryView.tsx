@@ -610,7 +610,21 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
               <Hand className="w-5 h-5 stroke-[2]" />
             </button>
 
-            {/* 3. ไอคอน ตัวกรองการค้นหา */}
+            {/* 3. ลิงก์เปิด Google Sheet ข้อมูลการซัก-อบผ้า */}
+            {canAccessGoogleSheet && (
+              <a
+                href={GOOGLE_SHEET_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-sky-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-sky-300"
+                title={language === 'th' ? 'เปิดดู Google Sheet ข้อมูลการซัก-อบผ้า' : 'Open Laundry Google Sheet'}
+                aria-label="Google Sheet"
+              >
+                <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+              </a>
+            )}
+
+            {/* 4. ไอคอน ตัวกรองการค้นหา */}
             <button
               type="button"
               onClick={() => {

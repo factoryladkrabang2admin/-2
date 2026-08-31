@@ -30,17 +30,20 @@ import {
   Check,
   QrCode,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Droplets
 } from 'lucide-react';
 import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   fetchEquipmentRecordsBySubCategory,
   CLEANING_EQUIPMENT_SHEET_URL,
+  SOFTENER_EQUIPMENT_SHEET_URL,
   GOWN_EQUIPMENT_SHEET_URL,
   KEYS_EQUIPMENT_SHEET_URL,
   LADDER_EQUIPMENT_SHEET_URL,
   CLEANING_EQUIPMENT_FORM_URL,
+  SOFTENER_EQUIPMENT_FORM_URL,
   GOWN_EQUIPMENT_FORM_URL,
   KEYS_EQUIPMENT_FORM_URL,
   LADDER_EQUIPMENT_FORM_URL
@@ -66,6 +69,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   // Active Sub-category Tab
   const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>('cleaning');
+
+  // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
+  const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
   // View mode: 'table' | 'grid' | 'board' (Default to 'grid' on mobile and tablet < 1024px, 'table' on desktop)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
@@ -101,6 +107,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     switch (activeSubCategory) {
       case 'cleaning':
         return CLEANING_EQUIPMENT_SHEET_URL;
+      case 'softener':
+        return SOFTENER_EQUIPMENT_SHEET_URL;
       case 'gown':
         return GOWN_EQUIPMENT_SHEET_URL;
       case 'keys':
@@ -117,6 +125,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     switch (activeSubCategory) {
       case 'cleaning':
         return CLEANING_EQUIPMENT_FORM_URL;
+      case 'softener':
+        return SOFTENER_EQUIPMENT_FORM_URL;
       case 'gown':
         return GOWN_EQUIPMENT_FORM_URL;
       case 'keys':
@@ -132,6 +142,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     switch (activeSubCategory) {
       case 'cleaning':
         return language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies';
+      case 'softener':
+        return language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener';
       case 'gown':
         return language === 'th' ? 'เสื้อกาวน์' : 'Gowns';
       case 'keys':
@@ -316,6 +328,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       id: 'cleaning', 
       label: language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies',
       icon: <Sparkle className="w-4 h-4" />
+    },
+    { 
+      id: 'softener', 
+      label: language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener',
+      icon: <Droplets className="w-4 h-4" />
     },
     { 
       id: 'gown', 
@@ -532,7 +549,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 type="button"
                 onClick={() => {
                   setActiveSubCategory(tab.id);
-                  if (tab.id === 'cleaning' && selectedActionType === 'คืน') {
+                  if ((tab.id === 'cleaning' || tab.id === 'softener') && selectedActionType === 'คืน') {
                     setSelectedActionType('all');
                   }
                 }}
@@ -551,7 +568,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
         {/* Integrated Metric KPI Cards Row */}
         <div className={`relative z-10 grid gap-3 sm:gap-4 pt-4 border-t border-rose-200/60 ${
-          activeSubCategory === 'cleaning' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
+          isConsumable ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
         }`}>
           {/* Card 1: ทั้งหมด */}
           <div 
@@ -572,8 +589,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <span className="text-[11px] text-rose-800/80">{language === 'th' ? 'บันทึกสะสมทั้งหมด' : 'All recorded logs'}</span>
           </div>
 
-          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนเฉพาะหัวข้อย่อย อุปกรณ์ทำความสะอาด) */}
-          {activeSubCategory !== 'cleaning' && (
+          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนเฉพาะหัวข้อย่อยที่มีลักษณะเบิกใช้อย่างเดียว) */}
+          {!isConsumable && (
             <>
               {/* Card 2: รายการเบิก / ยืม */}
               <div 
@@ -688,7 +705,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           >
             {language === 'th' ? 'เบิก' : 'Requisition'}
           </button>
-          {activeSubCategory !== 'cleaning' && (
+          {!isConsumable && (
             <button
               type="button"
               onClick={() => {
@@ -771,7 +788,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     <tr>
                       <th className="py-3.5 px-4">{language === 'th' ? 'วันที่' : 'Date'}</th>
                       <th className="py-3.5 px-4">{language === 'th' ? 'ผู้เบิก / ยืม' : 'Requester'}</th>
-                      {activeSubCategory !== 'cleaning' && (
+                      {!isConsumable && (
                         <th className="py-3.5 px-4">{language === 'th' ? 'แผนก' : 'Department'}</th>
                       )}
                       <th className="py-3.5 px-4">{language === 'th' ? 'รายการอุปกรณ์' : 'Equipment Items'}</th>
@@ -794,7 +811,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                           <td className="py-3.5 px-4 font-bold text-slate-900">
                             {r.requesterName}
                           </td>
-                          {activeSubCategory !== 'cleaning' && (
+                          {!isConsumable && (
                             <td className="py-3.5 px-4 text-slate-600">
                               <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs">
                                 {r.department || '-'}
@@ -891,15 +908,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
           {/* C. BOARD / PIPELINE VIEW */}
           {viewMode === 'board' && (
-            <div className={`grid grid-cols-1 ${activeSubCategory === 'cleaning' ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-5`}>
+            <div className={`grid grid-cols-1 ${isConsumable ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-5`}>
               {/* Column 1: Requisitions (เบิก / ยืม) */}
               <div className="bg-amber-50/40 rounded-3xl p-4 border border-amber-200/80 space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-amber-200">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
                     <h3 className="font-black text-amber-950 text-sm">
-                      {activeSubCategory === 'cleaning'
-                        ? (language === 'th' ? 'รายการเบิกอุปกรณ์ทำความสะอาด' : 'Cleaning Requisitions')
+                      {isConsumable
+                        ? (language === 'th' 
+                            ? (activeSubCategory === 'softener' ? 'รายการเบิกน้ำยาปรับผ้านุ่ม' : 'รายการเบิกอุปกรณ์ทำความสะอาด')
+                            : (activeSubCategory === 'softener' ? 'Fabric Softener Requisitions' : 'Cleaning Requisitions'))
                         : (language === 'th' ? 'รายการเบิก / ยืมใช้งาน' : 'Requisitions')}
                     </h3>
                   </div>
@@ -931,7 +950,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               </div>
 
               {/* Column 2: Returns (คืนแล้ว) - แสดงเฉพาะหัวข้อย่อยอื่นๆ */}
-              {activeSubCategory !== 'cleaning' && (
+              {!isConsumable && (
                 <div className="bg-emerald-50/40 rounded-3xl p-4 border border-emerald-200/80 space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
                     <div className="flex items-center gap-2">
@@ -1071,7 +1090,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 >
                   <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All'}</option>
                   <option value="เบิก">{language === 'th' ? 'เบิก / ยืม' : 'Requisition'}</option>
-                  {activeSubCategory !== 'cleaning' && (
+                  {!isConsumable && (
                     <option value="คืน">{language === 'th' ? 'คืนแล้ว' : 'Returned'}</option>
                   )}
                 </select>

@@ -41,6 +41,8 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
     switch (sub) {
       case 'cleaning':
         return language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies';
+      case 'softener':
+        return language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener';
       case 'gown':
         return language === 'th' ? 'เสื้อกาวน์' : 'Gowns';
       case 'keys':
