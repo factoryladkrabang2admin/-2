@@ -16,7 +16,8 @@ import {
   LayoutGrid,
   Building2,
   Mail,
-  Server
+  Server,
+  Hash
 } from 'lucide-react';
 import { NavigationTab, LaundryOrder } from '../types';
 import { useLanguage, LANGUAGE_CONFIGS, getLanguageConfig } from '../contexts/LanguageContext';
@@ -287,6 +288,35 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                         </div>
                       </div>
                       <ExternalLink className="w-3.5 h-3.5 text-[#74777f] group-hover:text-emerald-600 shrink-0 ml-1.5 transition-colors" />
+                    </a>
+
+                    {/* 5. Running No. - ใต้ JCS */}
+                    <a
+                      href="https://script.google.com/macros/s/AKfycbxBWCnWwGsnka6ROGBx0dRcGt2W9lMC3a_B9yZdbTm6Er0Dr_RvbRygbsFQgt0hLNcFXg/exec"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setServicesDropdownOpen(false)}
+                      className="w-full p-2.5 rounded-xl text-left text-xs flex items-center justify-between transition-all hover:bg-amber-50/70 border border-transparent hover:border-amber-200 group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-200/80 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 group-hover:bg-amber-600 transition-all">
+                          <Hash className="w-4 h-4 text-amber-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-[#002045] group-hover:text-amber-700 transition-colors">
+                              Running No.
+                            </span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
+                              Running
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#74777f] truncate mt-0.5">
+                            {language === 'th' ? 'ระบบรันนิ่งนัมเบอร์' : 'Running Number System'}
+                          </p>
+                        </div>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-[#74777f] group-hover:text-amber-600 shrink-0 ml-1.5 transition-colors" />
                     </a>
                   </div>
                 </div>

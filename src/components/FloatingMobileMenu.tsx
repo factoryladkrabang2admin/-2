@@ -10,6 +10,7 @@ import {
   HeartHandshake, 
   Building2, 
   Server, 
+  Hash,
   ExternalLink, 
   Check, 
   X, 
@@ -205,6 +206,14 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
       url: 'http://fac.farmhouse.co.th:81/jcs/login.aspx',
       icon: Server,
       color: 'from-emerald-50 to-teal-100 text-emerald-600 border-emerald-200',
+    },
+    {
+      title: 'Running No.',
+      sub: language === 'th' ? 'ระบบรันนิ่งนัมเบอร์' : 'Running Number System',
+      tag: 'Running',
+      url: 'https://script.google.com/macros/s/AKfycbxBWCnWwGsnka6ROGBx0dRcGt2W9lMC3a_B9yZdbTm6Er0Dr_RvbRygbsFQgt0hLNcFXg/exec',
+      icon: Hash,
+      color: 'from-amber-50 to-orange-100 text-amber-600 border-amber-200',
     },
   ];
 
@@ -497,7 +506,7 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-colors shrink-0" />
                 </button>
 
-                {/* 4. Services & Quick Links (สวัสดิการ, Zycoda, Zimbra, JCS) - Restricted to Admin / Supervisor */}
+                {/* 4. Services & Quick Links (สวัสดิการ, Zycoda, Zimbra, JCS, Running No.) - Restricted to Admin / Supervisor */}
                 {canAccessServices && (
                   <button
                     type="button"
@@ -514,11 +523,11 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                             {language === 'th' ? 'ระบบและลิงก์ด่วน' : 'Services & Quick Links'}
                           </span>
                           <span className="text-[9px] font-bold px-1.5 py-0.2 bg-indigo-200 text-indigo-900 rounded-full">
-                            4 {language === 'th' ? 'ระบบ' : 'apps'}
+                            5 {language === 'th' ? 'ระบบ' : 'apps'}
                           </span>
                         </div>
                         <p className="text-[10px] text-indigo-700/80 truncate">
-                          Zimbra • สวัสดิการ • Zycoda • JCS
+                          Zimbra • สวัสดิการ • Zycoda • JCS • Running No.
                         </p>
                       </div>
                     </div>
