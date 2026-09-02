@@ -120,6 +120,25 @@ export interface DailyWorkSchedule {
   totalLeaves: number;
 }
 
+export interface ActivityScheduleRecord {
+  id: string;
+  seq: number;
+  dateStr: string;           // วันที่ เช่น "14/9/2026"
+  formattedDate: string;     // วันที่ภาษาไทย เช่น "14 ก.ย. 2569"
+  dayOfWeek: string;         // วัน เช่น "วันจันทร์"
+  title: string;             // เรื่อง / กิจกรรม เช่น "ซ้อมอพยพหนีไฟ"
+  startTime: string;         // เวลาเริ่มต้น เช่น "13:00 น."
+  endTime: string;           // เวลาสิ้นสุด เช่น "17:00 น."
+  timeRange: string;         // ช่วงเวลา เช่น "13:00 - 17:00 น."
+  location: string;          // สถานที่ เช่น "โรงงานลาดกระบัง 2"
+  vehicleDepartureTime: string; // เวลารถออก เช่น "07:10 น." หรือ "-"
+  vehicleReturnTime: string;    // เวลารถกลับ เช่น "12:30 น." หรือ "-"
+  participants: string;      // ชื่อพนักงาน / ผู้เข้าร่วม เช่น "ทุกคน", "ยุพา, นพเก้า"
+  participantList: string[]; // รายชื่อที่แปลงเป็น Array
+  status: 'today' | 'upcoming' | 'completed'; // สถานะ
+  rawDate: string;           // ISO date yyyy-mm-dd for easy sorting
+}
+
 export interface OtRecord {
   id: string;
   seq: number;

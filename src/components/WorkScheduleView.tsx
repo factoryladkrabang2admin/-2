@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   CalendarCheck,
+  CalendarClock,
   Plane,
   AlertTriangle,
   Briefcase
@@ -34,6 +35,7 @@ import { WorkScheduleBoardView } from './workSchedule/WorkScheduleBoardView';
 import { WorkScheduleAnalyticsModal } from './workSchedule/WorkScheduleAnalyticsModal';
 import { WorkScheduleFilterModal } from './workSchedule/WorkScheduleFilterModal';
 import { WorkScheduleDetailModal } from './workSchedule/WorkScheduleDetailModal';
+import { ActivityScheduleModal } from './activitySchedule/ActivityScheduleModal';
 
 const STORAGE_KEY = 'proworkflow_work_schedule_cache_v1';
 const BACKGROUND_POLL_INTERVAL_MS = 20000;
@@ -80,6 +82,7 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
   // Modals
   const [showAnalyticsModal, setShowAnalyticsModal] = useState<boolean>(false);
   const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
+  const [showActivityScheduleModal, setShowActivityScheduleModal] = useState<boolean>(false);
 
   // Sorting
   const [sortBy, setSortBy] = useState<'date_asc' | 'date_desc'>('date_asc');
@@ -396,6 +399,28 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
               aria-label={language === 'th' ? 'สถิติและการวิเคราะห์' : 'Analytics & Statistics'}
             >
               <BarChart3 className="w-5 h-5 text-emerald-700 stroke-[2]" />
+            </button>
+
+            {/* 1.5 ไอคอน ตารางกิจกรรม (วางไว้หน้าไอคอน เปิดดู Google sheet - ปรับให้ฟรุ้งฟริ้งและโดดเด่น) */}
+            <button
+              type="button"
+              onClick={() => setShowActivityScheduleModal(true)}
+              className="relative p-2.5 rounded-xl bg-gradient-to-tr from-amber-400 via-emerald-500 to-teal-500 hover:from-amber-300 hover:via-emerald-400 hover:to-teal-400 text-white border-2 border-amber-200/90 shadow-md shadow-amber-400/30 hover:shadow-lg hover:shadow-emerald-400/40 backdrop-blur-md transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center group"
+              title={language === 'th' ? '✨ ตารางกิจกรรม (คลิกเพื่อดู)' : '✨ Activity Schedule'}
+              aria-label={language === 'th' ? 'ตารางกิจกรรม' : 'Activity Schedule'}
+            >
+              {/* Twinkling sparkle top-right */}
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center pointer-events-none z-10">
+                <Sparkles className="w-4 h-4 text-amber-200 fill-amber-300 animate-pulse drop-shadow-[0_2px_6px_rgba(245,158,11,0.6)]" />
+              </span>
+
+              {/* Glowing shimmer dot bottom-left */}
+              <span className="absolute -bottom-0.5 -left-0.5 flex h-2.5 w-2.5 pointer-events-none z-10">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-200 shadow-xs"></span>
+              </span>
+
+              <CalendarClock className="w-5 h-5 text-white stroke-[2.2] group-hover:rotate-6 group-hover:scale-105 transition-transform drop-shadow-sm" />
             </button>
 
             {/* 2. ลิงก์ Google Sheet */}
@@ -895,6 +920,15 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
         onClose={() => setShowAnalyticsModal(false)}
         schedules={filteredSchedules}
         allEmployees={allEmployeesList}
+      />
+
+      {/* ACTIVITY SCHEDULE MODAL (ตารางกิจกรรม) */}
+      <ActivityScheduleModal
+        isOpen={showActivityScheduleModal}
+        onClose={() => setShowActivityScheduleModal(false)}
+        canAccessGoogleSheet={canAccessGoogleSheet}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
       />
     </div>
   );

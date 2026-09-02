@@ -6,6 +6,7 @@ import {
   OtRecord, 
   DailyWorkSchedule, 
   WorkScheduleStatus, 
+  ActivityScheduleRecord,
   MeetingRoomBooking, 
   MeetingStatus, 
   AnnouncementItem, 
@@ -2072,6 +2073,251 @@ export async function fetchGoogleSheetWorkSchedule(): Promise<{
   });
 
   return inFlightSchedulePromise;
+}
+
+// -------------------------------------------------------------------------
+// ACTIVITY SCHEDULE SYNC (ตารางกิจกรรม)
+// -------------------------------------------------------------------------
+
+export const ACTIVITY_SCHEDULE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0/edit?gid=0#gid=0';
+export const ACTIVITY_SCHEDULE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0/export?format=csv&gid=0';
+
+export const ACTIVITY_SCHEDULE_FALLBACK_CSV = `วันที่,เรื่อง,เวลาเริ่มต้น,เวลาสิ้นสุด,สถานที่,เวลารถออก,เวลารถกลับ,ชื่อพนักงาน
+14/9/2026,ซ้อมอพยพหนีไฟ,13.00,17.00,โรงงานลาดกระบัง 2,,,ทุกคน
+15/9/2026,อพยพหนีไฟ,13.00,17.00,โรงงานลาดกระบัง 2,,,ทุกคน
+22/9/2026,OJT พนักงาน,8.30,12.30,TPM 2,7.10,12.30,"ยุพา, นพเก้า"`;
+
+function formatActivityTimeStr(val: string): string {
+  if (!val || !val.trim()) return '';
+  const clean = val.trim().replace(':', '.');
+  const parts = clean.split('.');
+  if (parts.length >= 2) {
+    const hh = parts[0].padStart(2, '0');
+    const mm = parts[1].padEnd(2, '0');
+    return `${hh}:${mm} น.`;
+  }
+  return clean.endsWith('น.') ? clean : `${clean} น.`;
+}
+
+export function convertSheetRowsToActivitySchedule(csvText: string): ActivityScheduleRecord[] {
+  if (!csvText || !csvText.trim()) return [];
+
+  const rows = parseCSV(csvText);
+  if (rows.length < 2) return [];
+
+  const thDays = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
+  const thMonths = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const records: ActivityScheduleRecord[] = [];
+  let seq = 1;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    const dateRaw = (row[0] || '').trim();
+    const title = (row[1] || '').trim();
+    if (!dateRaw || !title) continue;
+
+    const startRaw = (row[2] || '').trim();
+    const endRaw = (row[3] || '').trim();
+    const location = (row[4] || '').trim();
+    const vehicleDepRaw = (row[5] || '').trim();
+    const vehicleRetRaw = (row[6] || '').trim();
+    const participantsRaw = (row[7] || '').trim() || 'ทุกคน';
+
+    const startTime = formatActivityTimeStr(startRaw);
+    const endTime = formatActivityTimeStr(endRaw);
+    const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : (startTime || '-');
+
+    const vehicleDepartureTime = formatActivityTimeStr(vehicleDepRaw);
+    const vehicleReturnTime = formatActivityTimeStr(vehicleRetRaw);
+
+    // Parse date components
+    let dayOfWeek = '';
+    let formattedDate = dateRaw;
+    let rawDate = '';
+
+    const dateParts = dateRaw.split(/[-/.]/);
+    if (dateParts.length === 3) {
+      const d = parseInt(dateParts[0], 10);
+      const m = parseInt(dateParts[1], 10);
+      let y = parseInt(dateParts[2], 10);
+      let adYear = y;
+      let thYear = y;
+      if (y > 2500) {
+        adYear = y - 543;
+        thYear = y;
+      } else {
+        adYear = y;
+        thYear = y + 543;
+      }
+
+      const dateObj = new Date(adYear, m - 1, d);
+      dayOfWeek = thDays[dateObj.getDay()] || '';
+      formattedDate = `${d} ${thMonths[m] || m} ${thYear}`;
+      rawDate = `${adYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    // Determine status
+    let status: 'today' | 'upcoming' | 'completed' = 'upcoming';
+    if (rawDate) {
+      if (rawDate === todayKey) {
+        status = 'today';
+      } else if (rawDate < todayKey) {
+        status = 'completed';
+      } else {
+        status = 'upcoming';
+      }
+    }
+
+    const participantList = participantsRaw.split(/[,;\n]/).map(p => p.trim()).filter(Boolean);
+
+    records.push({
+      id: `act_${seq}_${dateRaw.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      seq,
+      dateStr: dateRaw,
+      formattedDate,
+      dayOfWeek,
+      title,
+      startTime,
+      endTime,
+      timeRange,
+      location: location || 'ไม่ระบุสถานที่',
+      vehicleDepartureTime,
+      vehicleReturnTime,
+      participants: participantsRaw,
+      participantList: participantList.length > 0 ? participantList : ['ทุกคน'],
+      status,
+      rawDate,
+    });
+
+    seq++;
+  }
+
+  // Sort by rawDate ascending
+  records.sort((a, b) => {
+    if (a.rawDate && b.rawDate) {
+      return a.rawDate.localeCompare(b.rawDate);
+    }
+    return a.seq - b.seq;
+  });
+
+  return records;
+}
+
+let inMemoryActivitySchedule: ActivityScheduleRecord[] = [];
+let inFlightActivityPromise: Promise<{
+  success: boolean;
+  activities: ActivityScheduleRecord[];
+  rawRowsCount: number;
+  lastSyncedAt: Date;
+}> | null = null;
+
+export function getCachedActivitySchedules(): ActivityScheduleRecord[] {
+  if (inMemoryActivitySchedule.length > 0) return inMemoryActivitySchedule;
+  try {
+    const cached = localStorage.getItem('proworkflow_activity_schedule_cache_v1');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryActivitySchedule = parsed;
+        return inMemoryActivitySchedule;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return convertSheetRowsToActivitySchedule(ACTIVITY_SCHEDULE_FALLBACK_CSV);
+}
+
+export async function fetchGoogleSheetActivitySchedule(): Promise<{
+  success: boolean;
+  activities: ActivityScheduleRecord[];
+  rawRowsCount: number;
+  lastSyncedAt: Date;
+}> {
+  if (inFlightActivityPromise) {
+    return inFlightActivityPromise;
+  }
+
+  const executeFetch = async () => {
+    const endpoints = [
+      ACTIVITY_SCHEDULE_SHEET_CSV_URL,
+      `https://docs.google.com/spreadsheets/d/1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0/gviz/tq?tqx=out:csv&gid=0`,
+    ];
+
+    const fetchSingleEndpoint = async (url: string): Promise<ActivityScheduleRecord[]> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: { Accept: 'text/csv, text/plain, */*' },
+          cache: 'no-store',
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) return [];
+        const text = await response.text();
+        if (text.includes('วันที่') && (text.includes('เรื่อง') || text.includes('สถานที่') || text.includes('พนักงาน'))) {
+          const parsed = convertSheetRowsToActivitySchedule(text);
+          if (parsed.length > 0) return parsed;
+        }
+        return [];
+      } catch {
+        clearTimeout(timeoutId);
+        return [];
+      }
+    };
+
+    let activities: ActivityScheduleRecord[] = [];
+
+    try {
+      const results = await Promise.all(endpoints.map(url => fetchSingleEndpoint(url)));
+      for (const res of results) {
+        if (res && res.length > 0) {
+          activities = res;
+          break;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!activities || activities.length === 0) {
+      const cached = getCachedActivitySchedules();
+      if (cached.length > 0) {
+        activities = cached;
+      } else {
+        activities = convertSheetRowsToActivitySchedule(ACTIVITY_SCHEDULE_FALLBACK_CSV);
+      }
+    }
+
+    if (activities.length > 0) {
+      inMemoryActivitySchedule = activities;
+      try {
+        localStorage.setItem('proworkflow_activity_schedule_cache_v1', JSON.stringify(activities));
+      } catch {
+        // ignore
+      }
+    }
+
+    return {
+      success: true,
+      activities,
+      rawRowsCount: activities.length,
+      lastSyncedAt: new Date(),
+    };
+  };
+
+  inFlightActivityPromise = executeFetch().finally(() => {
+    inFlightActivityPromise = null;
+  });
+
+  return inFlightActivityPromise;
 }
 
 // ==========================================
