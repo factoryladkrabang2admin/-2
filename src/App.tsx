@@ -636,7 +636,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9f9f9] text-[#1a1c1c] flex font-sans antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-[#f9f9f9] dark:bg-[#0a0f1d] text-[#1a1c1c] dark:text-slate-100 flex font-sans antialiased overflow-x-hidden">
       {/* Permanent & Responsive Sidebar */}
       <Sidebar
         currentTab={currentTab}

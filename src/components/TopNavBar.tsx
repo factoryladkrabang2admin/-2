@@ -101,12 +101,12 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   };
 
   return (
-    <header className="fixed top-0 right-0 w-full md:w-[calc(100%-280px)] h-16 bg-white/85 backdrop-blur-md border-b border-sky-100/80 z-30 flex items-center justify-between px-4 md:px-8 shadow-xs">
+    <header className="fixed top-0 right-0 w-full md:w-[calc(100%-280px)] h-16 bg-white/85 dark:bg-[#0f172a]/95 backdrop-blur-md border-b border-sky-100/80 dark:border-slate-800 z-30 flex items-center justify-between px-4 md:px-8 shadow-xs">
       {/* Left: Mobile menu toggle and title */}
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenMobile}
-          className="md:hidden p-2 text-[#43474e] hover:text-[#002045] hover:bg-[#f3f3f4] rounded-lg transition-colors"
+          className="md:hidden p-2 text-[#43474e] hover:text-[#002045] dark:text-slate-400 dark:hover:text-white hover:bg-[#f3f3f4] dark:hover:bg-slate-800 rounded-lg transition-colors"
           aria-label="Open menu"
         >
           <Menu className="w-5 h-5" />
@@ -114,25 +114,25 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
         <div className="flex items-center gap-2 md:hidden">
           <RotatingAvatar size={30} showSparkle={false} />
-          <span className="font-semibold text-base text-[#002045] truncate max-w-[160px]">
+          <span className="font-semibold text-base text-[#002045] dark:text-white truncate max-w-[160px]">
             {t.appName}
           </span>
         </div>
 
         {/* Global Search Bar (on_left style matching screenshot) */}
         <div className="hidden sm:flex items-center relative w-64 md:w-80">
-          <Search className="w-4 h-4 text-[#74777f] absolute left-3 pointer-events-none" />
+          <Search className="w-4 h-4 text-[#74777f] dark:text-slate-400 absolute left-3 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={getPlaceholder()}
-            className="w-full pl-9 pr-3 py-1.5 bg-[#f3f3f4] hover:bg-[#ebecef] focus:bg-white text-sm text-[#1a1c1c] placeholder-[#74777f] border border-transparent focus:border-[#0061a5] rounded-md outline-hidden transition-all focus:ring-2 focus:ring-[#66affe]/20"
+            className="w-full pl-9 pr-3 py-1.5 bg-[#f3f3f4] hover:bg-[#ebecef] focus:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-800 dark:focus:bg-slate-800 text-sm text-[#1a1c1c] dark:text-slate-100 placeholder-[#74777f] dark:placeholder-slate-400 border border-transparent focus:border-[#0061a5] dark:border-slate-700/80 rounded-md outline-hidden transition-all focus:ring-2 focus:ring-[#66affe]/20"
           />
           {searchQuery && (
             <button
               onClick={() => onSearchChange('')}
-              className="absolute right-2.5 text-xs text-[#74777f] hover:text-[#1a1c1c]"
+              className="absolute right-2.5 text-xs text-[#74777f] dark:text-slate-400 hover:text-[#1a1c1c] dark:hover:text-white"
             >
               ✕
             </button>
