@@ -701,7 +701,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div>
             {onBackToPipeline && (
               <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">

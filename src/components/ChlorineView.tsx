@@ -548,7 +548,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
 
         <div className="relative z-10 space-y-5">
           {/* Top Row: Title + Action Icon Buttons Toolbar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
             {/* Header Title */}
             <div className="flex items-center gap-3.5">
               <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-sky-500 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">

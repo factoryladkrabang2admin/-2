@@ -59,7 +59,7 @@ export const PayslipView: React.FC<PayslipViewProps> = ({
           <FarmhouseBreadIcon size={220} />
         </div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-sky-100 text-xs font-semibold border border-white/20">
               <Building2 className="w-3.5 h-3.5 text-amber-300" />

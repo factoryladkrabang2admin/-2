@@ -35,6 +35,8 @@ import { HelpModal } from './components/HelpModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginModal } from './components/LoginModal';
 import { FloatingMobileMenu } from './components/FloatingMobileMenu';
+import { WeatherModal } from './components/WeatherModal';
+import { WeatherData, fetchCurrentWeather } from './services/weatherService';
 import { realtimeHub, RealtimeMessage } from './services/realtimeService';
 import { fetchGoogleSheetLaundryOrders, fetchGoogleSheetMaintenanceTickets, fetchGoogleSheetOtRecords, fetchGoogleSheetAnnouncements, GOOGLE_SHEET_URL } from './services/googleSheetSyncService';
 
@@ -63,6 +65,30 @@ export default function App() {
   // Prefetch OT and Google Sheet records immediately in background on startup
   useEffect(() => {
     fetchGoogleSheetOtRecords().catch(() => {});
+  }, []);
+
+  // Weather Modal & GPS Data
+  const [weatherModalOpen, setWeatherModalOpen] = useState<boolean>(false);
+  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null);
+
+  // Load weather and automatically show modal on page load (if enabled and not dismissed in session)
+  useEffect(() => {
+    fetchCurrentWeather()
+      .then((data) => {
+        setCurrentWeather(data);
+      })
+      .catch((err) => console.warn('Weather fetch error:', err));
+
+    const autoShow = localStorage.getItem('auto_show_weather_modal') !== 'false';
+    const alreadyShown = sessionStorage.getItem('weather_modal_shown_session') === 'true';
+    if (autoShow && !alreadyShown) {
+      // Small smooth delay after mount so initial page layout is ready
+      const timer = setTimeout(() => {
+        setWeatherModalOpen(true);
+        sessionStorage.setItem('weather_modal_shown_session', 'true');
+      }, 800);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   const handleLoginSuccess = (user: AdminUserAccount) => {
@@ -679,6 +705,8 @@ export default function App() {
           currentUser={currentUser}
           onLogin={() => setLoginModalOpen(true)}
           onLogout={handleLogout}
+          onOpenWeather={() => setWeatherModalOpen(true)}
+          currentWeather={currentWeather}
         />
 
         {/* Scrollable Main Canvas */}
@@ -1005,6 +1033,14 @@ export default function App() {
         onToggleNotifications={() => setNotificationsOpen(true)}
         onLogin={() => setLoginModalOpen(true)}
         onLogout={handleLogout}
+      />
+
+      {/* Real-time GPS & Google Weather Sync Modal */}
+      <WeatherModal
+        isOpen={weatherModalOpen}
+        onClose={() => setWeatherModalOpen(false)}
+        cachedWeather={currentWeather}
+        onUpdateWeather={setCurrentWeather}
       />
     </div>
   );

@@ -549,37 +549,16 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
         </div>
 
         {/* Title and Top Actions */}
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex items-center gap-3">
-              {/* Laundry Icon Badge */}
-              <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/95 shadow-md border border-sky-200/90 flex items-center justify-center shrink-0">
-                <Shirt className="w-7 h-7 text-sky-600 animate-pulse" />
-                <div className="absolute -top-1 -right-1 text-amber-500">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div className="absolute -bottom-1 -left-1 text-sky-500">
-                  <Hand className="w-3.5 h-3.5" />
-                </div>
-              </div>
-
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0369a1] drop-shadow-xs">
-                  {t.laundryTitle}
-                </h1>
-              </div>
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="relative w-12 h-12 rounded-2xl bg-white/90 backdrop-blur-md border border-sky-200 shadow-md flex items-center justify-center shrink-0">
+              <Shirt className="w-6 h-6 text-sky-600 animate-pulse" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 absolute -top-1 -right-1" />
             </div>
-
-            {/* Current Date / Scope Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/95 text-sky-900 rounded-full text-xs font-bold border border-sky-300 shadow-2xs self-start sm:self-auto sm:ml-2">
-              <Calendar className="w-3.5 h-3.5 text-sky-600" />
-              <span>
-                {advancedFilters.dateScope === 'today'
-                  ? (language === 'th' ? `ข้อมูลประจำวัน: ${currentDayDisplayName}` : `Today: ${currentDayDisplayName}`)
-                  : advancedFilters.dateScope === 'current_month' || advancedFilters.month === 'current'
-                  ? (language === 'th' ? `ข้อมูลประจำเดือน: ${currentMonthDisplayName}` : `Month: ${currentMonthDisplayName}`)
-                  : (language === 'th' ? 'ข้อมูลทั้งหมด' : 'All Time')}
-              </span>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0369a1] drop-shadow-xs">
+                {language === 'th' ? 'ข้อมูลการซัก-อบผ้า' : t.laundryTitle}
+              </h1>
             </div>
           </div>
 
@@ -756,9 +735,9 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             }`}
           >
             {selectedStageFilter === 'all' && (
-              <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-sky-300">
-                <Check className="w-3 h-3 text-sky-700" />
-                <span>{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
+              <div className="stage-active-badge-all absolute top-2.5 right-2.5 flex items-center gap-1 bg-sky-100 text-sky-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-sky-300 shadow-2xs">
+                <Check className="w-3 h-3 text-sky-700 shrink-0" />
+                <span className="font-bold tracking-tight">{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-sky-900 text-xs font-bold mb-1.5 pr-14">
@@ -791,9 +770,9 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             }`}
           >
             {selectedStageFilter === 'washing' && (
-              <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">
-                <Check className="w-3 h-3 text-amber-800" />
-                <span>{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
+              <div className="stage-active-badge-washing absolute top-2.5 right-2.5 flex items-center gap-1 bg-amber-100 text-amber-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-amber-300 shadow-2xs">
+                <Check className="w-3 h-3 text-amber-800 shrink-0" />
+                <span className="font-bold tracking-tight">{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-amber-900 text-xs font-bold mb-1.5 pr-14">
@@ -826,9 +805,9 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             }`}
           >
             {selectedStageFilter === 'ready' && (
-              <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-emerald-200 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                <Check className="w-3 h-3 text-emerald-800" />
-                <span>{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
+              <div className="stage-active-badge-ready absolute top-2.5 right-2.5 flex items-center gap-1 bg-emerald-100 text-emerald-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
+                <Check className="w-3 h-3 text-emerald-800 shrink-0" />
+                <span className="font-bold tracking-tight">{language === 'th' ? 'กำลังแสดง' : 'Active'}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-emerald-900 text-xs font-bold mb-1.5 pr-14">

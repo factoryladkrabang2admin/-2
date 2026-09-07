@@ -19,8 +19,10 @@ import {
   Server,
   Hash,
   Moon,
-  Sun
+  Sun,
+  CloudSun
 } from 'lucide-react';
+import { WeatherData } from '../services/weatherService';
 import { NavigationTab, LaundryOrder } from '../types';
 import { useLanguage, LANGUAGE_CONFIGS, getLanguageConfig } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -45,6 +47,8 @@ interface TopNavBarProps {
   currentUser?: AdminUserAccount;
   onLogin?: () => void;
   onLogout?: () => void;
+  onOpenWeather?: () => void;
+  currentWeather?: WeatherData | null;
 }
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
@@ -62,6 +66,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   currentUser = DEFAULT_ADMIN_USER,
   onLogin,
   onLogout,
+  onOpenWeather,
+  currentWeather,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -138,6 +144,23 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Mobile / Tablet Quick Weather Button (Visible on smaller screens) */}
+      <div className="flex lg:hidden items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onOpenWeather}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-sky-200/80 dark:border-slate-700 text-[#002045] dark:text-slate-100 text-xs font-bold shadow-2xs active:scale-95 transition-all cursor-pointer"
+          title={language === 'th' ? 'สภาพอากาศตำแหน่งปัจจุบัน (Google Weather)' : 'Current Weather (Google Weather)'}
+        >
+          <CloudSun className="w-4 h-4 text-amber-500 shrink-0" />
+          {currentWeather ? (
+            <span>{currentWeather.temperature}°C</span>
+          ) : (
+            <span className="text-[11px] font-medium">{language === 'th' ? 'อากาศ' : 'Weather'}</span>
+          )}
+        </button>
       </div>
 
       {/* Right: Actions & User Avatar (Desktop only; moved to Floating Draggable Menu on mobile & portrait tablet) */}
@@ -398,6 +421,29 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             </>
           )}
         </div>
+
+        {/* Weather Button (Google Weather) */}
+        <button
+          type="button"
+          onClick={onOpenWeather}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[#c4c6cf] hover:border-[#0061a5] bg-white hover:bg-sky-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 dark:border-slate-700 text-[#43474e] hover:text-[#002045] dark:text-slate-200 transition-all cursor-pointer shadow-2xs group shrink-0"
+          title={language === 'th' ? 'สภาพอากาศตำแหน่งปัจจุบัน (Google Weather)' : 'Current Weather (Google Weather)'}
+          aria-label="Google Weather"
+        >
+          <CloudSun className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform shrink-0" />
+          {currentWeather ? (
+            <span className="text-xs font-bold text-[#002045] dark:text-white flex items-center gap-1">
+              <span>{currentWeather.temperature}°C</span>
+              <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400 hidden xl:inline truncate max-w-[85px]">
+                {currentWeather.district || currentWeather.locationName}
+              </span>
+            </span>
+          ) : (
+            <span className="text-xs font-medium hidden sm:inline text-slate-700 dark:text-slate-300">
+              {language === 'th' ? 'สภาพอากาศ' : 'Weather'}
+            </span>
+          )}
+        </button>
 
         {/* Notifications Button */}
         <button

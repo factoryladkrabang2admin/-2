@@ -420,7 +420,7 @@ export const OtView: React.FC<OtViewProps> = ({
         </div>
 
         {/* Top Header Row */}
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="relative w-12 h-12 rounded-2xl bg-white/90 backdrop-blur-md border border-amber-200 shadow-md flex items-center justify-center shrink-0">
               <Clock className="w-6 h-6 text-amber-700 animate-pulse" />

@@ -148,7 +148,7 @@ export const MeetingRoomCalendarView: React.FC<MeetingRoomCalendarViewProps> = (
   return (
     <div className="space-y-6">
       {/* Calendar Control Header Bar */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 shadow-xs">
             <Calendar className="w-5 h-5" />

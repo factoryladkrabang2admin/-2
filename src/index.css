@@ -66,50 +66,62 @@ html.dark [class*="bg-[#f0f7ff]"] {
 
 /* 2. Status Badges & Pill Chips (Avoid dark text on dark surfaces) */
 html.dark [class*="bg-emerald-50"],
-html.dark [class*="bg-emerald-100"] {
+html.dark [class*="bg-emerald-100"],
+html.dark [class*="bg-emerald-200"] {
   background-color: rgba(6, 78, 59, 0.5) !important;
   border-color: rgba(16, 185, 129, 0.4) !important;
   color: #a7f3d0 !important;
 }
 html.dark [class*="bg-emerald-50"] *,
-html.dark [class*="bg-emerald-100"] * {
+html.dark [class*="bg-emerald-100"] *,
+html.dark [class*="bg-emerald-200"] * {
   color: #a7f3d0 !important;
 }
 
 html.dark [class*="bg-rose-50"],
 html.dark [class*="bg-rose-100"],
+html.dark [class*="bg-rose-200"],
 html.dark [class*="bg-red-50"],
-html.dark [class*="bg-red-100"] {
+html.dark [class*="bg-red-100"],
+html.dark [class*="bg-red-200"] {
   background-color: rgba(136, 19, 55, 0.5) !important;
   border-color: rgba(244, 63, 94, 0.4) !important;
   color: #fecdd3 !important;
 }
 html.dark [class*="bg-rose-50"] *,
 html.dark [class*="bg-rose-100"] *,
+html.dark [class*="bg-rose-200"] *,
 html.dark [class*="bg-red-50"] *,
-html.dark [class*="bg-red-100"] * {
+html.dark [class*="bg-red-100"] *,
+html.dark [class*="bg-red-200"] * {
   color: #fecdd3 !important;
 }
 
 html.dark [class*="bg-amber-50"],
 html.dark [class*="bg-amber-100"],
+html.dark [class*="bg-amber-200"],
 html.dark [class*="bg-yellow-50"],
-html.dark [class*="bg-yellow-100"] {
+html.dark [class*="bg-yellow-100"],
+html.dark [class*="bg-yellow-200"] {
   background-color: rgba(120, 53, 15, 0.5) !important;
   border-color: rgba(245, 158, 11, 0.4) !important;
   color: #fde68a !important;
 }
 html.dark [class*="bg-amber-50"] *,
 html.dark [class*="bg-amber-100"] *,
+html.dark [class*="bg-amber-200"] *,
 html.dark [class*="bg-yellow-50"] *,
-html.dark [class*="bg-yellow-100"] * {
+html.dark [class*="bg-yellow-100"] *,
+html.dark [class*="bg-yellow-200"] * {
   color: #fde68a !important;
 }
 
 html.dark [class*="bg-sky-50"],
 html.dark [class*="bg-sky-100"],
+html.dark [class*="bg-sky-200"],
 html.dark [class*="bg-blue-50"],
 html.dark [class*="bg-blue-100"],
+html.dark [class*="bg-blue-200"],
 html.dark [class*="bg-[#d2e4ff]"] {
   background-color: rgba(12, 74, 110, 0.5) !important;
   border-color: rgba(14, 165, 233, 0.4) !important;
@@ -117,10 +129,40 @@ html.dark [class*="bg-[#d2e4ff]"] {
 }
 html.dark [class*="bg-sky-50"] *,
 html.dark [class*="bg-sky-100"] *,
+html.dark [class*="bg-sky-200"] *,
 html.dark [class*="bg-blue-50"] *,
 html.dark [class*="bg-blue-100"] *,
+html.dark [class*="bg-blue-200"] *,
 html.dark [class*="bg-[#d2e4ff]"] * {
   color: #bae6fd !important;
+}
+
+/* Specific high-contrast badges for active stage filters (Laundry & other modules) */
+html.dark .stage-active-badge-all {
+  background-color: rgba(8, 47, 73, 0.95) !important;
+  border-color: rgba(56, 189, 248, 0.7) !important;
+  color: #bae6fd !important;
+}
+html.dark .stage-active-badge-all * {
+  color: #bae6fd !important;
+}
+
+html.dark .stage-active-badge-washing {
+  background-color: rgba(69, 26, 3, 0.95) !important;
+  border-color: rgba(245, 158, 11, 0.8) !important;
+  color: #fef08a !important;
+}
+html.dark .stage-active-badge-washing * {
+  color: #fef08a !important;
+}
+
+html.dark .stage-active-badge-ready {
+  background-color: rgba(2, 44, 34, 0.95) !important;
+  border-color: rgba(16, 185, 129, 0.8) !important;
+  color: #a7f3d0 !important;
+}
+html.dark .stage-active-badge-ready * {
+  color: #a7f3d0 !important;
 }
 
 html.dark [class*="bg-purple-50"],

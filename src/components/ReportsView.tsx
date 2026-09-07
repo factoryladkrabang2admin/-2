@@ -70,7 +70,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ onGenerateReport }) =>
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header & Range Switcher */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-[#1a1c1c] tracking-tight">
             Analytics Overview

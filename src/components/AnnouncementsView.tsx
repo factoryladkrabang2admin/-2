@@ -301,7 +301,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
         </div>
 
         {/* Clean Header Content */}
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/50 backdrop-blur-md border border-white/70 flex items-center justify-center shadow-xl shrink-0 animate-pr-icon-1">
               <Megaphone className="w-7 h-7 sm:w-8 sm:h-8 text-slate-900" />
