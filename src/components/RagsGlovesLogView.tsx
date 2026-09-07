@@ -703,8 +703,8 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-              {onBackToPipeline && (
+            {onBackToPipeline && (
+              <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
                 <button
                   type="button"
                   onClick={onBackToPipeline}
@@ -714,14 +714,8 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>{language === 'th' ? 'กลับหน้ารายการซัก-อบผ้า' : 'Back to Laundry'}</span>
                 </button>
-              )}
-
-              {/* Read-Only Google Sheets live indicator */}
-              <span className="px-2.5 py-0.5 rounded-full bg-white/80 text-[#6d4c41] border border-[#d7ccc8] text-xs font-bold flex items-center gap-1.5 shadow-2xs">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-[#8d5b4c]" />
-                <span>{language === 'th' ? 'โหมดอ่านอย่างเดียว (ลิงก์ Google Sheets)' : 'Read-Only (Google Sheets Live)'}</span>
-              </span>
-            </div>
+              </div>
+            )}
 
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#3e2723] flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8d5b4c] to-[#5d4037] text-white flex items-center justify-center shadow-md">

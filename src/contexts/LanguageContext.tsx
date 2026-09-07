@@ -55,6 +55,9 @@ export interface Translations {
   notifications: string;
   helpAndDocs: string;
   profileDetails: string;
+  darkMode: string;
+  lightMode: string;
+  themeMode: string;
   workspaceSettings: string;
   documentationApi: string;
   signOut: string;
@@ -304,6 +307,9 @@ export const translations: Record<Language, Translations> = {
     notifications: 'การแจ้งเตือน',
     helpAndDocs: 'คู่มือและความช่วยเหลือ',
     profileDetails: 'ข้อมูลโปรไฟล์',
+    darkMode: 'โหมดมืด (Dark Mode)',
+    lightMode: 'โหมดสว่าง (Light Mode)',
+    themeMode: 'โหมดการแสดงผล',
     workspaceSettings: 'ตั้งค่า',
     documentationApi: 'เอกสารและ API',
     signOut: 'ออกจากระบบ',
@@ -551,6 +557,9 @@ export const translations: Record<Language, Translations> = {
     notifications: 'Notifications',
     helpAndDocs: 'Help & Documentation',
     profileDetails: 'Profile Details',
+    darkMode: 'Dark Mode',
+    lightMode: 'Light Mode',
+    themeMode: 'Appearance Mode',
     workspaceSettings: 'Settings',
     documentationApi: 'Documentation & API',
     signOut: 'Sign Out',

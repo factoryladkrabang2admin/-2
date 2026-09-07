@@ -181,9 +181,10 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
   if (!isAuthenticated || !user) return false;
   if (user.isAdmin === true) return true;
   const username = (user.username || '').toLowerCase().replace(/^@/, '').trim();
-  if (username === 'reizosischen' || username === 'mark' || username === 'admin') return true;
+  if (username === 'reizosischen' || username === 'mark' || username === 'admin' || username.includes('admin')) return true;
 
   const role = (user.role || '').toLowerCase().trim();
+  const name = (user.name || '').toLowerCase().trim();
   
   if (
     role === 'admin' ||
@@ -196,7 +197,11 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
     role.includes('page admin') ||
     role.includes('supervisor') ||
     role.includes('manager') ||
-    role.includes('หัวหน้า')
+    role.includes('หัวหน้า') ||
+    name.includes('ผู้ดูแล') ||
+    name.includes('แอดมินเพจ') ||
+    name.includes('แอดมิน') ||
+    name.includes('admin')
   ) {
     return true;
   }

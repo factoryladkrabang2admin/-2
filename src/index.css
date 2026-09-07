@@ -8,6 +8,110 @@
   }
 }
 
+/* Dark Mode Theme Engine */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  color: #e2e8f0;
+  background-color: #0b1120;
+}
+
+/* Global Dark Mode Surface Overrides */
+html.dark .bg-white {
+  background-color: #151f32 !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-gray-50,
+html.dark .bg-[#f9f9f9],
+html.dark .bg-[#f8fafc] {
+  background-color: #0d1527 !important;
+}
+
+html.dark .bg-slate-100,
+html.dark .bg-gray-100,
+html.dark .bg-[#f3f4f6],
+html.dark .bg-[#f1f5f9],
+html.dark .bg-[#f3f3f4] {
+  background-color: #1e293b !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300,
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-[#e2e8f0],
+html.dark .border-[#c4c6cf],
+html.dark .border-[#f3f3f4] {
+  border-color: #2b3952 !important;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-[#1a1c1c],
+html.dark .text-[#002045] {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-[#43474e] {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-[#74777f] {
+  color: #94a3b8 !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Moving gradient headers in dark mode */
+html.dark .animated-laundry-header {
+  background: linear-gradient(-45deg, #0d2137, #132f4c, #0a192b, #173859, #0d2137);
+  background-size: 300% 300%;
+}
+html.dark .animated-meeting-purple-header {
+  background: linear-gradient(-45deg, #24143d, #1a0f2c, #301a52, #150c23, #24143d);
+  background-size: 300% 300%;
+}
+html.dark .animated-schedule-green-header {
+  background: linear-gradient(-45deg, #09261a, #051a12, #103b29, #071e15, #09261a);
+  background-size: 300% 300%;
+}
+html.dark .animated-rags-brown-header {
+  background: linear-gradient(-45deg, #2b1d16, #1f1510, #38271e, #18100c, #2b1d16);
+  background-size: 300% 300%;
+}
+html.dark .animated-ot-yellow-header {
+  background: linear-gradient(-45deg, #30260a, #211a07, #3e320e, #191405, #30260a);
+  background-size: 300% 300%;
+}
+html.dark .animated-equipment-red-header {
+  background: linear-gradient(-45deg, #331217, #240d10, #42181f, #19090b, #331217);
+  background-size: 300% 300%;
+}
+
 .card-shadow {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
 }

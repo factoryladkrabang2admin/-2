@@ -16,9 +16,12 @@ import {
   X, 
   Sparkles,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { useLanguage, LANGUAGE_CONFIGS, getLanguageConfig } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { FlagIcon } from './FlagIcon';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 
@@ -44,6 +47,7 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
   onLogout,
 }) => {
   const { language, setLanguage, t } = useLanguage();
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const currentLang = getLanguageConfig(language);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -385,6 +389,16 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            toggleDarkMode();
+                          }}
+                          className="p-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors shadow-2xs cursor-pointer"
+                          title={isDarkMode ? t.lightMode : t.darkMode}
+                        >
+                          {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             setIsOpen(false);
                             onOpenProfile();
                           }}
@@ -407,17 +421,29 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsOpen(false);
-                        onLogin?.();
-                      }}
-                      className="w-full py-2 px-3 rounded-lg bg-[#002045] hover:bg-[#003366] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98"
-                    >
-                      <LogIn className="w-4 h-4 text-sky-300" />
-                      <span>{language === 'th' ? 'เข้าสู่ระบบ (Sign In)' : t.signIn}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleDarkMode();
+                        }}
+                        className="p-2 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors shadow-2xs cursor-pointer shrink-0"
+                        title={isDarkMode ? t.lightMode : t.darkMode}
+                      >
+                        {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-slate-600" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsOpen(false);
+                          onLogin?.();
+                        }}
+                        className="flex-1 py-2 px-3 rounded-lg bg-[#002045] hover:bg-[#003366] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98"
+                      >
+                        <LogIn className="w-4 h-4 text-sky-300" />
+                        <span>{language === 'th' ? 'เข้าสู่ระบบ (Sign In)' : t.signIn}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 

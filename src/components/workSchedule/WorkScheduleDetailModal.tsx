@@ -28,6 +28,15 @@ export const WorkScheduleDetailModal: React.FC<WorkScheduleDetailModalProps> = (
     return getScheduleEmployeeDepartment(name) || fallbackDept || 'ฝ่ายปฏิบัติการ';
   };
 
+  // หากมีพนักงานที่มีชื่อใน ลาพักร้อน, ลาป่วย, ลากิจ, ขาดงาน, วันนักขัตฤกษ์
+  // ไม่ต้องแสดงในส่วนวันหยุดประจำสัปดาห์ เนื่องจากมีข้อมูลในการลาแล้ว
+  const leaveEmployeeNames = new Set(
+    schedule.leaveEmployees.map(emp => (emp.name || '').trim().toLowerCase())
+  );
+  const displayOffDutyEmployees = schedule.offDutyEmployees.filter(
+    emp => !leaveEmployeeNames.has((emp.name || '').trim().toLowerCase())
+  );
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl p-6 space-y-6">
@@ -109,14 +118,14 @@ export const WorkScheduleDetailModal: React.FC<WorkScheduleDetailModalProps> = (
           )}
 
           {/* Off Duty Section */}
-          {schedule.offDutyEmployees.length > 0 && (
+          {displayOffDutyEmployees.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <Moon className="w-4 h-4 text-slate-500" />
-                วันหยุดประจำสัปดาห์ / ไม่เข้ากะ ({schedule.offDutyEmployees.length} คน)
+                วันหยุดประจำสัปดาห์ / ไม่เข้ากะ ({displayOffDutyEmployees.length} คน)
               </h4>
               <div className="flex flex-wrap gap-2">
-                {schedule.offDutyEmployees.map((emp, idx) => (
+                {displayOffDutyEmployees.map((emp, idx) => (
                   <span
                     key={idx}
                     className="inline-flex items-center px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200"

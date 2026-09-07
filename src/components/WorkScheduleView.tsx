@@ -284,7 +284,26 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
     }
 
     const todayOnDutyCount = todaySchedule.totalOnDuty;
-    const todayLeavesAndOffCount = todaySchedule.totalLeaves + todaySchedule.totalOffDuty;
+    
+    // คำนวณจำนวนคน ลา / หยุด (เช่น ลา / หยุด (วันจันทร์))
+    // หากมีพนักงานที่มีชื่อในคอลัมน์ ลาพักร้อน, ลาป่วย, ลากิจ, ขาดงาน, วันนักขัตฤกษ์ ชื่อตรงกับ วันหยุดประจำสัปดาห์ ให้นับเพียงแค่ หนึ่งคน เท่านั้น
+    const uniqueLeaveAndOffDutyNames = new Set<string>();
+
+    todaySchedule.leaveEmployees.forEach(emp => {
+      const cleanName = (emp.name || '').trim();
+      if (cleanName) {
+        uniqueLeaveAndOffDutyNames.add(cleanName);
+      }
+    });
+
+    todaySchedule.offDutyEmployees.forEach(emp => {
+      const cleanName = (emp.name || '').trim();
+      if (cleanName) {
+        uniqueLeaveAndOffDutyNames.add(cleanName);
+      }
+    });
+
+    const todayLeavesAndOffCount = uniqueLeaveAndOffDutyNames.size;
 
     return {
       todayOnDutyCount,

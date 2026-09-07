@@ -15,10 +15,13 @@ import {
   Upload,
   Sparkles,
   RefreshCw,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { CURRENT_USER_AVATAR, DEFAULT_ADMIN_USER, AdminUserAccount, saveUpdatedUserCredentials } from '../data/mockData';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { AVATAR_PRESETS } from '../data/avatarPresets';
 
 interface ProfileModalProps {
@@ -37,6 +40,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onLogout 
 }) => {
   const { language } = useLanguage();
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const [userAccount, setUserAccount] = useState<AdminUserAccount>(currentUser);
 
   const [username, setUsername] = useState(currentUser.username);
@@ -278,6 +282,29 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Theme / Dark Mode toggle under Profile Information */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                {isDarkMode ? <Moon className="w-4 h-4 text-indigo-500" /> : <Sun className="w-4 h-4 text-amber-500" />}
+              </div>
+              <div>
+                <p className="font-bold text-xs text-[#1a1c1c]">{language === 'th' ? 'โหมดมืด (Dark Mode)' : 'Dark Mode'}</p>
+                <p className="text-[11px] text-[#74777f]">{isDarkMode ? (language === 'th' ? 'เปิดใช้งานธีมมืดอยู่' : 'Dark mode active') : (language === 'th' ? 'เปิดใช้งานธีมสว่างอยู่' : 'Light mode active')}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className={`w-11 h-6 rounded-full p-1 transition-colors flex items-center cursor-pointer ${
+                isDarkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 justify-start'
+              }`}
+              title={isDarkMode ? (language === 'th' ? 'เปลี่ยนเป็นโหมดสว่าง' : 'Switch to Light Mode') : (language === 'th' ? 'เปลี่ยนเป็นโหมดมืด' : 'Switch to Dark Mode')}
+            >
+              <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
+            </button>
           </div>
 
           {/* Account Credentials Section (Username & Password) */}

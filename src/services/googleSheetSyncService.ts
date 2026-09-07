@@ -1932,6 +1932,15 @@ export function convertSheetRowsToWorkSchedule(csvText: string): DailyWorkSchedu
       }
     });
 
+    // หากมีพนักงานที่มีชื่อในคอลัมน์ ลาพักร้อน, ลาป่วย, ลากิจ ขาดงาน, วันนักขัตฤกษ์ ตรงกับ วันหยุดประจำสัปดาห์
+    // ให้ตัดชื่อออกจากวันหยุดประจำสัปดาห์ ไม่ต้องแสดง/นับเป็นวันหยุดประจำสัปดาห์ เนื่องจากมีข้อมูลการลาแล้ว
+    const leaveEmployeeNamesSet = new Set(
+      leaveEmployees.map(l => (l.name || '').trim().toLowerCase())
+    );
+    const finalOffDutyEmployees = offDutyEmployees.filter(
+      emp => !leaveEmployeeNamesSet.has((emp.name || '').trim().toLowerCase())
+    );
+
     // Format Thai Date string (e.g. 1/8/2026 -> 1 ส.ค. 2569)
     let formattedDate = dateStr;
     const dateParts = dateStr.split(/[-/.]/);
@@ -1951,10 +1960,10 @@ export function convertSheetRowsToWorkSchedule(csvText: string): DailyWorkSchedu
       dateStr,
       formattedDate,
       onDutyEmployees,
-      offDutyEmployees,
+      offDutyEmployees: finalOffDutyEmployees,
       leaveEmployees,
       totalOnDuty: onDutyEmployees.length,
-      totalOffDuty: offDutyEmployees.length,
+      totalOffDuty: finalOffDutyEmployees.length,
       totalLeaves: leaveEmployees.length,
     });
 
@@ -2979,7 +2988,7 @@ export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1zFk
 
 export const SOFTENER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217';
 export const SOFTENER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/export?format=csv&gid=1462351217';
-export const SOFTENER_EQUIPMENT_FORM_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217';
+export const SOFTENER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeO-DULwAXxDIj2lb7D75UMuKmEB6wlt-n_RuOFm7_LDtv5lw/viewform?usp=sharing&ouid=116671584161777218123';
 
 export const GOWN_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902';
 export const GOWN_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/export?format=csv&gid=1537050902';

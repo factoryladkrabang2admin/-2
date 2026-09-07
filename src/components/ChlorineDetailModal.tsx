@@ -25,12 +25,14 @@ interface ChlorineDetailModalProps {
   isOpen: boolean;
   record: ChlorineInspectionRecord | null;
   onClose: () => void;
+  canAccessGoogleSheet?: boolean;
 }
 
 export const ChlorineDetailModal: React.FC<ChlorineDetailModalProps> = ({
   isOpen,
   record,
   onClose,
+  canAccessGoogleSheet = false,
 }) => {
   const { language } = useLanguage();
   const [copiedCode, setCopiedCode] = useState(false);
@@ -222,31 +224,33 @@ export const ChlorineDetailModal: React.FC<ChlorineDetailModalProps> = ({
               </div>
             </div>
 
-            {/* Google Sheets Reference Banner */}
-            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
-                  <FlaskConical className="w-5 h-5 text-amber-700" />
+            {/* Google Sheets Reference Banner - เฉพาะ ผู้ดูแลและแอดมินเพจ เท่านั้น */}
+            {canAccessGoogleSheet && (
+              <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
+                    <FlaskConical className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">
+                      {language === 'th' ? 'ฐานข้อมูลสุ่มตรวจคลอรีน Google Sheets' : 'Google Sheets Chlorine Database'}
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      {language === 'th' ? 'เชื่อมต่อข้อมูลสดแบบสองทางกับชีตหลัก (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Connected to central inspection sheet (Supervisors & Page Admins only)'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800">
-                    {language === 'th' ? 'ฐานข้อมูลสุ่มตรวจคลอรีน Google Sheets' : 'Google Sheets Chlorine Database'}
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    {language === 'th' ? 'เชื่อมต่อข้อมูลสดแบบสองทางกับชีตหลัก' : 'Connected to central inspection sheet'}
-                  </p>
-                </div>
+                <a
+                  href={CHLORINE_SHEET_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>{language === 'th' ? 'เปิดชีต' : 'Open Sheet'}</span>
+                </a>
               </div>
-              <a
-                href={CHLORINE_SHEET_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5 shrink-0"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>{language === 'th' ? 'เปิดชีต' : 'Open Sheet'}</span>
-              </a>
-            </div>
+            )}
           </div>
 
           {/* Footer Actions */}

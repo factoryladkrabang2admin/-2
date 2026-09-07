@@ -17,10 +17,13 @@ import {
   Building2,
   Mail,
   Server,
-  Hash
+  Hash,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { NavigationTab, LaundryOrder } from '../types';
 import { useLanguage, LANGUAGE_CONFIGS, getLanguageConfig } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { FlagIcon } from './FlagIcon';
 import { RotatingAvatar } from './RotatingAvatar';
 
@@ -61,6 +64,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   onLogout,
 }) => {
   const { language, setLanguage, t } = useLanguage();
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
@@ -495,6 +499,33 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                       <User className="w-4 h-4 text-[#74777f]" />
                       {t.profileDetails}
                     </button>
+
+                    {/* Dark Mode button directly under ข้อมูลโปรไฟล์ */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleDarkMode();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-[#43474e] hover:bg-[#f3f3f4] hover:text-[#002045] flex items-center justify-between cursor-pointer transition-colors"
+                      title={isDarkMode ? t.lightMode : t.darkMode}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {isDarkMode ? (
+                          <Sun className="w-4 h-4 text-amber-500 shrink-0" />
+                        ) : (
+                          <Moon className="w-4 h-4 text-indigo-500 shrink-0" />
+                        )}
+                        <span>{isDarkMode ? t.lightMode : t.darkMode}</span>
+                      </div>
+                      <div
+                        className={`w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center ${
+                          isDarkMode ? 'bg-indigo-600 justify-end' : 'bg-slate-300 justify-start'
+                        }`}
+                      >
+                        <div className="w-3.5 h-3.5 rounded-full bg-white shadow-xs" />
+                      </div>
+                    </button>
+
                     {isUserAdmin && (
                       <button
                         onClick={() => {
@@ -526,14 +557,24 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             )}
           </div>
         ) : (
-          <button
-            onClick={onLogin}
-            className="p-2 text-[#002045] hover:text-[#0061a5] hover:bg-[#d2e4ff]/40 bg-slate-100/90 rounded-full transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 border border-slate-200/80 shrink-0"
-            aria-label={t.signIn}
-            title={language === 'th' ? 'เข้าสู่ระบบ (Sign In)' : t.signIn}
-          >
-            <LogIn className="w-5 h-5 text-[#002045]" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 text-[#43474e] hover:text-[#002045] hover:bg-slate-100 rounded-full transition-all duration-200 flex items-center justify-center cursor-pointer border border-slate-200/80 shadow-2xs shrink-0"
+              title={isDarkMode ? t.lightMode : t.darkMode}
+              aria-label={isDarkMode ? t.lightMode : t.darkMode}
+            >
+              {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
+            </button>
+            <button
+              onClick={onLogin}
+              className="p-2 text-[#002045] hover:text-[#0061a5] hover:bg-[#d2e4ff]/40 bg-slate-100/90 rounded-full transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 border border-slate-200/80 shrink-0"
+              aria-label={t.signIn}
+              title={language === 'th' ? 'เข้าสู่ระบบ (Sign In)' : t.signIn}
+            >
+              <LogIn className="w-5 h-5 text-[#002045]" />
+            </button>
+          </div>
         )}
       </div>
     </header>

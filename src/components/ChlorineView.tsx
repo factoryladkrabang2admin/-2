@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { ChlorineInspectionRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { 
   CHLORINE_SHEET_URL, 
   CHLORINE_FORM_URL,
@@ -53,7 +54,7 @@ import { ChlorineAnalyticsModal } from './ChlorineAnalyticsModal';
 import { ChlorineFilterModal, ChlorineFilters } from './ChlorineFilterModal';
 
 interface ChlorineViewProps {
-  currentUser?: { name: string; username?: string; role?: string } | null;
+  currentUser?: AdminUserAccount | { name: string; username?: string; role?: string; isAdmin?: boolean } | null;
   isAuthenticated?: boolean;
 }
 
@@ -194,6 +195,9 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
   isAuthenticated = false,
 }) => {
   const { language } = useLanguage();
+
+  // Access control: Restrict Google Sheet visibility to only Supervisors and Page Admins
+  const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser as AdminUserAccount, isAuthenticated);
 
   // Records state
   const [records, setRecords] = useState<ChlorineInspectionRecord[]>([]);
@@ -570,17 +574,19 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
                 <BarChart3 className="w-5 h-5 text-blue-600 stroke-[2]" />
               </button>
 
-              {/* Google Sheets Link Button (Icon only) */}
-              <a
-                href={CHLORINE_SHEET_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-blue-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-blue-300"
-                title={language === 'th' ? 'เปิด Google Sheets ต้นฉบับ' : 'Open Google Sheets'}
-                aria-label="Google Sheet"
-              >
-                <FileSpreadsheet className="w-5 h-5 text-emerald-700 stroke-[2]" />
-              </a>
+              {/* Google Sheets Link Button (Icon only) - เฉพาะ ผู้ดูแลและแอดมินเพจ เท่านั้น */}
+              {canAccessGoogleSheet && (
+                <a
+                  href={CHLORINE_SHEET_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-blue-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-blue-300"
+                  title={language === 'th' ? 'เปิด Google Sheets ต้นฉบับ (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Open Google Sheets (Supervisors & Page Admins only)'}
+                  aria-label="Google Sheet"
+                >
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-700 stroke-[2]" />
+                </a>
+              )}
 
               {/* Filter Button */}
               <button
@@ -1708,6 +1714,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
         <ChlorineDetailModal
           isOpen={isDetailModalOpen}
           record={selectedRecord}
+          canAccessGoogleSheet={canAccessGoogleSheet}
           onClose={() => {
             setIsDetailModalOpen(false);
             setSelectedRecord(null);
