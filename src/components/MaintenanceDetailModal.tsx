@@ -21,6 +21,7 @@ import {
 import { MaintenanceTicket, MaintenanceStatus } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { MAINTENANCE_SHEET_URL } from '../services/googleSheetSyncService';
+import { InProgressClockAnimatedIcon } from './MaintenanceStatusIcons';
 
 interface MaintenanceDetailModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const MaintenanceDetailModal: React.FC<MaintenanceDetailModalProps> = ({
       case 'อยู่ระหว่างดำเนินการ':
         return {
           bg: 'bg-sky-50 text-sky-800 border-sky-200',
-          icon: <Clock className="w-4 h-4 text-sky-600 animate-spin" />,
+          icon: <InProgressClockAnimatedIcon size="sm" iconClassName="text-sky-600" />,
           label: language === 'th' ? 'อยู่ระหว่างดำเนินการ (In Progress)' : 'In Progress',
         };
       case 'แจ้งใหม่':

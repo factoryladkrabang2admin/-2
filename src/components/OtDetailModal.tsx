@@ -18,6 +18,7 @@ import {
 import { OtRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { formatOtHoursDisplay } from '../services/googleSheetSyncService';
+import { OtApprovedAnimatedIcon, OtConfirmAnimatedIcon } from './OtStatusIcons';
 
 interface OtDetailModalProps {
   record: OtRecord | null;
@@ -27,7 +28,6 @@ interface OtDetailModalProps {
 export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose }) => {
   const { language } = useLanguage();
   const [copiedDoc, setCopiedDoc] = useState(false);
-  const [copiedEmpId, setCopiedEmpId] = useState(false);
 
   useEffect(() => {
     if (!record) return;
@@ -49,13 +49,6 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
     navigator.clipboard.writeText(record.docNo);
     setCopiedDoc(true);
     setTimeout(() => setCopiedDoc(false), 2000);
-  };
-
-  const handleCopyEmpId = () => {
-    if (!record.employeeId || record.employeeId === '-') return;
-    navigator.clipboard.writeText(record.employeeId);
-    setCopiedEmpId(true);
-    setTimeout(() => setCopiedEmpId(false), 2000);
   };
 
   const handlePrint = () => {
@@ -89,8 +82,12 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
                       : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
                   }`}
                 >
-                  {isApproved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                  {record.status}
+                  {isApproved ? (
+                    <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-300" showSparkle={false} />
+                  ) : (
+                    <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-300" />
+                  )}
+                  <span>{record.status}</span>
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold mt-1 tracking-tight text-white flex items-center gap-2">
@@ -166,26 +163,14 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Employee ID */}
+              {/* Employee Full Name */}
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0">
                   <User className="w-4 h-4 text-slate-600" />
                 </div>
                 <div>
-                  <span className="text-xs text-slate-500 block">{language === 'th' ? 'รหัสพนักงาน' : 'Employee ID'}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold font-mono text-[#002045] text-base">{record.employeeId}</span>
-                    {record.employeeId && record.employeeId !== '-' && (
-                      <button
-                        type="button"
-                        onClick={handleCopyEmpId}
-                        className="text-slate-400 hover:text-slate-700 cursor-pointer"
-                        title={language === 'th' ? 'คัดลอกรหัสพนักงาน' : 'Copy ID'}
-                      >
-                        {copiedEmpId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
-                  </div>
+                  <span className="text-xs text-slate-500 block">{language === 'th' ? 'ชื่อ - นามสกุล' : 'Full Name'}</span>
+                  <span className="font-bold text-[#002045] text-base">{record.employeeName}</span>
                 </div>
               </div>
 

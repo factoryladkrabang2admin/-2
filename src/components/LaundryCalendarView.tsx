@@ -3,6 +3,7 @@ import { LaundryOrder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { normalizeDate } from '../services/googleSheetSyncService';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
+import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -431,9 +432,9 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                       >
                         <div className="flex items-center gap-1 min-w-0 truncate">
                           {isWashing ? (
-                            <Waves className="w-2.5 h-2.5 shrink-0 text-amber-600 animate-spin" />
+                            <WashingMachineActiveIcon size="xs" iconClassName="text-amber-700" />
                           ) : (
-                            <CheckCircle2 className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
+                            <ReadyStatusAnimatedIcon size="xs" iconClassName="text-emerald-700" />
                           )}
                           <span className="truncate font-bold">{order.customerRoomOrDept || order.trackingCode}</span>
                         </div>
@@ -518,11 +519,11 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                     {selectedDayOrders.length > 0 && (
                       <>
                         <span className="bg-amber-400/20 text-amber-200 border border-amber-300/30 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Waves className="w-3 h-3 text-amber-300" />
+                          <WashingMachineActiveIcon size="xs" iconClassName="text-amber-300" />
                           {selectedDayWashingCount} {language === 'th' ? 'กำลังซัก' : 'washing'}
                         </span>
                         <span className="bg-emerald-400/20 text-emerald-200 border border-emerald-300/30 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-300" />
+                          <ReadyStatusAnimatedIcon size="xs" iconClassName="text-emerald-300" />
                           {selectedDayReadyCount} {language === 'th' ? 'เสร็จแล้ว' : 'ready'}
                         </span>
                         <span className="bg-blue-400/20 text-blue-100 border border-blue-300/30 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -604,12 +605,12 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                             >
                               {isReady ? (
                                 <>
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <ReadyStatusAnimatedIcon size="xs" iconClassName="text-emerald-600" />
                                   <span>{language === 'th' ? 'เสร็จแล้ว' : 'Ready'}</span>
                                 </>
                               ) : (
                                 <>
-                                  <Waves className="w-3 h-3 text-amber-600 animate-spin shrink-0" />
+                                  <WashingMachineActiveIcon size="xs" iconClassName="text-amber-600" />
                                   <span>{language === 'th' ? 'กำลังซัก' : 'Washing'}</span>
                                 </>
                               )}

@@ -20,6 +20,12 @@ import {
 } from 'lucide-react';
 import { MaintenanceTicket } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { 
+  AllTicketsAnimatedIcon, 
+  RepairingActiveIcon, 
+  CompletedRepairAnimatedIcon,
+  InProgressClockAnimatedIcon
+} from './MaintenanceStatusIcons';
 
 interface MaintenanceAnalyticsModalProps {
   isOpen: boolean;
@@ -444,7 +450,7 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
             <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
                 <span>{language === 'th' ? 'ใบแจ้งงานทั้งหมด' : 'Total Work Orders'}</span>
-                <Wrench className="w-4 h-4 text-orange-600" />
+                <AllTicketsAnimatedIcon size="sm" iconClassName="text-orange-600" />
               </div>
               <p className="text-2xl sm:text-3xl font-black text-[#002045]">{totalCount.toLocaleString()}</p>
               <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md self-start mt-1">
@@ -456,7 +462,7 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
             <div className="p-4 rounded-2xl bg-white border border-amber-200/80 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between text-amber-700 text-xs font-bold mb-1">
                 <span>{language === 'th' ? 'แจ้งใหม่ (รอดำเนินการ)' : 'New Tickets'}</span>
-                <Clock className="w-4 h-4 text-amber-500" />
+                <RepairingActiveIcon size="sm" iconClassName="text-amber-500" showGear />
               </div>
               <p className="text-2xl sm:text-3xl font-black text-amber-600">{newCount}</p>
               <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md self-start mt-1">
@@ -468,7 +474,7 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
             <div className="p-4 rounded-2xl bg-white border border-sky-200/80 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between text-sky-700 text-xs font-bold mb-1">
                 <span>{language === 'th' ? 'กำลังดำเนินการ' : 'In Progress'}</span>
-                <AlertTriangle className="w-4 h-4 text-sky-500" />
+                <InProgressClockAnimatedIcon size="sm" iconClassName="text-sky-500" />
               </div>
               <p className="text-2xl sm:text-3xl font-black text-sky-600">{inProgressCount}</p>
               <span className="text-[11px] font-semibold text-sky-800 bg-sky-50 px-2 py-0.5 rounded-md self-start mt-1">
@@ -480,7 +486,7 @@ export const MaintenanceAnalyticsModal: React.FC<MaintenanceAnalyticsModalProps>
             <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between text-emerald-700 text-xs font-bold mb-1">
                 <span>{language === 'th' ? 'ซ่อมเสร็จสิ้น' : 'Completed'}</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CompletedRepairAnimatedIcon size="sm" iconClassName="text-emerald-600" showSparkle />
               </div>
               <p className="text-2xl sm:text-3xl font-black text-emerald-700">{completedCount}</p>
               <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md self-start mt-1">

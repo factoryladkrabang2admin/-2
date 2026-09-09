@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { QRCodeSVG } from 'qrcode.react';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
+import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import {
   X,
   Shirt,
@@ -221,12 +222,12 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
                 }`}>
                   {currentStage === 'ready' ? (
                     <>
-                      <CheckCircle2 className="w-3 h-3" />
+                      <ReadyStatusAnimatedIcon size="xs" iconClassName="text-white" />
                       <span>{language === 'th' ? 'ซักเสร็จแล้ว' : 'Ready'}</span>
                     </>
                   ) : (
                     <>
-                      <Waves className="w-3 h-3 animate-spin" />
+                      <WashingMachineActiveIcon size="xs" iconClassName="text-amber-950" />
                       <span>{language === 'th' ? 'อยู่ระหว่างซัก' : 'In Washing'}</span>
                     </>
                   )}
@@ -310,12 +311,12 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
                 }`}>
                   {currentStage === 'ready' ? (
                     <>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <ReadyStatusAnimatedIcon size="sm" iconClassName="text-emerald-600" />
                       <span>{language === 'th' ? 'ซักเสร็จแล้ว' : 'Washed / Ready'}</span>
                     </>
                   ) : (
                     <>
-                      <Waves className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                      <WashingMachineActiveIcon size="sm" iconClassName="text-amber-600" />
                       <span>{language === 'th' ? 'อยู่ระหว่างซัก' : 'In Washing'}</span>
                     </>
                   )}
@@ -346,9 +347,9 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
                             : 'bg-gray-100 text-gray-400'
                         }`}>
                           {isWashing ? (
-                            <Waves className={`w-5 h-5 ${isSelected ? 'animate-spin' : ''}`} />
+                            <WashingMachineActiveIcon size="md" iconClassName={isSelected ? 'text-white' : 'text-gray-400'} />
                           ) : (
-                            <CheckCircle2 className="w-5 h-5" />
+                            <ReadyStatusAnimatedIcon size="md" iconClassName={isSelected ? 'text-white' : 'text-gray-400'} />
                           )}
                         </div>
                         <div>

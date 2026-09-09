@@ -1128,6 +1128,214 @@ html.dark .animated-equipment-red-header [class*="bg-white"] {
   animation: sparkleGlint 3s ease-in-out infinite;
 }
 
+/* ------------------------------------------------------------- */
+/* Laundry Status Animations: Washing Machine Washing & Ready   */
+/* ------------------------------------------------------------- */
+@keyframes washingMachineRumble {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  15% {
+    transform: translate(-0.8px, 0.5px) rotate(-1.5deg);
+  }
+  30% {
+    transform: translate(0.8px, -0.4px) rotate(1.5deg);
+  }
+  45% {
+    transform: translate(-0.6px, -0.4px) rotate(-1deg);
+  }
+  60% {
+    transform: translate(0.6px, 0.4px) rotate(1deg);
+  }
+  75% {
+    transform: translate(-0.4px, 0.3px) rotate(-0.5deg);
+  }
+  90% {
+    transform: translate(0.4px, -0.3px) rotate(0.5deg);
+  }
+}
+
+@keyframes washingDrumSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes readySuccessBounce {
+  0%, 100% {
+    transform: scale(1) translateY(0);
+  }
+  25% {
+    transform: scale(1.15) translateY(-2px) rotate(-3deg);
+  }
+  50% {
+    transform: scale(0.96) translateY(0.5px) rotate(2deg);
+  }
+  75% {
+    transform: scale(1.05) translateY(-0.5px) rotate(0deg);
+  }
+}
+
+.animate-washing-machine {
+  animation: washingMachineRumble 0.75s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-washing-drum {
+  animation: washingDrumSpin 1.4s linear infinite;
+  transform-origin: center;
+}
+
+.animate-ready-bounce {
+  animation: readySuccessBounce 2.5s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  transform-origin: center;
+}
+
+/* ------------------------------------------------------------- */
+/* Maintenance Status Animations (การแจ้งซ่อม)                   */
+/* ------------------------------------------------------------- */
+@keyframes layersFloatPulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2.5px) scale(1.08);
+  }
+}
+
+@keyframes repairWrenchAction {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-24deg);
+  }
+  40% {
+    transform: rotate(14deg);
+  }
+  60% {
+    transform: rotate(-16deg);
+  }
+  80% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes repairGearTurn {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes clockHandSweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes clockBodyTick {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.animate-layers-pulse {
+  animation: layersFloatPulse 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-wrench-repair {
+  animation: repairWrenchAction 1.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: 30% 70%;
+}
+
+.animate-repair-gear {
+  animation: repairGearTurn 4s linear infinite;
+  transform-origin: center;
+}
+
+.animate-clock-sweep {
+  animation: clockHandSweep 2.2s linear infinite;
+  transform-origin: 12px 12px;
+}
+
+.animate-clock-tick {
+  animation: clockBodyTick 2.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* ------------------------------------------------------------- */
+/* Work Schedule Status Animations (ตารางทำงาน)                 */
+/* ------------------------------------------------------------- */
+@keyframes calendarDutyBounce {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-2.5px) rotate(-3deg) scale(1.06);
+  }
+  50% {
+    transform: translateY(0) rotate(2deg);
+  }
+  75% {
+    transform: translateY(-1px) rotate(0deg);
+  }
+}
+
+@keyframes staffBriefcaseBob {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-2.5px) scale(1.07);
+  }
+  65% {
+    transform: translateY(0.5px) scale(0.98);
+  }
+}
+
+@keyframes airplaneSoarGlide {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(2.5px, -3.5px) rotate(6deg) scale(1.06);
+  }
+  50% {
+    transform: translate(0px, -1px) rotate(0deg);
+  }
+  75% {
+    transform: translate(-2px, -2.5px) rotate(-4deg);
+  }
+}
+
+.animate-calendar-duty {
+  animation: calendarDutyBounce 2.5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-staff-bob {
+  animation: staffBriefcaseBob 2.2s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-plane-glide {
+  animation: airplaneSoarGlide 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
 /* Dedicated Print Styles for Thermal Tag / Slip Printing */
 @media print {
   body * {
@@ -1391,4 +1599,71 @@ html.dark .animated-equipment-red-header [class*="bg-white"] {
 .animate-pr-pulse {
   animation: prPulseGlow 4s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   OT Status Icons Custom Animations
+   ========================================================================== */
+
+/* 1. รายการ OT ที่แสดง: เลเยอร์ลอยยกตัวอย่างนุ่มนวล */
+@keyframes otRecordsStackFloat {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-2.5px) scale(1.08);
+  }
+}
+
+/* 2. ชั่วโมง OT รวม: พุ่งทะยานเติบโตอย่างต่อเนื่อง */
+@keyframes otHoursSurge {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.14);
+  }
+}
+
+/* 3. อนุมัติแล้ว (Approved): เด้งฉลองอนุมัติอย่างมั่นใจ */
+@keyframes otApprovedPop {
+  0%, 100% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18) rotate(5deg);
+  }
+  60% {
+    transform: scale(0.96) rotate(-2deg);
+  }
+}
+
+/* 4. รอยืนยัน (Confirm): แกว่งเตือนอย่างมีชีวิตชีวา */
+@keyframes otConfirmSway {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-10deg) scale(1.1);
+  }
+  75% {
+    transform: rotate(10deg) scale(1.1);
+  }
+}
+
+.animate-ot-records-float {
+  animation: otRecordsStackFloat 2.4s ease-in-out infinite;
+}
+
+.animate-ot-hours-surge {
+  animation: otHoursSurge 2.2s ease-in-out infinite;
+}
+
+.animate-ot-approved-pop {
+  animation: otApprovedPop 2.2s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+.animate-ot-confirm-sway {
+  animation: otConfirmSway 2s ease-in-out infinite;
+}
+
 

@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { parseEquipmentDate } from '../utils/equipmentDateUtils';
 import { 
   fetchEquipmentRecordsBySubCategory,
   CLEANING_EQUIPMENT_SHEET_URL,
@@ -268,9 +269,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
       // 5. Date Range (if given)
       if (startDate || endDate) {
-        // Simple string or date check
-        if (startDate && r.date && r.date < startDate) return false;
-        if (endDate && r.date && r.date > endDate) return false;
+        const d = parseEquipmentDate(r.date) || parseEquipmentDate(r.timestamp);
+        if (!d) return false;
+        const recIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (startDate && recIso < startDate) return false;
+        if (endDate && recIso > endDate) return false;
       }
 
       return true;
@@ -736,14 +739,27 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           )}
           {selectedActionType !== 'all' && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-amber-950 font-medium shadow-2xs">
-              การกระทำ: {selectedActionType}
+              {language === 'th' ? 'สถานะ:' : 'Status:'} {selectedActionType}
               <X className="w-3 h-3 cursor-pointer text-amber-700 hover:text-red-600" onClick={() => setSelectedActionType('all')} />
             </span>
           )}
           {selectedDepartment !== 'all' && (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-amber-950 font-medium shadow-2xs">
-              แผนก: {selectedDepartment}
+              {language === 'th' ? 'แผนก:' : 'Dept:'} {selectedDepartment}
               <X className="w-3 h-3 cursor-pointer text-amber-700 hover:text-red-600" onClick={() => setSelectedDepartment('all')} />
+            </span>
+          )}
+          {(startDate || endDate) && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-amber-950 font-medium shadow-2xs">
+              <Calendar className="w-3 h-3 text-orange-600" />
+              <span>{language === 'th' ? 'วันที่:' : 'Date:'} {startDate || '...'} {language === 'th' ? 'ถึง' : 'to'} {endDate || '...'}</span>
+              <X 
+                className="w-3 h-3 cursor-pointer text-amber-700 hover:text-red-600" 
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                }} 
+              />
             </span>
           )}
           <button
@@ -1078,10 +1094,10 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 </select>
               </div>
 
-              {/* Action Type */}
+              {/* Status */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  {language === 'th' ? 'การกระทำ / สถานะ' : 'Action Type'}
+                  {language === 'th' ? 'สถานะ' : 'Status'}
                 </label>
                 <select
                   value={selectedActionType}
@@ -1094,6 +1110,55 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     <option value="คืน">{language === 'th' ? 'คืนแล้ว' : 'Returned'}</option>
                   )}
                 </select>
+              </div>
+
+              {/* Date Range with Calendar Icons */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-orange-600" />
+                  <span>{language === 'th' ? 'ค้นหาจากวันที่ ถึง วันที่' : 'Date Range (From - To)'}</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-orange-500" />
+                      <span>{language === 'th' ? 'จากวันที่' : 'From Date'}</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-orange-400 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 font-medium mb-0.5 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-orange-500" />
+                      <span>{language === 'th' ? 'ถึงวันที่' : 'To Date'}</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-orange-400 focus:bg-white"
+                    />
+                  </div>
+                </div>
+                {(startDate || endDate) && (
+                  <div className="mt-1.5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                      }}
+                      className="text-[11px] text-orange-600 hover:text-orange-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>{language === 'th' ? 'ล้างช่วงวันที่' : 'Clear dates'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Year */}

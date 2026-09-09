@@ -266,7 +266,6 @@ export const OtCalendarView: React.FC<OtCalendarViewProps> = ({ records, onSelec
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-sm text-[#002045] truncate">{record.employeeName}</span>
-                      <span className="text-xs text-slate-500 font-mono">({record.employeeId})</span>
                     </div>
                     <p className="text-xs text-slate-600 flex items-center gap-2">
                       <Building2 className="w-3.5 h-3.5 text-slate-400" />

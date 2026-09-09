@@ -36,6 +36,11 @@ import { WorkScheduleAnalyticsModal } from './workSchedule/WorkScheduleAnalytics
 import { WorkScheduleFilterModal } from './workSchedule/WorkScheduleFilterModal';
 import { WorkScheduleDetailModal } from './workSchedule/WorkScheduleDetailModal';
 import { ActivityScheduleModal } from './activitySchedule/ActivityScheduleModal';
+import { 
+  WorkingDaysAnimatedIcon, 
+  StaffCountAnimatedIcon, 
+  LeaveOffAnimatedIcon 
+} from './workSchedule/WorkScheduleStatusIcons';
 
 const STORAGE_KEY = 'proworkflow_work_schedule_cache_v1';
 const BACKGROUND_POLL_INTERVAL_MS = 20000;
@@ -542,7 +547,7 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
           {/* Box 1: จำนวนวันทำงาน (วันนี้) */}
           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-3.5 border border-emerald-200/80 shadow-xs flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
-              <CalendarCheck className="w-5 h-5" />
+              <WorkingDaysAnimatedIcon size="lg" iconClassName="text-emerald-700" showSparkle />
             </div>
             <div className="min-w-0">
               <div className="text-xs text-emerald-900/70 font-semibold truncate">
@@ -557,7 +562,7 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
           {/* Box 2: พนักงานในระบบ */}
           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-3.5 border border-emerald-200/80 shadow-xs flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
-              <Briefcase className="w-5 h-5" />
+              <StaffCountAnimatedIcon size="lg" iconClassName="text-blue-700" />
             </div>
             <div className="min-w-0">
               <div className="text-xs text-emerald-900/70 font-semibold truncate">
@@ -572,7 +577,7 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
           {/* Box 3: ลา / หยุด (วันนี้) */}
           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-3.5 border border-emerald-200/80 shadow-xs flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-rose-100 flex items-center justify-center text-rose-700 shrink-0">
-              <Plane className="w-5 h-5" />
+              <LeaveOffAnimatedIcon size="lg" iconClassName="text-rose-700" />
             </div>
             <div className="min-w-0">
               <div className="text-xs text-emerald-900/70 font-semibold truncate">
@@ -693,7 +698,7 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
                     </span>
                     {schedule.totalLeaves > 0 && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 text-xs font-bold border border-rose-200">
-                        <Plane className="w-3.5 h-3.5 text-rose-600" />
+                        <LeaveOffAnimatedIcon size="xs" iconClassName="text-rose-600" />
                         ลา {schedule.totalLeaves} คน
                       </span>
                     )}

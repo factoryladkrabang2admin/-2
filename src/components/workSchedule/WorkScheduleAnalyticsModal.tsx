@@ -24,6 +24,11 @@ import {
 } from 'lucide-react';
 import { DailyWorkSchedule } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { 
+  WorkingDaysAnimatedIcon, 
+  StaffCountAnimatedIcon, 
+  LeaveOffAnimatedIcon 
+} from './WorkScheduleStatusIcons';
 
 interface WorkScheduleAnalyticsModalProps {
   isOpen: boolean;
@@ -707,7 +712,7 @@ export const WorkScheduleAnalyticsModal: React.FC<WorkScheduleAnalyticsModalProp
             <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 shadow-2xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-800">{language === 'th' ? 'เข้างานรวม' : 'Total On-Duty'}</span>
-                <Sun className="w-4 h-4 text-emerald-600" />
+                <WorkingDaysAnimatedIcon size="xs" iconClassName="text-emerald-600" showSparkle />
               </div>
               <div className="text-2xl font-black text-emerald-950 mt-1">
                 {stats.totalOnDuty} <span className="text-xs font-normal text-emerald-700">{language === 'th' ? 'กะ' : 'shifts'}</span>
@@ -733,7 +738,7 @@ export const WorkScheduleAnalyticsModal: React.FC<WorkScheduleAnalyticsModalProp
             <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 shadow-2xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-rose-800">{language === 'th' ? 'การลา / หยุด' : 'Total Leaves'}</span>
-                <Plane className="w-4 h-4 text-rose-600" />
+                <LeaveOffAnimatedIcon size="xs" iconClassName="text-rose-600" />
               </div>
               <div className="text-2xl font-black text-rose-950 mt-1">
                 {stats.totalLeaves} <span className="text-xs font-normal text-rose-700">{language === 'th' ? 'ครั้ง' : 'times'}</span>
@@ -746,7 +751,7 @@ export const WorkScheduleAnalyticsModal: React.FC<WorkScheduleAnalyticsModalProp
             <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 shadow-2xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-800">{language === 'th' ? 'พนักงานในระบบ' : 'Staff Count'}</span>
-                <Users className="w-4 h-4 text-amber-600" />
+                <StaffCountAnimatedIcon size="xs" iconClassName="text-amber-600" />
               </div>
               <div className="text-2xl font-black text-amber-950 mt-1">
                 {displayedEmployees.length} <span className="text-xs font-normal text-amber-700">{language === 'th' ? 'คน' : 'people'}</span>

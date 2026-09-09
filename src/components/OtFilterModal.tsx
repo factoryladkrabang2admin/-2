@@ -106,7 +106,7 @@ export const OtFilterModal: React.FC<OtFilterModalProps> = ({
           {/* 1. Search Query */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-              {language === 'th' ? 'คำค้นหา (รหัสพนักงาน, ชื่อ, เลขที่เอกสาร)' : 'Search Keywords'}
+              {language === 'th' ? 'คำค้นหา (ชื่อ-นามสกุล, ฝ่ายงาน, เลขที่เอกสาร)' : 'Search Keywords'}
             </label>
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -114,7 +114,7 @@ export const OtFilterModal: React.FC<OtFilterModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchQueryChange(e.target.value)}
-                placeholder={language === 'th' ? 'ค้นหารหัสพนักงาน, ชื่อ, ฝ่ายงาน, เลขที่เอกสาร...' : 'Search employee ID, name, dept, doc no...'}
+                placeholder={language === 'th' ? 'ค้นหาชื่อ-นามสกุล, ฝ่ายงาน, เลขที่เอกสาร...' : 'Search name, department, doc no...'}
                 className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-all text-slate-800"
               />
               {searchQuery && (

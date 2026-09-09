@@ -16,7 +16,6 @@ import {
   EquipmentItemDetail,
   ChlorineInspectionRecord
 } from '../types';
-import { realtimeHub } from './realtimeService';
 import { INITIAL_RAGS_GLOVES_DATA } from '../data/mockRagsGlovesData';
 
 export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/edit?resourcekey=&gid=1278573396#gid=1278573396';
@@ -2847,13 +2846,28 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
     const category = getAnnouncementCategory(department, title);
     const status = calculateAnnouncementStatus(startDate, endDate);
 
-    // Check pinned status from realtimeHub
-    const pinInfo = realtimeHub.getAnnouncementPinInfo({
-      id: `announcement-${idx + 1}`,
-      title,
-      department,
-      isPinned: false,
-    });
+    // Check pinned status from localStorage
+    let isItemPinned = false;
+    let pinnedBy: string | undefined;
+    let pinnedAt: string | undefined;
+    try {
+      const rawPins = typeof localStorage !== 'undefined' ? localStorage.getItem('proworkflow_pinned_announcements_v1') : null;
+      if (rawPins) {
+        const parsedPins: Array<{ key: string; pinnedBy?: string; pinnedAt?: string }> = JSON.parse(rawPins);
+        const itemKey = `announcement-${idx + 1}`;
+        const titleKey = (title || '').trim();
+        const deptKey = (department || '').trim();
+        const compositeKey = `${titleKey}_${deptKey}`;
+        const found = parsedPins.find(p => p.key === itemKey || p.key === compositeKey || p.key === titleKey);
+        if (found) {
+          isItemPinned = true;
+          pinnedBy = found.pinnedBy;
+          pinnedAt = found.pinnedAt;
+        }
+      }
+    } catch {
+      // ignore
+    }
 
     announcements.push({
       id: `announcement-${idx + 1}`,
@@ -2867,9 +2881,9 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
       imageUrl: imageInfo.previewUrl || undefined,
       category,
       status,
-      isPinned: pinInfo.isPinned,
-      pinnedBy: pinInfo.pinnedBy,
-      pinnedAt: pinInfo.pinnedAt,
+      isPinned: isItemPinned,
+      pinnedBy,
+      pinnedAt,
     });
   });
 

@@ -725,8 +725,8 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
             </h1>
             <p className="text-xs sm:text-sm text-[#5d4037] mt-1 max-w-2xl font-medium">
               {language === 'th' 
-                ? 'ตารางแสดงข้อมูลน้ำหนักการคัดทิ้ง, ชั่งก่อนซัก และชั่งหลังซัก ประจำวัน จาก Google Sheets (หน่วย: KG)' 
-                : 'Daily record of discarded, pre-wash, and post-wash rags & gloves synced from Google Sheets (KG)'}
+                ? 'ตารางแสดงข้อมูลน้ำหนักการคัดทิ้ง, ชั่งก่อนซัก และชั่งหลังซัก ประจำวัน (หน่วย: KG)' 
+                : 'Daily record of discarded, pre-wash, and post-wash rags & gloves (KG)'}
             </p>
           </div>
 

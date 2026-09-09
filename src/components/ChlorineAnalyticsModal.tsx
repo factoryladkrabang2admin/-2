@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { ChlorineInspectionRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { parseDateFromRecord } from './ChlorineView';
+import { TH_MONTHS, TH_MONTHS_SHORT, EN_MONTHS } from '../utils/equipmentDateUtils';
 
 interface ChlorineAnalyticsModalProps {
   isOpen: boolean;
@@ -72,22 +74,44 @@ export const ChlorineAnalyticsModal: React.FC<ChlorineAnalyticsModalProps> = ({
 
   // Filter records
   const filteredRecords = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const currentYearMonth = todayStr.substring(0, 7);
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const curDate = now.getDate();
+
+    let targetYear = curYear;
+    let targetMonth = curMonth;
+    if (selectedMonth) {
+      const [sY, sM] = selectedMonth.split('-').map(Number);
+      if (!isNaN(sY) && !isNaN(sM)) {
+        targetYear = sY;
+        targetMonth = sM - 1;
+      }
+    }
 
     return records.filter((r) => {
-      const recDate = (r.date || '').trim();
-
       // Time Scope Filter
-      if (timeScope === 'today') {
-        if (recDate && !recDate.startsWith(todayStr)) return false;
-      } else if (timeScope === 'this_month') {
-        if (recDate && !recDate.startsWith(currentYearMonth)) return false;
-      } else if (timeScope === 'specific_month') {
-        if (recDate && !recDate.startsWith(selectedMonth)) return false;
-      } else if (timeScope === 'custom') {
-        if (startDate && recDate && recDate < startDate) return false;
-        if (endDate && recDate && recDate > endDate) return false;
+      if (timeScope !== 'all') {
+        const d = parseDateFromRecord(r);
+        if (!d) return false;
+
+        if (timeScope === 'today') {
+          if (d.getFullYear() !== curYear || d.getMonth() !== curMonth || d.getDate() !== curDate) {
+            return false;
+          }
+        } else if (timeScope === 'this_month') {
+          if (d.getFullYear() !== curYear || d.getMonth() !== curMonth) {
+            return false;
+          }
+        } else if (timeScope === 'specific_month') {
+          if (d.getFullYear() !== targetYear || d.getMonth() !== targetMonth) {
+            return false;
+          }
+        } else if (timeScope === 'custom') {
+          const recIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          if (startDate && recIso < startDate) return false;
+          if (endDate && recIso > endDate) return false;
+        }
       }
 
       // Building Filter
@@ -114,6 +138,36 @@ export const ChlorineAnalyticsModal: React.FC<ChlorineAnalyticsModalProps> = ({
       return true;
     });
   }, [records, timeScope, selectedMonth, startDate, endDate, selectedBuilding, selectedType, selectedInspector]);
+
+  const timeScopeLabel = useMemo(() => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    if (timeScope === 'today') {
+      return language === 'th'
+        ? `วันนี้ (${now.getDate()} ${TH_MONTHS_SHORT[curMonth]} ${curYear + 543})`
+        : `Today (${now.getDate()} ${EN_MONTHS[curMonth].slice(0, 3)} ${curYear})`;
+    }
+    if (timeScope === 'this_month') {
+      return language === 'th'
+        ? `เดือนปัจจุบัน (${TH_MONTHS[curMonth]} ${curYear + 543})`
+        : `This Month (${EN_MONTHS[curMonth]} ${curYear})`;
+    }
+    if (timeScope === 'specific_month') {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const mIdx = m ? m - 1 : curMonth;
+      const yr = y || curYear;
+      return language === 'th'
+        ? `เดือน ${TH_MONTHS[mIdx]} ${yr + 543}`
+        : `${EN_MONTHS[mIdx]} ${yr}`;
+    }
+    if (timeScope === 'custom') {
+      return language === 'th'
+        ? `ช่วงวันที่ ${startDate || '...'} ถึง ${endDate || '...'}`
+        : `Date Range ${startDate || '...'} to ${endDate || '...'}`;
+    }
+    return language === 'th' ? 'ข้อมูลทั้งหมด (All Time)' : 'All Time Records';
+  }, [timeScope, selectedMonth, startDate, endDate, language]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -510,6 +564,81 @@ export const ChlorineAnalyticsModal: React.FC<ChlorineAnalyticsModalProps> = ({
           </div>
         )}
 
+        {/* Quick Time Scope Bar */}
+        <div className="bg-slate-100/90 border-b border-slate-200 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1 mr-1 shrink-0">
+              <CalendarDays className="w-3.5 h-3.5 text-amber-600" />
+              <span>{language === 'th' ? 'ช่วงเวลา:' : 'Scope:'}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setTimeScope('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                timeScope === 'all'
+                  ? 'bg-[#002045] text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {language === 'th' ? 'ทั้งหมด' : 'All'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeScope('this_month')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                timeScope === 'this_month'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {language === 'th' ? 'เดือนปัจจุบัน' : 'This Month'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeScope('today')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                timeScope === 'today'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {language === 'th' ? 'วันนี้' : 'Today'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTimeScope('specific_month');
+                setIsFilterOpen(true);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                timeScope === 'specific_month'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {language === 'th' ? 'เลือกเดือน' : 'Month'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTimeScope('custom');
+                setIsFilterOpen(true);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                timeScope === 'custom'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {language === 'th' ? 'กำหนดช่วงวัน' : 'Custom'}
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-800 font-bold bg-white px-2.5 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+            {timeScopeLabel}
+          </div>
+        </div>
+
         {/* Scrollable Content */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
           {/* Active Filter Chips Bar */}
@@ -522,7 +651,7 @@ export const ChlorineAnalyticsModal: React.FC<ChlorineAnalyticsModalProps> = ({
 
               {timeScope !== 'all' && (
                 <span className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-950 font-semibold shadow-2xs">
-                  📅 {timeScope === 'today' ? (language === 'th' ? 'วันนี้' : 'Today') : timeScope === 'this_month' ? (language === 'th' ? 'เดือนนี้' : 'This Month') : timeScope === 'specific_month' ? selectedMonth : `${startDate || '...'} ~ ${endDate || '...'}`}
+                  📅 {timeScopeLabel}
                 </span>
               )}
 

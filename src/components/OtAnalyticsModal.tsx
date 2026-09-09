@@ -50,6 +50,53 @@ const PALETTE = [
   '#2563eb', // blue-600
 ];
 
+const THAI_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
+const THAI_MONTHS_SHORT = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+];
+const ENGLISH_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+/**
+ * Robust date parser supporting DD/MM/YYYY, DD-MM-YY, YYYY-MM-DD
+ */
+function parseOtDate(dateStr?: string): Date | null {
+  if (!dateStr || !dateStr.trim() || dateStr === '-') return null;
+  const clean = dateStr.trim();
+  const parts = clean.split(/[-/.]/);
+  if (parts.length === 3) {
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    const p2 = parseInt(parts[2], 10);
+
+    // Format: YYYY-MM-DD
+    if (p0 > 1000 || parts[0].length === 4) {
+      let year = p0;
+      if (year > 2400) year -= 543;
+      const d = new Date(year, p1 - 1, p2);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // Format: DD/MM/YYYY or DD-MM-YY
+    let year = p2;
+    if (year < 100) year += 2000;
+    else if (year > 2400) year -= 543;
+    const d = new Date(year, p1 - 1, p0);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function formatThaiDateDisplay(d: Date): string {
+  return `${d.getDate()} ${THAI_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear() + 543}`;
+}
+
 export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({ 
   isOpen, 
   records = [], 
@@ -99,53 +146,88 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
   }, [sourceRecords]);
 
   const availableEmployees = useMemo(() => {
-    const map = new Map<string, string>();
+    const set = new Set<string>();
     sourceRecords.forEach((r) => {
       const name = (r.employeeName || '').trim();
-      const id = (r.employeeId || '').trim();
       if (name && name !== '-') {
-        map.set(id || name, `${name}${id && id !== '-' ? ` (${id})` : ''}`);
+        set.add(name);
       }
     });
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
   }, [sourceRecords]);
 
   // Dynamic filtered records
   const filteredRecords = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const currentYearMonth = todayStr.substring(0, 7);
+    const now = new Date();
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth();
+    const todayDate = now.getDate();
 
     return sourceRecords.filter((r) => {
-      const recDate = (r.date || r.createdAt || '').trim();
+      // 1. Time Scope filtering using robust date parsing
+      if (timeScope !== 'all') {
+        const recDate = parseOtDate(r.otDate) || parseOtDate(r.recordedDate);
+        if (!recDate) return false;
 
-      // Time Scope
-      if (timeScope === 'today') {
-        if (recDate && !recDate.startsWith(todayStr)) return false;
-      } else if (timeScope === 'this_month') {
-        if (recDate && !recDate.startsWith(currentYearMonth)) return false;
-      } else if (timeScope === 'specific_month') {
-        if (recDate && !recDate.startsWith(selectedMonth)) return false;
-      } else if (timeScope === 'custom') {
-        if (startDate && recDate && recDate < startDate) return false;
-        if (endDate && recDate && recDate > endDate) return false;
+        if (timeScope === 'today') {
+          if (
+            recDate.getFullYear() !== todayYear ||
+            recDate.getMonth() !== todayMonth ||
+            recDate.getDate() !== todayDate
+          ) {
+            return false;
+          }
+        } else if (timeScope === 'this_month') {
+          if (
+            recDate.getFullYear() !== todayYear ||
+            recDate.getMonth() !== todayMonth
+          ) {
+            return false;
+          }
+        } else if (timeScope === 'specific_month') {
+          if (selectedMonth) {
+            const [yStr, mStr] = selectedMonth.split('-');
+            const targetYear = parseInt(yStr, 10);
+            const targetMonth = parseInt(mStr, 10) - 1;
+            if (
+              recDate.getFullYear() !== targetYear ||
+              recDate.getMonth() !== targetMonth
+            ) {
+              return false;
+            }
+          }
+        } else if (timeScope === 'custom') {
+          if (startDate) {
+            const startObj = new Date(`${startDate}T00:00:00`);
+            if (!isNaN(startObj.getTime()) && recDate.getTime() < startObj.getTime()) {
+              return false;
+            }
+          }
+          if (endDate) {
+            const endObj = new Date(`${endDate}T23:59:59.999`);
+            if (!isNaN(endObj.getTime()) && recDate.getTime() > endObj.getTime()) {
+              return false;
+            }
+          }
+        }
       }
 
-      // Department
+      // 2. Department
       if (selectedDept !== 'all') {
         if ((r.department || '').trim() !== selectedDept) return false;
       }
 
-      // Status
+      // 3. Status
       if (selectedStatus !== 'all') {
         const s = (r.status || '').toLowerCase();
         if (selectedStatus === 'approved' && !s.includes('approved') && !r.status.includes('อนุมัติ')) return false;
         if (selectedStatus === 'confirm' && !s.includes('confirm') && !r.status.includes('ยืนยัน')) return false;
       }
 
-      // Employee
+      // 4. Employee (strictly by Name)
       if (selectedEmployee !== 'all') {
-        const empKey = (r.employeeId && r.employeeId !== '-') ? r.employeeId : (r.employeeName || '');
-        if (empKey !== selectedEmployee && (r.employeeName || '') !== selectedEmployee) return false;
+        const empName = (r.employeeName || '').trim();
+        if (empName !== selectedEmployee) return false;
       }
 
       return true;
@@ -160,6 +242,38 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
     if (selectedEmployee !== 'all') count++;
     return count;
   }, [timeScope, selectedDept, selectedStatus, selectedEmployee]);
+
+  const timeScopeLabel = useMemo(() => {
+    const now = new Date();
+    if (timeScope === 'all') {
+      return language === 'th' ? 'ข้อมูลทั้งหมด (All Time)' : 'All Time';
+    }
+    if (timeScope === 'today') {
+      return language === 'th' 
+        ? `วันนี้ (${formatThaiDateDisplay(now)})` 
+        : `Today (${now.toLocaleDateString()})`;
+    }
+    if (timeScope === 'this_month') {
+      return language === 'th' 
+        ? `เดือนปัจจุบัน (${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543})` 
+        : `This Month (${ENGLISH_MONTHS[now.getMonth()]} ${now.getFullYear()})`;
+    }
+    if (timeScope === 'specific_month') {
+      if (!selectedMonth) return language === 'th' ? 'เลือกเดือนระบุ' : 'Specific Month';
+      const [y, m] = selectedMonth.split('-');
+      const mIdx = parseInt(m, 10) - 1;
+      const yr = parseInt(y, 10);
+      return language === 'th' 
+        ? `${THAI_MONTHS[mIdx] || m} ${yr + 543}` 
+        : `${ENGLISH_MONTHS[mIdx] || m} ${yr}`;
+    }
+    if (timeScope === 'custom') {
+      const s = startDate ? formatThaiDateDisplay(new Date(`${startDate}T00:00:00`)) : '...';
+      const e = endDate ? formatThaiDateDisplay(new Date(`${endDate}T00:00:00`)) : '...';
+      return `${s} ~ ${e}`;
+    }
+    return '';
+  }, [timeScope, selectedMonth, startDate, endDate, language]);
 
   const handleResetFilters = () => {
     setTimeScope('all');
@@ -206,9 +320,8 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
 
     (filteredRecords || []).forEach(r => {
       const recordHours = typeof r.totalHours === 'number' && !isNaN(r.totalHours) ? r.totalHours : 0;
-      const empId = r.employeeId && r.employeeId !== '-' ? r.employeeId : '';
-      const empName = r.employeeName && r.employeeName !== '-' ? r.employeeName : (empId || 'ไม่ระบุชื่อ');
-      const empKey = empId || empName;
+      const empName = (r.employeeName && r.employeeName !== '-') ? r.employeeName.trim() : 'ไม่ระบุชื่อ';
+      const empKey = empName;
       const empDept = r.department || 'ทั่วไป';
 
       // Employee tracking
@@ -288,7 +401,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
     ].filter(item => item.value > 0);
 
     const topEmployees = Array.from(empMap.entries())
-      .map(([id, data]) => ({ id, ...data }))
+      .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.hours - a.hours);
 
     const approvedTotal = (statusMap.get('Approved (อนุมัติแล้ว)')?.count || 0);
@@ -339,7 +452,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                 ) : (
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 flex items-center gap-1">
                     <User className="w-3 h-3 text-blue-300" />
-                    {language === 'th' ? `ข้อมูลส่วนตัว (${userEmployeeId || currentUser?.name})` : `Personal View`}
+                    {language === 'th' ? `ข้อมูลส่วนตัว (${currentUser?.name || 'พนักงาน'})` : `Personal View`}
                   </span>
                 )}
               </div>
@@ -460,10 +573,10 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                 </select>
               </div>
 
-              {/* 4. Employee (for Admins) */}
+              {/* 4. Employee (Names only) */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  {language === 'th' ? 'พนักงาน (Employee)' : 'Employee'}
+                  {language === 'th' ? 'ชื่อพนักงาน (Employee)' : 'Employee'}
                 </label>
                 <select
                   value={selectedEmployee}
@@ -471,8 +584,8 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 >
                   <option value="all">{language === 'th' ? 'ทุกคน (All Employees)' : 'All Employees'}</option>
-                  {availableEmployees.map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
+                  {availableEmployees.map((name) => (
+                    <option key={name} value={name}>{name}</option>
                   ))}
                 </select>
               </div>
@@ -515,6 +628,47 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
             )}
           </div>
         )}
+
+        {/* Quick Time Scope Selector Bar */}
+        <div className="bg-slate-50/95 px-4 sm:px-6 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3 overflow-x-auto shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-bold text-slate-500 flex items-center gap-1 mr-1">
+              <CalendarDays className="w-3.5 h-3.5 text-sky-700" />
+              <span>{language === 'th' ? 'ช่วงเวลา:' : 'Scope:'}</span>
+            </span>
+            {[
+              { id: 'all', label: language === 'th' ? 'ทั้งหมด' : 'All Time' },
+              { id: 'this_month', label: language === 'th' ? 'เดือนปัจจุบัน' : 'This Month' },
+              { id: 'today', label: language === 'th' ? 'วันนี้' : 'Today' },
+              { id: 'specific_month', label: language === 'th' ? 'ระบุเดือน' : 'Month...' },
+              { id: 'custom', label: language === 'th' ? 'กำหนดวัน' : 'Custom...' },
+            ].map((scope) => (
+              <button
+                key={scope.id}
+                type="button"
+                onClick={() => {
+                  setTimeScope(scope.id as any);
+                  if (scope.id === 'specific_month' || scope.id === 'custom') {
+                    setIsFilterOpen(true);
+                  }
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  timeScope === scope.id
+                    ? 'bg-[#002045] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {scope.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold text-sky-900 bg-sky-100/90 px-3 py-1 rounded-full border border-sky-200 shadow-2xs">
+              {stats.totalRecords} {language === 'th' ? 'รายการ' : 'records'} ({stats.totalHours} {language === 'th' ? 'ชม.' : 'hrs'})
+            </span>
+          </div>
+        </div>
 
         {/* Chart View Mode Tabs */}
         <div className="bg-slate-100/80 px-5 py-2.5 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
@@ -601,7 +755,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
 
               {timeScope !== 'all' && (
                 <span className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-950 font-semibold shadow-2xs">
-                  📅 {timeScope === 'today' ? (language === 'th' ? 'วันนี้' : 'Today') : timeScope === 'this_month' ? (language === 'th' ? 'เดือนนี้' : 'This Month') : timeScope === 'specific_month' ? selectedMonth : `${startDate || '...'} ~ ${endDate || '...'}`}
+                  📅 {timeScopeLabel}
                 </span>
               )}
 
@@ -619,7 +773,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
 
               {selectedEmployee !== 'all' && (
                 <span className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-950 font-semibold shadow-2xs">
-                  👤 {availableEmployees.find(e => e[0] === selectedEmployee)?.[1] || selectedEmployee}
+                  👤 {selectedEmployee}
                 </span>
               )}
 
@@ -637,11 +791,11 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="p-4 rounded-2xl bg-sky-50/90 border border-sky-200/90 shadow-2xs">
               <div className="flex items-center justify-between text-xs font-bold text-sky-900 mb-1">
-                <span>{language === 'th' ? 'รายการ OT ทั้งหมด' : 'Total Records'}</span>
+                <span>{language === 'th' ? 'รายการ OT ที่แสดง' : 'Total Records'}</span>
                 <Clock className="w-4 h-4 text-sky-700" />
               </div>
               <p className="text-2xl sm:text-3xl font-black text-[#002045]">{stats.totalRecords}</p>
-              <span className="text-[11px] text-sky-800 font-semibold">{language === 'th' ? 'ครั้งที่มีการบันทึก' : 'Sessions'}</span>
+              <span className="text-[11px] text-sky-800 font-semibold truncate block">{timeScopeLabel}</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200/90 shadow-2xs">
@@ -758,7 +912,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                 {stats.topEmployees.slice(0, 10).map((emp, index) => {
                   const percentOfTotal = stats.totalHours > 0 ? Math.round((emp.hours / stats.totalHours) * 100) : 0;
                   return (
-                    <div key={emp.id} className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div key={emp.name} className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                       <div className="flex items-center gap-3">
                         <span className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
                           index === 0 ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-300' :
@@ -772,7 +926,6 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                           <p className="font-bold text-sm text-[#002045]">{emp.name}</p>
                           <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                             <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-semibold">{emp.dept}</span>
-                            {emp.id !== emp.name && <span>• รหัส {emp.id}</span>}
                             <span>• {emp.count} {language === 'th' ? 'ครั้ง' : 'sessions'}</span>
                           </p>
                         </div>

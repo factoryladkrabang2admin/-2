@@ -14,6 +14,11 @@ import {
   X, 
   Layers
 } from 'lucide-react';
+import { 
+  InProgressClockAnimatedIcon, 
+  CompletedRepairAnimatedIcon, 
+  RepairingActiveIcon 
+} from './MaintenanceStatusIcons';
 
 interface MaintenanceCalendarViewProps {
   tickets: MaintenanceTicket[];
@@ -180,14 +185,14 @@ export const MaintenanceCalendarView: React.FC<MaintenanceCalendarViewProps> = (
       case 'เสร็จแล้ว':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+            <CompletedRepairAnimatedIcon size="xs" iconClassName="text-emerald-600" showSparkle />
             <span>{status}</span>
           </span>
         );
       case 'อยู่ระหว่างดำเนินการ':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
-            <Clock className="w-3 h-3 text-sky-600 animate-spin" />
+            <InProgressClockAnimatedIcon size="xs" iconClassName="text-sky-600" />
             <span>{status}</span>
           </span>
         );
@@ -195,7 +200,7 @@ export const MaintenanceCalendarView: React.FC<MaintenanceCalendarViewProps> = (
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-            <AlertCircle className="w-3 h-3 text-amber-600 animate-pulse" />
+            <RepairingActiveIcon size="xs" iconClassName="text-amber-600" showGear />
             <span>{status}</span>
           </span>
         );
@@ -454,7 +459,7 @@ export const MaintenanceCalendarView: React.FC<MaintenanceCalendarViewProps> = (
                         )}
                         {selectedDayInProgressCount > 0 && (
                           <span className="bg-sky-400/20 text-sky-200 border border-sky-300/30 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-sky-300" />
+                            <InProgressClockAnimatedIcon size="xs" iconClassName="text-sky-300" />
                             {selectedDayInProgressCount} {language === 'th' ? 'กำลังทำ' : 'in progress'}
                           </span>
                         )}

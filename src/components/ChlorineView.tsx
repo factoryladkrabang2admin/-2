@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { ChlorineInspectionRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { TH_MONTHS, EN_MONTHS } from '../utils/equipmentDateUtils';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { 
   CHLORINE_SHEET_URL, 
@@ -134,7 +135,11 @@ export function parseDateFromRecord(rec: ChlorineInspectionRecord): Date | null 
           m = parseInt(parts[1], 10);
           d = parseInt(parts[2], 10);
         }
-        if (y > 2400) y -= 543;
+        if (y < 100) {
+          y = y > 50 ? 2500 + y - 543 : 2000 + y;
+        } else if (y > 2400) {
+          y -= 543;
+        }
         if (!isNaN(d) && !isNaN(m) && !isNaN(y) && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
           return new Date(y, m - 1, d);
         }
@@ -152,7 +157,11 @@ export function parseDateFromRecord(rec: ChlorineInspectionRecord): Date | null 
           m = parseInt(parts[1], 10);
           d = parseInt(parts[2], 10);
         }
-        if (y > 2400) y -= 543;
+        if (y < 100) {
+          y = y > 50 ? 2500 + y - 543 : 2000 + y;
+        } else if (y > 2400) {
+          y -= 543;
+        }
         if (!isNaN(d) && !isNaN(m) && !isNaN(y) && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
           return new Date(y, m - 1, d);
         }
@@ -209,6 +218,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
   // View & Filter state
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [monthScope, setMonthScope] = useState<'current_month' | 'all'>('current_month');
   const [buildingFilter, setBuildingFilter] = useState<'all' | 'อาคาร A' | 'อาคาร B'>('all');
   const [complianceTypeFilter, setComplianceTypeFilter] = useState<'all' | ComplianceType>('all');
   const [filters, setFilters] = useState<ChlorineFilters>({
@@ -416,6 +426,22 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
     };
   }, [records, activeWeek]);
 
+  // Current month reference & records
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const currentMonthRecords = useMemo(() => {
+    return records.filter((rec) => {
+      const d = parseDateFromRecord(rec);
+      return d ? (d.getFullYear() === currentYear && d.getMonth() === currentMonth) : false;
+    });
+  }, [records, currentYear, currentMonth]);
+
+  const currentMonthCount = currentMonthRecords.length;
+  const currentMonthBuildingACount = useMemo(() => currentMonthRecords.filter(r => r.building.includes('A')).length, [currentMonthRecords]);
+  const currentMonthBuildingBCount = useMemo(() => currentMonthRecords.filter(r => r.building.includes('B')).length, [currentMonthRecords]);
+
   // Filtered records
   const filteredRecords = useMemo(() => {
     return records.filter((rec) => {
@@ -453,15 +479,22 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
         if (rec.inspectorName !== filters.inspector) return false;
       }
 
+      // Month Scope: default 'current_month' unless custom date range or calendar date selected
+      if (monthScope === 'current_month') {
+        const hasCustomDate = !!filters.startDate || !!filters.endDate || (viewMode === 'calendar' && !!calendarSelectedDate);
+        if (!hasCustomDate) {
+          const d = parseDateFromRecord(rec);
+          if (!d || d.getFullYear() !== currentYear || d.getMonth() !== currentMonth) {
+            return false;
+          }
+        }
+      }
+
       // Modal Filters: Start & End Date
       if (filters.startDate || filters.endDate) {
-        const parts = (rec.inspectionDate || '').split(/[\/\-]/);
-        if (parts.length === 3) {
-          const d = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10);
-          const y = parseInt(parts[2], 10);
-          const recDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          
+        const d = parseDateFromRecord(rec);
+        if (d) {
+          const recDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           if (filters.startDate && recDateStr < filters.startDate) return false;
           if (filters.endDate && recDateStr > filters.endDate) return false;
         }
@@ -474,7 +507,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
 
       return true;
     });
-  }, [records, searchQuery, buildingFilter, complianceTypeFilter, filters, viewMode, calendarSelectedDate]);
+  }, [records, searchQuery, buildingFilter, complianceTypeFilter, filters, viewMode, calendarSelectedDate, monthScope, currentYear, currentMonth]);
 
   // Counts for Quick filter pills
   const totalCount = records.length;
@@ -668,28 +701,29 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
 
           {/* Bottom Row inside Header: 3 Stat Boxes (1. รายการตรวจทั้งหมด, 2. สุ่มตรวจอาคาร A & B รวมในกล่องเดียว, 3. เกณฑ์การส่งข้อมูลประจำสัปดาห์ (วันจันทร์ - อาทิตย์)) */}
           <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-blue-200/60">
-            {/* Box 1: รายการตรวจทั้งหมด */}
+            {/* Box 1: รายการตรวจเดือนปัจจุบัน */}
             <div 
               onClick={() => {
+                setMonthScope('current_month');
                 setBuildingFilter('all');
                 setComplianceTypeFilter('all');
                 setCurrentPage(1);
               }}
               className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
-                buildingFilter === 'all' && complianceTypeFilter === 'all'
+                monthScope === 'current_month' && buildingFilter === 'all' && complianceTypeFilter === 'all'
                   ? 'bg-white/95 border-blue-400 shadow-md ring-2 ring-blue-300 scale-[1.02]'
                   : 'bg-white/75 hover:bg-white/90 border-blue-200/80 shadow-xs'
               }`}
             >
               <div className="flex items-center justify-between text-blue-900 text-xs font-bold mb-1.5">
-                <span>{language === 'th' ? 'รายการตรวจทั้งหมด' : 'Total Records'}</span>
+                <span>{language === 'th' ? 'รายการตรวจเดือนปัจจุบัน' : 'Current Month Records'}</span>
                 <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center">
                   <FlaskConical className="w-4 h-4 text-blue-800" />
                 </div>
               </div>
-              <p className="text-2xl sm:text-3xl font-black text-[#002045] font-mono">{totalCount}</p>
-              <span className="text-[11px] text-blue-800/80 block mt-0.5">
-                {language === 'th' ? 'บันทึกในระบบทั้งหมด' : 'All logged records'}
+              <p className="text-2xl sm:text-3xl font-black text-[#002045] font-mono">{currentMonthCount}</p>
+              <span className="text-[11px] text-blue-800/80 block mt-0.5 font-medium">
+                {language === 'th' ? `ประจำเดือน ${TH_MONTHS[currentMonth]} ${currentYear + 543}` : `Month of ${EN_MONTHS[currentMonth]} ${currentYear}`}
               </span>
             </div>
 
@@ -834,10 +868,49 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
 
         {/* Quick Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <button
+            type="button"
+            onClick={() => {
+              setMonthScope('current_month');
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+              monthScope === 'current_month' && buildingFilter === 'all' && complianceTypeFilter === 'all'
+                ? 'bg-blue-700 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <span>{language === 'th' ? 'เดือนปัจจุบัน' : 'This Month'}</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-2xs font-mono font-bold ${
+              monthScope === 'current_month' && buildingFilter === 'all' && complianceTypeFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {currentMonthCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMonthScope('all');
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+              monthScope === 'all' && buildingFilter === 'all' && complianceTypeFilter === 'all'
+                ? 'bg-[#002045] text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <span>{language === 'th' ? 'ทั้งหมด' : 'All'}</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-2xs font-mono font-bold ${
+              monthScope === 'all' && buildingFilter === 'all' && complianceTypeFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {totalCount}
+            </span>
+          </button>
+
           {[
-            { id: 'all', label: language === 'th' ? 'ทั้งหมด' : 'All', count: totalCount },
-            { id: 'อาคาร A', label: 'อาคาร A', count: buildingACount },
-            { id: 'อาคาร B', label: 'อาคาร B', count: buildingBCount },
+            { id: 'อาคาร A', label: 'อาคาร A', count: monthScope === 'current_month' ? currentMonthBuildingACount : buildingACount },
+            { id: 'อาคาร B', label: 'อาคาร B', count: monthScope === 'current_month' ? currentMonthBuildingBCount : buildingBCount },
           ].map((pill) => {
             const isSelected = buildingFilter === pill.id && complianceTypeFilter === 'all';
             return (
@@ -865,11 +938,12 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
             );
           })}
 
-          {(searchQuery || buildingFilter !== 'all' || complianceTypeFilter !== 'all' || activeFiltersCount > 0) && (
+          {(searchQuery || buildingFilter !== 'all' || complianceTypeFilter !== 'all' || activeFiltersCount > 0 || monthScope !== 'current_month') && (
             <button
               type="button"
               onClick={() => {
                 setSearchQuery('');
+                setMonthScope('current_month');
                 setBuildingFilter('all');
                 setComplianceTypeFilter('all');
                 setFilters({ building: 'all', inspector: 'all', startDate: '', endDate: '' });
@@ -913,6 +987,7 @@ export const ChlorineView: React.FC<ChlorineViewProps> = ({
               setBuildingFilter('all');
               setComplianceTypeFilter('all');
               setFilters({ building: 'all', inspector: 'all', startDate: '', endDate: '' });
+              setMonthScope('current_month');
               setCalendarSelectedDate(null);
             }}
             className="mt-4 px-4 py-2 rounded-xl bg-[#002045] text-white text-xs font-bold hover:bg-[#003366] transition-colors cursor-pointer"

@@ -28,8 +28,10 @@ import {
   ExternalLink,
   CalendarCheck,
   Check,
-  ChevronRight
+  ChevronRight,
+  WashingMachine
 } from 'lucide-react';
+import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import { LaundryOrder, MeetingRoomBooking } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
@@ -101,7 +103,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [hoveredDeptIndex, setHoveredDeptIndex] = useState<number | null>(null);
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
   const [statusChartTab, setStatusChartTab] = useState<'laundry' | 'meeting'>('laundry');
-  const [barChartMode, setBarChartMode] = useState<'daily' | 'category' | 'meeting_topics'>('daily');
+  const [barChartMode, setBarChartMode] = useState<'daily' | 'category' | 'department'>('daily');
+  const [meetingBarChartMode, setMeetingBarChartMode] = useState<'daily' | 'room' | 'department' | 'topics'>('daily');
+  const [hoveredMeetingBarIndex, setHoveredMeetingBarIndex] = useState<number | null>(null);
 
   // Local state for meeting room bookings
   const [bookings, setBookings] = useState<MeetingRoomBooking[]>(() => {
@@ -405,8 +409,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }, [parsedBookings, timeframe, selectedYear, startDate, endDate, customDate, todayStr, startOfWeekStr, endOfWeekStr, currentMonthStr, selectedDept, searchQuery]);
 
-  // Active counts for filtered laundry
-  const inWashingLaundryCount = filteredLaundryOrders.filter(o => o.stage !== 'ready' && o.stage !== 'delivered' && o.stage !== 'completed').length;
+  // Monthly laundry orders (current month basis)
+  const currentMonthLaundryOrders = useMemo(() => {
+    return laundryOrders.filter(order => {
+      const dStr = getOrderDateString(order);
+      if (!dStr || !dStr.startsWith(currentMonthStr)) return false;
+      if (selectedDept !== 'ALL') {
+        const orderDept = order.customerRoomOrDept?.trim() || '';
+        if (orderDept.toLowerCase() !== selectedDept.toLowerCase()) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const tracking = (order.trackingCode || '').toLowerCase();
+        const customer = (order.customerName || '').toLowerCase();
+        const dept = (order.customerRoomOrDept || '').toLowerCase();
+        const notes = (order.notes || '').toLowerCase();
+        const items = order.items.map(i => i.name.toLowerCase()).join(' ');
+        if (!tracking.includes(q) && !customer.includes(q) && !dept.includes(q) && !notes.includes(q) && !items.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [laundryOrders, currentMonthStr, selectedDept, searchQuery]);
+
+  // Active in-progress washing orders (ผ้าอยู่ระหว่างซัก-อบ)
+  // When timeframe is 'year' or 'all', display data matching 'month' (เหมือนไอคอนเดือนนี้)
+  const inWashingOrders = useMemo(() => {
+    const sourceOrders = (timeframe === 'year' || timeframe === 'all')
+      ? currentMonthLaundryOrders
+      : filteredLaundryOrders;
+    return sourceOrders.filter(o => o.stage !== 'ready' && o.stage !== 'delivered' && o.stage !== 'completed');
+  }, [timeframe, currentMonthLaundryOrders, filteredLaundryOrders]);
+
+  const inWashingLaundryCount = inWashingOrders.length;
+  const inWashingLaundryPieces = useMemo(() => {
+    return inWashingOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0);
+  }, [inWashingOrders]);
+
   const readyLaundryCount = filteredLaundryOrders.filter(o => o.stage === 'ready' || o.stage === 'delivered').length;
   const completedLaundryCount = filteredLaundryOrders.filter(o => o.stage === 'ready' || o.stage === 'delivered' || o.stage === 'completed').length;
   const totalLaundryPieces = useMemo(() => {
@@ -610,7 +650,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         count: inWashingLaundryCount,
         color: '#f59e0b',
         textColor: 'text-amber-700',
-        icon: Waves
+        icon: WashingMachine
       }
     ];
 
@@ -813,28 +853,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     
     // 2. Laundry Category Breakdown
     const catMap: Record<string, { pieces: number; orders: number }> = {};
+    const deptLaundryMap: Record<string, { pieces: number; orders: number }> = {};
+
+    let readyPieces = 0;
+    let washingPieces = 0;
+    let readyOrders = 0;
+    let washingOrders = 0;
+
     filteredLaundryOrders.forEach(order => {
       const garmentType = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
                           order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'General Linen');
+      const deptName = order.customerRoomOrDept?.trim() || (language === 'th' ? 'ไม่ระบุแผนก' : 'Unassigned');
       const orderPieces = order.items.reduce((s, i) => s + i.quantity, 0) || 1;
+      const isReady = order.stage === 'ready' || order.stage === 'delivered' || order.stage === 'completed';
+
       if (!catMap[garmentType]) {
         catMap[garmentType] = { pieces: 0, orders: 0 };
       }
       catMap[garmentType].pieces += orderPieces;
       catMap[garmentType].orders += 1;
-    });
-    const sortedCats = Object.entries(catMap).sort((a, b) => b[1].pieces - a[1].pieces).slice(0, 6);
 
-    // 3. Meeting Topics Breakdown
-    const meetingTopicsList = meetingSummary.topics;
-    const maxTopicCount = Math.max(...meetingTopicsList.map(t => t.count), 1);
-    const maxTopicAttendees = Math.max(...meetingTopicsList.map(t => t.attendees), 1);
+      if (!deptLaundryMap[deptName]) {
+        deptLaundryMap[deptName] = { pieces: 0, orders: 0 };
+      }
+      deptLaundryMap[deptName].pieces += orderPieces;
+      deptLaundryMap[deptName].orders += 1;
+
+      if (isReady) {
+        readyPieces += orderPieces;
+        readyOrders += 1;
+      } else {
+        washingPieces += orderPieces;
+        washingOrders += 1;
+      }
+    });
+
+    const sortedCats = Object.entries(catMap).sort((a, b) => b[1].pieces - a[1].pieces).slice(0, 6);
+    const sortedDepts = Object.entries(deptLaundryMap).sort((a, b) => b[1].pieces - a[1].pieces).slice(0, 8);
 
     const maxDayPieces = Math.max(...sortedDays.map(([, v]) => v.totalPieces), 1);
     const maxCatPieces = Math.max(...sortedCats.map(([, v]) => v.pieces), 1);
+    const maxDeptPieces = Math.max(...sortedDepts.map(([, v]) => v.pieces), 1);
     const totalPieces = filteredLaundryOrders.reduce((sum, o) => sum + o.items.reduce((isum, i) => isum + i.quantity, 0), 0);
     const totalOrders = filteredLaundryOrders.length;
     const avgPiecesPerOrder = totalOrders > 0 ? (totalPieces / totalOrders).toFixed(1) : '0';
+    const readyPercent = totalPieces > 0 ? ((readyPieces / totalPieces) * 100).toFixed(1) : '0';
+    const washingPercent = totalPieces > 0 ? ((washingPieces / totalPieces) * 100).toFixed(1) : '0';
 
     return {
       dailyBars: sortedDays.map(([dateKey, val]) => {
@@ -861,20 +925,180 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         orders: val.orders,
         heightRatio: val.pieces / maxCatPieces
       })),
-      meetingTopics: meetingTopicsList.map(item => ({
-        ...item,
-        countHeightRatio: item.count / maxTopicCount,
-        attendeesHeightRatio: item.attendees / maxTopicAttendees
+      departmentBars: sortedDepts.map(([name, val]) => ({
+        name,
+        pieces: val.pieces,
+        orders: val.orders,
+        heightRatio: val.pieces / maxDeptPieces
       })),
       totalPieces,
       totalOrders,
-      totalMeetings: filteredMeetingBookings.length,
-      totalMeetingAttendees: meetingSummary.totalAttendees,
-      uniqueTopicsCount: meetingSummary.uniqueTopicsCount,
+      readyPieces,
+      washingPieces,
+      readyOrders,
+      washingOrders,
+      readyPercent,
+      washingPercent,
+      totalGarmentTypes: Object.keys(catMap).length,
       avgPiecesPerOrder,
       maxDayPieces
     };
   }, [filteredLaundryOrders, filteredMeetingBookings, meetingSummary, todayStr, language]);
+
+  // Meeting booking duration helper
+  const getBookingDurationHours = (b: MeetingRoomBooking): number => {
+    if (!b.startTime || !b.endTime) return 1;
+    try {
+      const parseTimeToHours = (t: string) => {
+        const cleaned = t.trim().replace('.', ':');
+        const parts = cleaned.split(':');
+        const h = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        return h + m / 60;
+      };
+      const s = parseTimeToHours(b.startTime);
+      const e = parseTimeToHours(b.endTime);
+      const diff = e - s;
+      return diff > 0 ? parseFloat(diff.toFixed(1)) : 1;
+    } catch {
+      return 1;
+    }
+  };
+
+  // Chart 4: ภาพรวมปริมาณการใช้งานห้องประชุมตามช่วงเวลา (Meeting Room Usage Timeline Overview)
+  const meetingBarChartData = useMemo(() => {
+    // 1. Daily Breakdown
+    const dayMap: Record<string, {
+      approvedBookings: number;
+      pendingBookings: number;
+      totalBookings: number;
+      totalHours: number;
+      attendees: number;
+      rooms: Set<string>;
+      departments: Set<string>;
+      dateKey: string;
+    }> = {};
+
+    filteredMeetingBookings.forEach(b => {
+      const dStr = getBookingDateString(b) || todayStr;
+      if (!dayMap[dStr]) {
+        dayMap[dStr] = {
+          approvedBookings: 0,
+          pendingBookings: 0,
+          totalBookings: 0,
+          totalHours: 0,
+          attendees: 0,
+          rooms: new Set<string>(),
+          departments: new Set<string>(),
+          dateKey: dStr
+        };
+      }
+      const hours = getBookingDurationHours(b);
+      const isApprovedOrCompleted = b.status === 'เสร็จสิ้นแล้ว' || b.status === 'กำลังประชุม' || b.status === 'อนุมัติแล้ว' || b.status === 'approved' || b.status === 'completed';
+      if (isApprovedOrCompleted) {
+        dayMap[dStr].approvedBookings += 1;
+      } else {
+        dayMap[dStr].pendingBookings += 1;
+      }
+      dayMap[dStr].totalBookings += 1;
+      dayMap[dStr].totalHours += hours;
+      dayMap[dStr].attendees += (b.attendeesCount || 0);
+      if (b.room) dayMap[dStr].rooms.add(b.room);
+      if (b.department) dayMap[dStr].departments.add(b.department);
+    });
+
+    const sortedDays = Object.entries(dayMap).sort((a, b) => a[0].localeCompare(b[0]));
+    const maxDayBookings = Math.max(...sortedDays.map(([, v]) => v.totalBookings), 1);
+    const maxDayHours = Math.max(...sortedDays.map(([, v]) => v.totalHours), 1);
+
+    const dailyBars = sortedDays.map(([dateKey, val]) => {
+      const parts = dateKey.split('-');
+      const dd = parts[2] ? parseInt(parts[2], 10) : 1;
+      const mm = parts[1] ? parseInt(parts[1], 10) : 1;
+      const label = `${dd} ${language === 'th' ? thaiShortMonths[mm - 1] : englishMonthNames[mm - 1].substring(0, 3)}`;
+      return {
+        dateKey,
+        label,
+        approvedBookings: val.approvedBookings,
+        pendingBookings: val.pendingBookings,
+        totalBookings: val.totalBookings,
+        totalHours: parseFloat(val.totalHours.toFixed(1)),
+        attendees: val.attendees,
+        roomsList: Array.from(val.rooms).join(', '),
+        departmentsList: Array.from(val.departments).slice(0, 2).join(', '),
+        approvedPercent: val.totalBookings > 0 ? (val.approvedBookings / val.totalBookings) * 100 : 0,
+        pendingPercent: val.totalBookings > 0 ? (val.pendingBookings / val.totalBookings) * 100 : 0,
+        heightRatio: val.totalBookings / maxDayBookings
+      };
+    });
+
+    // 2. Room Breakdown
+    const roomMap: Record<string, { bookings: number; hours: number; attendees: number }> = {};
+    filteredMeetingBookings.forEach(b => {
+      const rName = b.room?.trim() || (language === 'th' ? 'ห้องประชุมทั่วไป' : 'General Room');
+      if (!roomMap[rName]) {
+        roomMap[rName] = { bookings: 0, hours: 0, attendees: 0 };
+      }
+      roomMap[rName].bookings += 1;
+      roomMap[rName].hours += getBookingDurationHours(b);
+      roomMap[rName].attendees += (b.attendeesCount || 0);
+    });
+    const sortedRooms = Object.entries(roomMap).sort((a, b) => b[1].bookings - a[1].bookings);
+    const maxRoomBookings = Math.max(...sortedRooms.map(([, v]) => v.bookings), 1);
+
+    // 3. Department Breakdown for meeting bookings
+    const deptMap: Record<string, { bookings: number; hours: number; attendees: number }> = {};
+    filteredMeetingBookings.forEach(b => {
+      const dName = b.department?.trim() || (language === 'th' ? 'ไม่ระบุแผนก' : 'Unassigned');
+      if (!deptMap[dName]) {
+        deptMap[dName] = { bookings: 0, hours: 0, attendees: 0 };
+      }
+      deptMap[dName].bookings += 1;
+      deptMap[dName].hours += getBookingDurationHours(b);
+      deptMap[dName].attendees += (b.attendeesCount || 0);
+    });
+    const sortedDepts = Object.entries(deptMap).sort((a, b) => b[1].bookings - a[1].bookings).slice(0, 8);
+    const maxDeptBookings = Math.max(...sortedDepts.map(([, v]) => v.bookings), 1);
+
+    // 4. Topics Breakdown
+    const topicsList = meetingSummary.topics;
+    const maxTopicCount = Math.max(...topicsList.map(t => t.count), 1);
+
+    const totalBookings = filteredMeetingBookings.length;
+    const totalHours = parseFloat(filteredMeetingBookings.reduce((sum, b) => sum + getBookingDurationHours(b), 0).toFixed(1));
+    const totalAttendees = filteredMeetingBookings.reduce((sum, b) => sum + (b.attendeesCount || 0), 0);
+    const avgAttendeesPerMeeting = totalBookings > 0 ? (totalAttendees / totalBookings).toFixed(1) : '0';
+    const activeRoomsCount = Object.keys(roomMap).length;
+
+    return {
+      dailyBars,
+      rooms: sortedRooms.map(([name, val]) => ({
+        name,
+        bookings: val.bookings,
+        hours: parseFloat(val.hours.toFixed(1)),
+        attendees: val.attendees,
+        heightRatio: val.bookings / maxRoomBookings
+      })),
+      departments: sortedDepts.map(([name, val]) => ({
+        name,
+        bookings: val.bookings,
+        hours: parseFloat(val.hours.toFixed(1)),
+        attendees: val.attendees,
+        heightRatio: val.bookings / maxDeptBookings
+      })),
+      topics: topicsList.map(item => ({
+        ...item,
+        heightRatio: item.count / maxTopicCount
+      })),
+      totalBookings,
+      totalHours,
+      totalAttendees,
+      avgAttendeesPerMeeting,
+      activeRoomsCount,
+      maxDayBookings,
+      maxDayHours
+    };
+  }, [filteredMeetingBookings, meetingSummary, todayStr, language]);
 
   // Filtered list inside All Departments Modal
   const modalFilteredDepts = useMemo(() => {
@@ -1326,14 +1550,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Card 1: งานผ้าที่กำลังดำเนินการ (Active Laundry Intake) */}
         <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden select-none">
           <div className="absolute top-3 right-3 p-3 opacity-10 text-amber-600">
-            <Waves className="w-16 h-16" />
+            <WashingMachine className="w-16 h-16 animate-washing-machine" />
           </div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-semibold text-[#43474e] uppercase tracking-wider">
               {language === 'th' ? 'ผ้าอยู่ระหว่างซัก-อบ' : 'In Washing / Processing'}
             </h3>
             <span className="text-amber-700 bg-amber-50 p-1.5 rounded-lg border border-amber-200/80">
-              <Waves className="w-4 h-4" />
+              <WashingMachineActiveIcon size="sm" iconClassName="text-amber-700" />
             </span>
           </div>
 
@@ -1350,12 +1574,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-100 text-[11px] flex-wrap">
               <span className="flex items-center gap-1 text-slate-700 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
                 <Shirt className="w-3 h-3 text-[#0061a5]" />
-                <span>{filteredLaundryOrders.length} {language === 'th' ? 'คำสั่ง' : 'orders'}</span>
+                <span>
+                  {(timeframe === 'year' || timeframe === 'all')
+                    ? `${inWashingOrders.length} ${language === 'th' ? 'คำสั่งซักเดือนนี้' : 'month orders'}`
+                    : `${filteredLaundryOrders.length} ${language === 'th' ? 'คำสั่ง' : 'orders'}`}
+                </span>
               </span>
               <span className="flex items-center gap-1 text-amber-900 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
                 <Sparkles className="w-3 h-3 text-amber-600" />
-                <span>{totalLaundryPieces.toLocaleString()} {language === 'th' ? 'ชิ้น' : 'pcs'}</span>
+                <span>
+                  {(timeframe === 'year' || timeframe === 'all')
+                    ? `${inWashingLaundryPieces.toLocaleString()} ${language === 'th' ? 'ชิ้นซักค้าง' : 'wip pcs'}`
+                    : `${totalLaundryPieces.toLocaleString()} ${language === 'th' ? 'ชิ้น' : 'pcs'}`}
+                </span>
               </span>
+              {(timeframe === 'year' || timeframe === 'all') && (
+                <span className="text-[10px] text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded font-bold">
+                  {language === 'th' ? 'แสดงข้อมูลเหมือนไอคอนเดือนนี้' : 'Matching this month'}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1370,7 +1607,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {language === 'th' ? 'ผ้าพร้อมส่งมอบ / สำเร็จ' : 'Ready / Completed'}
             </h3>
             <span className="text-emerald-700 bg-emerald-50 p-1.5 rounded-lg border border-emerald-200/80">
-              <PackageCheck className="w-4 h-4" />
+              <ReadyStatusAnimatedIcon size="sm" iconClassName="text-emerald-700" />
             </span>
           </div>
 
@@ -1847,7 +2084,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Modern Bar Chart Section: ไทม์ไลน์, ปริมาณงานผ้า, และหัวข้อห้องประชุม */}
+      {/* Modern Bar Chart Section: ไทม์ไลน์ และ ปริมาณงานผ้า */}
       <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 space-y-6">
         {/* Header & Controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -1858,23 +2095,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-bold text-[#1a1c1c]">
-                  {barChartMode === 'meeting_topics' 
-                    ? (language === 'th' ? 'สรุปการวิเคราะห์หัวข้อห้องประชุม' : 'Meeting Topics Analysis')
-                    : (language === 'th' ? 'ภาพรวมปริมาณงานผ้าตามช่วงเวลา' : 'Laundry Volume Timeline')}
+                  {language === 'th' ? 'ภาพรวมปริมาณงานผ้าตามช่วงเวลา' : 'Laundry Volume Timeline'}
                 </h3>
                 <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
                   {activeTimeframeLabel}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {barChartMode === 'meeting_topics'
-                  ? (language === 'th' ? 'จัดอันดับหัวข้อการประชุม จำนวนครั้งที่จัด และยอดผู้เข้าร่วมประชุม' : 'Ranked topics with session count, attendees, and host departments')
-                  : (language === 'th' ? 'เปรียบเทียบแนวโน้มปริมาณชิ้นผ้า สถานะความพร้อมส่งมอบ และสถิติงานตามช่วงที่เลือก' : 'Timeline and category distribution of laundry loads throughout the selected filter')}
+                {language === 'th' 
+                  ? 'เปรียบเทียบแนวโน้มปริมาณชิ้นผ้า สถานะความพร้อมส่งมอบ และสถิติงานตามช่วงที่เลือก' 
+                  : 'Timeline and category distribution of laundry loads throughout the selected filter'}
               </p>
             </div>
           </div>
 
-          {/* Toggle Daily Timeline vs Category Bars vs Meeting Topics */}
+          {/* Toggle Daily Timeline vs Category Bars vs Department */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto border border-slate-200/80 flex-wrap gap-1">
             <button
               type="button"
@@ -1900,14 +2135,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setBarChartMode('meeting_topics')}
+              onClick={() => setBarChartMode('department')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                barChartMode === 'meeting_topics'
-                  ? 'bg-white text-sky-700 shadow-2xs'
+                barChartMode === 'department'
+                  ? 'bg-white text-indigo-700 shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {language === 'th' ? 'หัวข้อห้องประชุม' : 'Meeting Topics'}
+              {language === 'th' ? 'แยกตามแผนกผู้ส่ง' : 'By Department'}
             </button>
           </div>
         </div>
@@ -1921,6 +2156,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <p className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
               {filteredBarChartData.totalPieces.toLocaleString()} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ชิ้น' : 'pcs'}</span>
             </p>
+            <span className="text-[10px] text-slate-400 font-medium">
+              {language === 'th' ? 'เฉลี่ย' : 'Avg'} {filteredBarChartData.avgPiecesPerOrder} {language === 'th' ? 'ชิ้น/คำสั่ง' : 'pcs/order'}
+            </span>
           </div>
           <div>
             <span className="text-[11px] font-semibold text-slate-500 block">
@@ -1929,22 +2167,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <p className="text-lg sm:text-xl font-black text-indigo-600 mt-0.5">
               {filteredBarChartData.totalOrders} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'รายการ' : 'orders'}</span>
             </p>
-          </div>
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 block">
-              {language === 'th' ? 'หัวข้อการประชุม' : 'Meeting Topics'}
+            <span className="text-[10px] text-indigo-600 font-medium">
+              {filteredBarChartData.totalGarmentTypes} {language === 'th' ? 'ประเภทผ้าที่ซัก' : 'garment types'}
             </span>
-            <p className="text-lg sm:text-xl font-black text-sky-600 mt-0.5">
-              {filteredBarChartData.uniqueTopicsCount} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'หัวข้อ' : 'topics'}</span>
-            </p>
           </div>
           <div>
             <span className="text-[11px] font-semibold text-slate-500 block">
-              {language === 'th' ? 'ผู้เข้าร่วมประชุมรวม' : 'Total Attendees'}
+              {language === 'th' ? 'ผ้าพร้อมส่งมอบ / ซักเสร็จ' : 'Ready / Completed'}
             </span>
             <p className="text-lg sm:text-xl font-black text-emerald-600 mt-0.5">
-              {filteredBarChartData.totalMeetingAttendees} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'คน' : 'pax'}</span>
+              {filteredBarChartData.readyPieces.toLocaleString()} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ชิ้น' : 'pcs'}</span>
             </p>
+            <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded">
+              {filteredBarChartData.readyOrders} {language === 'th' ? 'คำสั่ง' : 'orders'} ({filteredBarChartData.readyPercent}%)
+            </span>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              {language === 'th' ? 'ผ้าอยู่ระหว่างซัก-อบ' : 'In Washing / WIP'}
+            </span>
+            <p className="text-lg sm:text-xl font-black text-amber-600 mt-0.5">
+              {filteredBarChartData.washingPieces.toLocaleString()} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ชิ้น' : 'pcs'}</span>
+            </p>
+            <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded">
+              {filteredBarChartData.washingOrders} {language === 'th' ? 'คำสั่ง' : 'orders'} ({filteredBarChartData.washingPercent}%)
+            </span>
           </div>
         </div>
 
@@ -2093,17 +2340,386 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
         ) : (
+          /* Laundry Department Breakdown */
+          <div className="space-y-3 pt-2">
+            {filteredBarChartData.departmentBars.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs">
+                {language === 'th' ? 'ไม่มีข้อมูลแผนกที่ส่งผ้าในช่วงเวลาที่เลือก' : 'No department laundry data in this selected range'}
+              </div>
+            ) : (
+              filteredBarChartData.departmentBars.map((deptItem, idx) => {
+                const deptColors = ['#6366f1', '#3b82f6', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'];
+                const currentColor = deptColors[idx % deptColors.length];
+                const totalPieces = filteredBarChartData.totalPieces || 1;
+                const pct = ((deptItem.pieces / totalPieces) * 100).toFixed(1);
+
+                return (
+                  <div key={deptItem.name} className="p-3 bg-slate-50/70 hover:bg-slate-50 rounded-xl border border-slate-200/70 space-y-2 group transition-all">
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-5 h-5 rounded-md bg-white text-slate-600 font-bold flex items-center justify-center text-[10px] border border-slate-200 shadow-2xs">
+                          #{idx + 1}
+                        </span>
+                        <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span className="font-bold text-slate-900 truncate">
+                          {deptItem.name}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                          {deptItem.orders} {language === 'th' ? 'คำสั่งซัก' : 'orders'}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                          {deptItem.pieces.toLocaleString()} {language === 'th' ? 'ชิ้น' : 'pcs'} ({pct}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar for Department Pieces */}
+                    <div className="w-full h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(6, Math.round(deptItem.heightRatio * 100))}%`,
+                          backgroundColor: currentColor
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modern Bar Chart Section 2: ภาพรวมปริมาณการใช้งานห้องประชุมตามช่วงเวลา */}
+      <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 space-y-6">
+        {/* Header & Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-md">
+              <CalendarCheck className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-[#1a1c1c]">
+                  {language === 'th' ? 'ภาพรวมปริมาณการใช้งานห้องประชุมตามช่วงเวลา' : 'Meeting Room Usage Timeline Overview'}
+                </h3>
+                <span className="text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+                  {activeTimeframeLabel}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {language === 'th' 
+                  ? 'เปรียบเทียบแนวโน้มการใช้งานห้องประชุม จำนวนชั่วโมง และยอดผู้เข้าร่วมตามช่วงเวลาที่เลือก'
+                  : 'Compare trends in meeting room usage, total hours, and attendees for the selected timeframe'}
+              </p>
+            </div>
+          </div>
+
+          {/* Toggle Modes */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto border border-slate-200/80 flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setMeetingBarChartMode('daily')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                meetingBarChartMode === 'daily'
+                  ? 'bg-white text-sky-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'th' ? 'ลำดับวัน (Daily)' : 'Daily Timeline'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMeetingBarChartMode('room')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                meetingBarChartMode === 'room'
+                  ? 'bg-white text-sky-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'th' ? 'แยกตามห้องประชุม' : 'By Room'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMeetingBarChartMode('department')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                meetingBarChartMode === 'department'
+                  ? 'bg-white text-sky-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'th' ? 'แยกตามแผนกผู้จอง' : 'By Department'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMeetingBarChartMode('topics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                meetingBarChartMode === 'topics'
+                  ? 'bg-white text-sky-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {language === 'th' ? 'หัวข้อการประชุม' : 'Topics'}
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Metrics Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/60">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              {language === 'th' ? 'จำนวนการจองห้องประชุม' : 'Total Bookings'}
+            </span>
+            <p className="text-lg sm:text-xl font-black text-sky-600 mt-0.5">
+              {meetingBarChartData.totalBookings} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'รายการ' : 'bookings'}</span>
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              {language === 'th' ? 'ชั่วโมงการใช้งานรวม' : 'Total Usage Hours'}
+            </span>
+            <p className="text-lg sm:text-xl font-black text-indigo-600 mt-0.5">
+              {meetingBarChartData.totalHours} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ชม.' : 'hrs'}</span>
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              {language === 'th' ? 'ผู้เข้าร่วมประชุมรวม' : 'Total Attendees'}
+            </span>
+            <p className="text-lg sm:text-xl font-black text-emerald-600 mt-0.5">
+              {meetingBarChartData.totalAttendees.toLocaleString()} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'คน' : 'pax'}</span>
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 block">
+              {language === 'th' ? 'ห้องที่เปิดใช้งาน' : 'Active Rooms'}
+            </span>
+            <p className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
+              {meetingBarChartData.activeRoomsCount} <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ห้อง' : 'rooms'}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Bar Chart Visualization for Meetings */}
+        {meetingBarChartMode === 'daily' ? (
+          <div className="space-y-4">
+            {/* Legend */}
+            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-md bg-sky-500 shadow-2xs" />
+                  <span className="font-semibold text-slate-700">{language === 'th' ? 'อนุมัติแล้ว / เสร็จสิ้น' : 'Approved / Completed'}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-md bg-amber-400 shadow-2xs" />
+                  <span className="font-semibold text-slate-700">{language === 'th' ? 'รออนุมัติ / จองล่วงหน้า' : 'Pending / Scheduled'}</span>
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {language === 'th' ? '* โฮเวอร์ที่แท่งกราฟเพื่อดูรายละเอียดเชิงลึก' : '* Hover over bars to see breakdown details'}
+              </span>
+            </div>
+
+            {/* Daily Bars Container with Mobile Scroll Support */}
+            <div className="h-52 sm:h-64 flex items-end justify-start sm:justify-between gap-2 sm:gap-3 pt-8 pb-3 px-1 sm:px-2 border-b border-slate-200 overflow-x-auto scrollbar-thin">
+              {meetingBarChartData.dailyBars.length === 0 ? (
+                <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs sm:text-sm py-8">
+                  {language === 'th' ? 'ยังไม่มีข้อมูลการจองห้องประชุมในช่วงเวลาที่เลือก' : 'No meeting booking data in the selected range'}
+                </div>
+              ) : (
+                meetingBarChartData.dailyBars.map((bar, idx) => {
+                  const isHovered = hoveredMeetingBarIndex === idx;
+                  const barHeightPct = Math.max(16, Math.round(bar.heightRatio * 100));
+                  return (
+                    <div
+                      key={bar.dateKey}
+                      onMouseEnter={() => setHoveredMeetingBarIndex(idx)}
+                      onMouseLeave={() => setHoveredMeetingBarIndex(null)}
+                      className="min-w-[44px] sm:min-w-0 sm:flex-1 flex flex-col items-center justify-end h-full relative group cursor-pointer shrink-0 sm:shrink"
+                    >
+                      {/* Floating Tooltip */}
+                      {isHovered && (
+                        <div className="absolute -top-28 z-30 bg-slate-900 text-white rounded-xl p-2.5 shadow-xl text-left pointer-events-none min-w-[150px] animate-in fade-in zoom-in-95 duration-150">
+                          <p className="text-[11px] font-bold text-slate-200 border-b border-slate-700 pb-1 mb-1">
+                            {formatDateDisplay(bar.dateKey)}
+                          </p>
+                          <div className="space-y-0.5 text-[10.5px]">
+                            <div className="flex justify-between gap-2">
+                              <span className="text-sky-400 font-medium">{language === 'th' ? 'อนุมัติ/เสร็จ:' : 'Approved:'}</span>
+                              <span className="font-bold">{bar.approvedBookings} {language === 'th' ? 'งาน' : 'jobs'}</span>
+                            </div>
+                            {bar.pendingBookings > 0 && (
+                              <div className="flex justify-between gap-2">
+                                <span className="text-amber-400 font-medium">{language === 'th' ? 'รออนุมัติ:' : 'Pending:'}</span>
+                                <span className="font-bold">{bar.pendingBookings} {language === 'th' ? 'งาน' : 'jobs'}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between gap-2">
+                              <span className="text-indigo-400 font-medium">{language === 'th' ? 'ชั่วโมง:' : 'Hours:'}</span>
+                              <span className="font-bold">{bar.totalHours} {language === 'th' ? 'ชม.' : 'hrs'}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span className="text-emerald-400 font-medium">{language === 'th' ? 'ผู้เข้าร่วม:' : 'Attendees:'}</span>
+                              <span className="font-bold">{bar.attendees} {language === 'th' ? 'คน' : 'pax'}</span>
+                            </div>
+                            {bar.roomsList && (
+                              <div className="text-[10px] text-slate-300 truncate pt-0.5 border-t border-slate-800">
+                                <span>{language === 'th' ? 'ห้อง: ' : 'Rooms: '}</span>
+                                <span className="font-semibold text-white">{bar.roomsList}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between gap-2 pt-1 border-t border-slate-800 text-white font-bold">
+                              <span>{language === 'th' ? 'รวม:' : 'Total:'}</span>
+                              <span>{bar.totalBookings} {language === 'th' ? 'การจอง' : 'bookings'}</span>
+                            </div>
+                          </div>
+                          {/* Triangle Arrow */}
+                          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45" />
+                        </div>
+                      )}
+
+                      {/* Number on Top of Bar */}
+                      <span className={`text-[9.5px] sm:text-[10px] font-black mb-1.5 transition-all ${
+                        isHovered ? 'text-sky-600 scale-110 font-extrabold' : 'text-slate-500'
+                      }`}>
+                        {bar.totalBookings}
+                      </span>
+
+                      {/* Stacked Vertical Bar */}
+                      <div 
+                        className={`w-full max-w-[28px] sm:max-w-[42px] rounded-t-xl overflow-hidden flex flex-col justify-end transition-all duration-300 ${
+                          isHovered ? 'ring-2 ring-sky-500 shadow-lg scale-x-105' : 'shadow-2xs'
+                        }`}
+                        style={{ height: `${barHeightPct}%` }}
+                      >
+                        {/* Pending portion (Amber Top) */}
+                        {bar.pendingBookings > 0 && (
+                          <div 
+                            className="w-full bg-gradient-to-t from-amber-500 to-yellow-400 transition-all"
+                            style={{ height: `${bar.pendingPercent}%` }}
+                          />
+                        )}
+                        {/* Approved portion (Sky Bottom) */}
+                        {bar.approvedBookings > 0 && (
+                          <div 
+                            className="w-full bg-gradient-to-t from-sky-600 to-blue-500 transition-all"
+                            style={{ height: `${bar.approvedPercent}%` }}
+                          />
+                        )}
+                      </div>
+
+                      {/* Day Label Underneath */}
+                      <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 mt-2 truncate max-w-full text-center">
+                        {bar.label}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : meetingBarChartMode === 'room' ? (
+          /* By Room Breakdown */
+          <div className="space-y-3 pt-2">
+            {meetingBarChartData.rooms.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 text-xs">
+                {language === 'th' ? 'ไม่มีข้อมูลการใช้ห้องประชุมในช่วงเวลานี้' : 'No room data available in this range'}
+              </div>
+            ) : (
+              meetingBarChartData.rooms.map((room, idx) => {
+                const roomColors = ['#0284c7', '#2563eb', '#6366f1', '#10b981', '#f59e0b'];
+                const currentColor = roomColors[idx % roomColors.length];
+                const pct = meetingBarChartData.totalBookings > 0 ? ((room.bookings / meetingBarChartData.totalBookings) * 100).toFixed(1) : '0';
+                return (
+                  <div key={room.name} className="space-y-1.5 group p-3 bg-slate-50/70 hover:bg-slate-50 rounded-xl border border-slate-200/70 transition-all">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <DoorOpen className="w-4 h-4 text-sky-600" />
+                        <span className="font-bold text-slate-800">{room.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 font-mono">
+                        <span className="font-black text-slate-900">{room.bookings} {language === 'th' ? 'ครั้ง' : 'bookings'}</span>
+                        <span className="text-slate-500 font-semibold text-[11px]">{room.hours} {language === 'th' ? 'ชม.' : 'hrs'}</span>
+                        <span className="text-slate-500 font-semibold text-[11px]">{room.attendees} {language === 'th' ? 'คน' : 'pax'}</span>
+                        <span className="text-[11px] font-bold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                    {/* Progress Bar */}
+                    <div className="w-full h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(5, Math.round((room.bookings / (meetingBarChartData.totalBookings || 1)) * 100))}%`,
+                          backgroundColor: currentColor
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : meetingBarChartMode === 'department' ? (
+          /* By Department Breakdown */
+          <div className="space-y-3 pt-2">
+            {meetingBarChartData.departments.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 text-xs">
+                {language === 'th' ? 'ไม่มีข้อมูลแผนกที่จองห้องประชุมในช่วงเวลานี้' : 'No department data available in this range'}
+              </div>
+            ) : (
+              meetingBarChartData.departments.map((dept, idx) => {
+                const deptColors = ['#0284c7', '#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'];
+                const currentColor = deptColors[idx % deptColors.length];
+                const pct = meetingBarChartData.totalBookings > 0 ? ((dept.bookings / meetingBarChartData.totalBookings) * 100).toFixed(1) : '0';
+                return (
+                  <div key={dept.name} className="space-y-1.5 group p-3 bg-slate-50/70 hover:bg-slate-50 rounded-xl border border-slate-200/70 transition-all">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-indigo-600" />
+                        <span className="font-bold text-slate-800">{dept.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 font-mono">
+                        <span className="font-black text-slate-900">{dept.bookings} {language === 'th' ? 'ครั้ง' : 'bookings'}</span>
+                        <span className="text-slate-500 font-semibold text-[11px]">{dept.hours} {language === 'th' ? 'ชม.' : 'hrs'}</span>
+                        <span className="text-slate-500 font-semibold text-[11px]">{dept.attendees} {language === 'th' ? 'คน' : 'pax'}</span>
+                        <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                    {/* Progress Bar */}
+                    <div className="w-full h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(5, Math.round((dept.bookings / (meetingBarChartData.totalBookings || 1)) * 100))}%`,
+                          backgroundColor: currentColor
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
           /* Meeting Topics Breakdown */
           <div className="space-y-3 pt-2">
-            {filteredBarChartData.meetingTopics.length === 0 ? (
+            {meetingBarChartData.topics.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs">
                 {language === 'th' ? 'ไม่มีข้อมูลหัวข้อการประชุมในช่วงเวลาที่เลือก' : 'No meeting topics recorded in this selected range'}
               </div>
             ) : (
-              filteredBarChartData.meetingTopics.map((topicItem, idx) => {
+              meetingBarChartData.topics.map((topicItem, idx) => {
                 const topicColors = ['#0284c7', '#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6'];
                 const currentColor = topicColors[idx % topicColors.length];
-                const totalMeetings = filteredBarChartData.totalMeetings || 1;
+                const totalMeetings = meetingBarChartData.totalBookings || 1;
                 const pct = ((topicItem.count / totalMeetings) * 100).toFixed(1);
 
                 return (
@@ -2118,13 +2734,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           {topicItem.subject}
                         </span>
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md">
-                          {topicItem.count} {language === 'th' ? 'ครั้ง' : 'sessions'} ({pct}%)
+                      <div className="flex items-center gap-2 font-mono shrink-0">
+                        <span className="font-black text-slate-900">
+                          {topicItem.count} {language === 'th' ? 'ครั้ง' : 'sessions'}
                         </span>
-                        <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
-                          <Users className="w-3 h-3 text-emerald-600" />
+                        <span className="text-[11px] font-bold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">
+                          {pct}%
+                        </span>
+                        <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60">
                           {topicItem.attendees} {language === 'th' ? 'คน' : 'pax'}
                         </span>
                       </div>
@@ -2135,7 +2752,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
-                          width: `${Math.max(8, Math.round(topicItem.countHeightRatio * 100))}%`,
+                          width: `${Math.max(8, Math.round(topicItem.heightRatio * 100))}%`,
                           backgroundColor: currentColor
                         }}
                       />

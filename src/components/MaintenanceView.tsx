@@ -34,6 +34,12 @@ import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { MaintenanceDetailModal } from './MaintenanceDetailModal';
 import { MaintenanceCalendarView } from './MaintenanceCalendarView';
 import { MaintenanceAnalyticsModal } from './MaintenanceAnalyticsModal';
+import { 
+  AllTicketsAnimatedIcon, 
+  RepairingActiveIcon, 
+  CompletedRepairAnimatedIcon,
+  InProgressClockAnimatedIcon
+} from './MaintenanceStatusIcons';
 
 const STORAGE_KEY = 'proworkflow_maintenance_tickets_cache_v4';
 const BACKGROUND_POLL_INTERVAL_MS = 20000; // Auto-update in background every 20s
@@ -317,14 +323,14 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       case 'เสร็จแล้ว':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            <CompletedRepairAnimatedIcon size="xs" iconClassName="text-emerald-700" showSparkle />
             <span>{status}</span>
           </span>
         );
       case 'อยู่ระหว่างดำเนินการ':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-100 text-sky-900 border border-sky-300">
-            <Clock className="w-3.5 h-3.5 text-sky-700 animate-spin" />
+            <InProgressClockAnimatedIcon size="xs" iconClassName="text-sky-700" />
             <span>{status}</span>
           </span>
         );
@@ -332,7 +338,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       default:
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-950 border border-amber-300">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+            <RepairingActiveIcon size="xs" iconClassName="text-amber-700" showGear />
             <span>{status}</span>
           </span>
         );
@@ -515,7 +521,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             <div className="flex items-center justify-between text-orange-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'ใบแจ้งงานทั้งหมด' : 'Total Work Orders'}</span>
               <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Layers className="w-4 h-4 text-orange-800" />
+                <AllTicketsAnimatedIcon size="md" iconClassName="text-orange-800" />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-[#7c2d12]">{totalCount}</p>
@@ -534,7 +540,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             <div className="flex items-center justify-between text-amber-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'แจ้งใหม่ / รอดำเนินการ' : 'New / Pending'}</span>
               <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
-                <AlertCircle className="w-4 h-4 text-amber-600 animate-pulse" />
+                <RepairingActiveIcon size="md" iconClassName="text-amber-700" showGear />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-amber-800">{newCount}</p>
@@ -553,7 +559,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             <div className="flex items-center justify-between text-sky-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'อยู่ระหว่างดำเนินการ' : 'In Progress'}</span>
               <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center">
-                <Clock className="w-4 h-4 text-sky-600 animate-spin" />
+                <InProgressClockAnimatedIcon size="md" iconClassName="text-sky-700" />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-sky-800">{inProgressCount}</p>
@@ -572,7 +578,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
             <div className="flex items-center justify-between text-emerald-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'เสร็จแล้ว / ปิดงาน' : 'Completed'}</span>
               <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CompletedRepairAnimatedIcon size="md" iconClassName="text-emerald-600" showSparkle />
               </div>
             </div>
             <div className="flex items-baseline gap-2">
@@ -929,7 +935,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <div className="bg-amber-50/40 rounded-3xl p-4 border border-amber-200 flex flex-col max-h-[75vh]">
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-200 shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
+                    <RepairingActiveIcon size="sm" iconClassName="text-amber-600" showGear />
                     <h3 className="text-sm font-bold text-amber-950">
                       {language === 'th' ? 'แจ้งใหม่ / รอดำเนินการ' : 'New / Pending'}
                     </h3>
@@ -965,7 +971,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <div className="bg-sky-50/40 rounded-3xl p-4 border border-sky-200 flex flex-col max-h-[75vh]">
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-sky-200 shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-sky-500 animate-spin" />
+                    <InProgressClockAnimatedIcon size="sm" iconClassName="text-sky-600" />
                     <h3 className="text-sm font-bold text-sky-950">
                       {language === 'th' ? 'อยู่ระหว่างดำเนินการ' : 'In Progress'}
                     </h3>
@@ -1001,7 +1007,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <div className="bg-emerald-50/40 rounded-3xl p-4 border border-emerald-200 flex flex-col max-h-[75vh]">
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-200 shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <CompletedRepairAnimatedIcon size="sm" iconClassName="text-emerald-600" showSparkle />
                     <h3 className="text-sm font-bold text-emerald-950">
                       {language === 'th' ? 'เสร็จแล้ว / ปิดงาน' : 'Completed'}
                     </h3>

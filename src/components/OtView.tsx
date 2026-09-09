@@ -49,24 +49,54 @@ import { OtDetailModal } from './OtDetailModal';
 import { OtAnalyticsModal } from './OtAnalyticsModal';
 import { OtCalendarView } from './OtCalendarView';
 import { OtFilterModal } from './OtFilterModal';
+import { 
+  OtRecordsAnimatedIcon, 
+  OtHoursAnimatedIcon, 
+  OtApprovedAnimatedIcon, 
+  OtConfirmAnimatedIcon 
+} from './OtStatusIcons';
 
 const STORAGE_KEY = 'proworkflow_ot_records_cache_v2';
 const BACKGROUND_POLL_INTERVAL_MS = 20000;
 const TABLE_ITEMS_PER_PAGE = 20;
 const CARD_ITEMS_PER_PAGE = 6;
 
-// Helper to parse dates
+const TH_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
+const TH_MONTHS_SHORT = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+];
+const EN_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+// Helper to parse dates (supports DD/MM/YYYY, DD-MM-YY, and YYYY-MM-DD with Buddhist/CE years)
 function parseOtDate(dateStr?: string): Date | null {
   if (!dateStr || !dateStr.trim() || dateStr === '-') return null;
   const clean = dateStr.trim();
   const parts = clean.split(/[-/.]/);
   if (parts.length === 3) {
-    const day = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    let year = parseInt(parts[2], 10);
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    const p2 = parseInt(parts[2], 10);
+
+    // Format: YYYY-MM-DD
+    if (p0 > 1000 || parts[0].length === 4) {
+      let year = p0;
+      if (year > 2400) year -= 543;
+      const d = new Date(year, p1 - 1, p2);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // Format: DD/MM/YYYY or DD-MM-YY
+    let year = p2;
     if (year < 100) year += 2000;
-    else if (year > 2500) year -= 543;
-    const d = new Date(year, month, day);
+    else if (year > 2400) year -= 543;
+    const d = new Date(year, p1 - 1, p0);
     if (!isNaN(d.getTime())) return d;
   }
   return null;
@@ -107,6 +137,20 @@ export const OtView: React.FC<OtViewProps> = ({
   const [selectedAdminEmployeeFilter, setSelectedAdminEmployeeFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+
+  // Month Scope: 'current' (เดือนปัจจุบัน - ค่าเริ่มต้นตามที่กำหนด) | 'all' (ทั้งหมดทุกเดือน)
+  const [monthScope, setMonthScope] = useState<'current' | 'all'>('current');
+
+  // Current month descriptor
+  const now = new Date();
+  const currentMonthIdx = now.getMonth();
+  const currentYear = now.getFullYear();
+  const currentMonthLabel = language === 'th' 
+    ? `${TH_MONTHS[currentMonthIdx]} ${currentYear + 543}`
+    : `${EN_MONTHS[currentMonthIdx]} ${currentYear}`;
+  const currentMonthShortLabel = language === 'th'
+    ? `${TH_MONTHS_SHORT[currentMonthIdx]} ${String(currentYear + 543).slice(-2)}`
+    : `${EN_MONTHS[currentMonthIdx].slice(0, 3)} ${currentYear}`;
 
   // Unauthenticated employee verification input
   const [verifyEmpIdInput, setVerifyEmpIdInput] = useState<string>('');
@@ -234,9 +278,19 @@ export const OtView: React.FC<OtViewProps> = ({
     return Array.from(empMap.values()).sort((a, b) => a.id.localeCompare(b.id));
   }, [isAdmin, allRecords]);
 
-  // 2. Base Filtered Records (based on search query, department, admin employee filter, date range)
+  // 2. Base Filtered Records (based on search query, department, admin employee filter, date range, and month scope)
   const baseFilteredRecords = useMemo(() => {
     let list = [...permissionScopedRecords];
+
+    // Current month filter (Default per requirement 1: กล่องทั้ง 4 แสดงข้อมูลเดือนปัจจุบัน)
+    if (monthScope === 'current') {
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth();
+      list = list.filter((r) => {
+        const d = parseOtDate(r.otDate) || parseOtDate(r.recordedDate);
+        return d && d.getFullYear() === curYear && d.getMonth() === curMonth;
+      });
+    }
 
     // Search query filter
     if (searchQuery.trim()) {
@@ -284,21 +338,33 @@ export const OtView: React.FC<OtViewProps> = ({
     }
 
     return list;
-  }, [permissionScopedRecords, searchQuery, selectedDepartment, startDate, endDate]);
+  }, [permissionScopedRecords, monthScope, searchQuery, selectedDepartment, startDate, endDate, now]);
 
-  // Statistics KPI calculated from filtered records (reflects Department, Date range, Search)
-  const { totalCount, totalHours, approvedCount, confirmCount } = useMemo(() => {
+  // Statistics KPI calculated from filtered records (reflects Department, Date range, Search, and Month)
+  const { 
+    totalCount, 
+    totalHours, 
+    approvedCount, 
+    confirmCount,
+    approvedHours,
+    confirmHours 
+  } = useMemo(() => {
     const totalCount = baseFilteredRecords.length;
     let totalHours = 0;
     let approvedCount = 0;
     let confirmCount = 0;
+    let approvedHours = 0;
+    let confirmHours = 0;
 
     baseFilteredRecords.forEach((r) => {
-      totalHours += r.totalHours || 0;
+      const h = r.totalHours || 0;
+      totalHours += h;
       if (r.status.toLowerCase().includes('approved') || r.status.includes('อนุมัติ')) {
         approvedCount++;
+        approvedHours += h;
       } else if (r.status.toLowerCase().includes('confirm') || r.status.includes('ยืนยัน')) {
         confirmCount++;
+        confirmHours += h;
       }
     });
 
@@ -307,8 +373,23 @@ export const OtView: React.FC<OtViewProps> = ({
       totalHours: Math.round(totalHours * 10) / 10,
       approvedCount,
       confirmCount,
+      approvedHours: Math.round(approvedHours * 10) / 10,
+      confirmHours: Math.round(confirmHours * 10) / 10,
     };
   }, [baseFilteredRecords]);
+
+  // Requirement 7: เมื่อคลิกที่กล่อง อนุมัติแล้ว (Approved) หรือ รอยืนยัน (Confirm) กล่อง รายการ OT ที่แสดง ให้แสดงตามที่เลือก
+  const displayedCount = useMemo(() => {
+    if (selectedStatus === 'Approved') return approvedCount;
+    if (selectedStatus === 'Confirm') return confirmCount;
+    return totalCount;
+  }, [selectedStatus, approvedCount, confirmCount, totalCount]);
+
+  const displayedHours = useMemo(() => {
+    if (selectedStatus === 'Approved') return approvedHours;
+    if (selectedStatus === 'Confirm') return confirmHours;
+    return totalHours;
+  }, [selectedStatus, approvedHours, confirmHours, totalHours]);
 
   // 3. Filtered & Sorted Records based on Status and Sorting criteria
   const filteredRecords = useMemo(() => {
@@ -439,14 +520,14 @@ export const OtView: React.FC<OtViewProps> = ({
                 ) : currentEffectiveEmpId ? (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
                     <User className="w-3.5 h-3.5 text-amber-700" />
-                    <span>{language === 'th' ? `พนักงานรหัส ${currentEffectiveEmpId}` : `Staff ID: ${currentEffectiveEmpId}`}</span>
+                    <span>{currentUser?.name ? currentUser.name : (language === 'th' ? 'พนักงาน' : 'Staff')}</span>
                   </span>
                 ) : null}
               </div>
               <p className="text-xs sm:text-sm text-amber-900/80 mt-0.5">
                 {isAdmin 
                   ? (language === 'th' ? 'สิทธิ์ผู้ดูแลระบบ: สามารถมองเห็นและจัดการข้อมูล OT ของพนักงานทุกคน' : 'Administrator mode: Full access to all staff overtime records')
-                  : (language === 'th' ? 'สิทธิ์การมองเห็น: เฉพาะพนักงานที่ลงทะเบียนและตรงกับรหัสพนักงาน (มองเห็นเฉพาะของตนเอง)' : 'Personal access: Showing your own overtime records matching your registered employee ID')}
+                  : (language === 'th' ? 'สิทธิ์การมองเห็น: เฉพาะพนักงานที่ลงทะเบียน (มองเห็นเฉพาะของตนเอง)' : 'Personal access: Showing your own overtime records')}
               </p>
             </div>
           </div>
@@ -597,9 +678,53 @@ export const OtView: React.FC<OtViewProps> = ({
           </div>
         )}
 
+        {/* Month Scope Indicator & Quick Switcher (Requirement 1: แสดงข้อมูลเดือนปัจจุบัน) */}
+        <div className="relative z-10 pt-3 pb-1 border-t border-amber-200/60 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/90 border border-amber-300/80 text-xs font-bold text-[#713f12] shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-amber-700" />
+              <span>
+                {monthScope === 'current' 
+                  ? (language === 'th' ? `ข้อมูลเดือนปัจจุบัน: ${currentMonthLabel}` : `Current Month: ${currentMonthLabel}`) 
+                  : (language === 'th' ? 'ข้อมูลทั้งหมดทุกเดือน (All Months)' : 'All Historical Months')}
+              </span>
+            </span>
+            {monthScope === 'current' && (
+              <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                {language === 'th' ? 'เดือนปัจจุบัน' : 'Current Month'}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 bg-white/85 p-1 rounded-xl border border-amber-300 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setMonthScope('current')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                monthScope === 'current'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-amber-900 hover:text-black hover:bg-amber-100/60'
+              }`}
+            >
+              {language === 'th' ? `เดือนปัจจุบัน (${currentMonthShortLabel})` : `This Month (${currentMonthShortLabel})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMonthScope('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                monthScope === 'all'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-amber-900 hover:text-black hover:bg-amber-100/60'
+              }`}
+            >
+              {language === 'th' ? 'ทั้งหมดทุกเดือน' : 'All Months'}
+            </button>
+          </div>
+        </div>
+
         {/* Integrated Metric KPI Cards Row */}
         <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-3 border-t border-amber-200/60">
-          {/* Card 1: ทั้งหมด */}
+          {/* Card 1: รายการ OT ที่แสดง (Animated Icon + Requirement 7: แสดงตามที่เลือก) */}
           <div 
             onClick={() => setSelectedStatus('all')}
             className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
@@ -607,22 +732,27 @@ export const OtView: React.FC<OtViewProps> = ({
                 ? 'bg-white/95 border-sky-400 shadow-md ring-2 ring-sky-300 scale-[1.02]'
                 : 'bg-white/75 hover:bg-white/90 border-sky-200/80 shadow-xs'
             }`}
+            title={language === 'th' ? 'คลิกเพื่อแสดงรายการทั้งหมด' : 'Click to show all records'}
           >
             <div className="flex items-center justify-between text-sky-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'รายการ OT ที่แสดง' : 'OT Records'}</span>
               <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center">
-                <Layers className="w-4 h-4 text-sky-800" />
+                <OtRecordsAnimatedIcon size="md" iconClassName="text-sky-800" />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-black text-[#002045]">{totalCount}</p>
-            <span className="text-[11px] text-sky-800/80">
-              {isAdmin 
-                ? (language === 'th' ? 'รายการสะสมของระบบ' : 'Total system records') 
-                : (language === 'th' ? 'รายการของคุณ' : 'Your personal records')}
+            <p className="text-2xl sm:text-3xl font-black text-[#002045]">{displayedCount}</p>
+            <span className="text-[11px] text-sky-800/90 font-medium">
+              {selectedStatus === 'Approved'
+                ? (language === 'th' ? '✓ อนุมัติแล้ว (ตามที่เลือก)' : '✓ Approved (Selected)')
+                : selectedStatus === 'Confirm'
+                ? (language === 'th' ? '⏳ รอยืนยัน (ตามที่เลือก)' : '⏳ Confirm (Selected)')
+                : (monthScope === 'current'
+                  ? (language === 'th' ? `ทั้งหมดในเดือนปัจจุบัน (${currentMonthShortLabel})` : `This Month (${currentMonthShortLabel})`)
+                  : (language === 'th' ? 'ทั้งหมดทุกเดือน' : 'All Months'))}
             </span>
           </div>
 
-          {/* Card 2: ชั่วโมง OT รวม -> Opens Donut Chart Modal */}
+          {/* Card 2: ชั่วโมง OT รวม -> Opens Donut Chart Modal (Animated Icon) */}
           <div 
             onClick={(e) => {
               e.preventDefault();
@@ -635,52 +765,64 @@ export const OtView: React.FC<OtViewProps> = ({
             <div className="flex items-center justify-between text-emerald-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'ชั่วโมง OT รวม' : 'Total OT Hours'}</span>
               <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-emerald-700" />
+                <OtHoursAnimatedIcon size="md" iconClassName="text-emerald-700" showSparkle />
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-black text-emerald-800">{totalHours}</p>
+            <p className="text-2xl sm:text-3xl font-black text-emerald-800">{displayedHours}</p>
             <span className="text-[11px] text-emerald-700/90 flex items-center gap-1">
-              <span>{language === 'th' ? 'คลิกดูกราฟวงกลม' : 'Click for Donut Chart'}</span>
+              <span>
+                {selectedStatus === 'Approved'
+                  ? (language === 'th' ? 'ชั่วโมงที่อนุมัติแล้ว' : 'Approved Hours')
+                  : selectedStatus === 'Confirm'
+                  ? (language === 'th' ? 'ชั่วโมงที่รอยืนยัน' : 'Confirm Hours')
+                  : (language === 'th' ? 'คลิกดูกราฟวงกลม' : 'Click for Donut Chart')}
+              </span>
               <Sparkles className="w-3 h-3 text-emerald-600" />
             </span>
           </div>
 
-          {/* Card 3: Approved */}
+          {/* Card 3: Approved (Animated Icon + Requirement 7: คลิกเพื่อเลือก / ยกเลิก) */}
           <div 
-            onClick={() => setSelectedStatus('Approved')}
+            onClick={() => setSelectedStatus(selectedStatus === 'Approved' ? 'all' : 'Approved')}
             className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
               selectedStatus === 'Approved'
                 ? 'bg-emerald-50/95 border-emerald-400 shadow-md ring-2 ring-emerald-300 scale-[1.02]'
                 : 'bg-white/75 hover:bg-white/90 border-sky-200/80 shadow-xs'
             }`}
+            title={language === 'th' ? 'คลิกเพื่อกรองเฉพาะรายการที่อนุมัติแล้ว' : 'Click to filter approved records'}
           >
             <div className="flex items-center justify-between text-emerald-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'อนุมัติแล้ว (Approved)' : 'Approved'}</span>
               <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <OtApprovedAnimatedIcon size="md" iconClassName="text-emerald-600" />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-emerald-800">{approvedCount}</p>
-            <span className="text-[11px] text-emerald-700/90">{language === 'th' ? 'อนุมัติเรียบร้อย' : 'Approved'}</span>
+            <span className="text-[11px] text-emerald-700/90">
+              {language === 'th' ? 'อนุมัติเรียบร้อย' : 'Approved'}
+            </span>
           </div>
 
-          {/* Card 4: Confirm */}
+          {/* Card 4: Confirm (Animated Icon + Requirement 7: คลิกเพื่อเลือก / ยกเลิก) */}
           <div 
-            onClick={() => setSelectedStatus('Confirm')}
+            onClick={() => setSelectedStatus(selectedStatus === 'Confirm' ? 'all' : 'Confirm')}
             className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
               selectedStatus === 'Confirm'
                 ? 'bg-amber-50/95 border-amber-400 shadow-md ring-2 ring-amber-300 scale-[1.02]'
                 : 'bg-white/75 hover:bg-white/90 border-sky-200/80 shadow-xs'
             }`}
+            title={language === 'th' ? 'คลิกเพื่อกรองเฉพาะรายการที่รอยืนยัน' : 'Click to filter confirm records'}
           >
             <div className="flex items-center justify-between text-amber-900 text-xs font-bold mb-1.5">
               <span>{language === 'th' ? 'รอยืนยัน (Confirm)' : 'Confirm'}</span>
               <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
-                <AlertCircle className="w-4 h-4 text-amber-600 animate-pulse" />
+                <OtConfirmAnimatedIcon size="md" iconClassName="text-amber-600" />
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-black text-amber-800">{confirmCount}</p>
-            <span className="text-[11px] text-amber-700/90">{language === 'th' ? 'รอยืนยัน' : 'Pending confirmation'}</span>
+            <span className="text-[11px] text-amber-700/90">
+              {language === 'th' ? 'รอยืนยัน' : 'Pending confirmation'}
+            </span>
           </div>
         </div>
       </div>
@@ -796,7 +938,7 @@ export const OtView: React.FC<OtViewProps> = ({
                 {language === 'th' ? 'กำลังแสดงข้อมูล OT ส่วนตัวของคุณ' : 'Showing your personal OT records'}
               </p>
               <p className="text-[11px] text-sky-800">
-                {currentUser?.name ? `คุณ ${currentUser.name} • ` : ''}รหัสพนักงาน: <strong>{currentEffectiveEmpId}</strong> ({filteredRecords.length} รายการที่ตรงกัน)
+                {currentUser?.name ? `คุณ ${currentUser.name}` : (filteredRecords[0]?.employeeName ? `คุณ ${filteredRecords[0].employeeName}` : (language === 'th' ? 'ข้อมูลของคุณ' : 'Your Records'))} ({filteredRecords.length} {language === 'th' ? 'รายการที่ตรงกัน' : 'records matched'})
               </p>
             </div>
           </div>
@@ -811,16 +953,16 @@ export const OtView: React.FC<OtViewProps> = ({
                 }}
                 className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer"
               >
-                {language === 'th' ? 'เปลี่ยนรหัสพนักงาน' : 'Change ID'}
+                {language === 'th' ? 'เปลี่ยนการค้นหา' : 'Change Search'}
               </button>
             )}
-            {onOpenLogin && (
+            {onOpenLogin && !isAuthenticated && (
               <button
                 type="button"
                 onClick={onOpenLogin}
                 className="px-3 py-1.5 rounded-xl bg-[#002045] hover:bg-[#003366] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs"
               >
-                {isAuthenticated ? (language === 'th' ? 'สลับบัญชี' : 'Switch Account') : (language === 'th' ? 'เข้าสู่ระบบ' : 'Sign In')}
+                {language === 'th' ? 'เข้าสู่ระบบ' : 'Sign In'}
               </button>
             )}
           </div>
@@ -961,7 +1103,7 @@ export const OtView: React.FC<OtViewProps> = ({
               <div className="bg-slate-50/80 rounded-3xl p-5 border border-slate-200 flex flex-col space-y-4 min-h-[500px]">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-600" />
                     <h2 className="font-bold text-[#002045] text-base">Approved (อนุมัติแล้ว)</h2>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
@@ -988,7 +1130,6 @@ export const OtView: React.FC<OtViewProps> = ({
                         <p className="text-xs text-slate-500 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-slate-400" />
                           <span>{r.department}</span>
-                          <span>• รหัส {r.employeeId}</span>
                         </p>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
@@ -1004,7 +1145,7 @@ export const OtView: React.FC<OtViewProps> = ({
               <div className="bg-slate-50/80 rounded-3xl p-5 border border-slate-200 flex flex-col space-y-4 min-h-[500px]">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-amber-500" />
+                    <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-600" />
                     <h2 className="font-bold text-[#002045] text-base">Confirm (รอยืนยัน)</h2>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
@@ -1031,7 +1172,6 @@ export const OtView: React.FC<OtViewProps> = ({
                         <p className="text-xs text-slate-500 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-slate-400" />
                           <span>{r.department}</span>
-                          <span>• รหัส {r.employeeId}</span>
                         </p>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
@@ -1059,13 +1199,17 @@ export const OtView: React.FC<OtViewProps> = ({
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-[#002045] text-xs font-mono font-bold">
-                            รหัส {r.employeeId}
+                            #{r.seq}
                           </span>
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
                             isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {isApproved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                            {r.status}
+                            {isApproved ? (
+                              <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-700" showSparkle={false} />
+                            ) : (
+                              <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-700" />
+                            )}
+                            <span>{r.status}</span>
                           </span>
                         </div>
 
@@ -1144,7 +1288,6 @@ export const OtView: React.FC<OtViewProps> = ({
                   <thead>
                     <tr className="bg-slate-50/90 border-b border-slate-200 text-[#002045] font-bold text-xs uppercase tracking-wider">
                       <th className="py-3.5 px-4">วันที่ทำ OT</th>
-                      <th className="py-3.5 px-4">รหัสพนักงาน</th>
                       <th className="py-3.5 px-4">ชื่อ - นามสกุล</th>
                       <th className="py-3.5 px-4">ฝ่ายงาน</th>
                       <th className="py-3.5 px-4">เวลาปฏิบัติงาน</th>
@@ -1156,15 +1299,15 @@ export const OtView: React.FC<OtViewProps> = ({
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {paginatedTableRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
                           <div className="space-y-1">
                             <Clock className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                             <p className="font-semibold">{language === 'th' ? 'ไม่พบข้อมูล OT ที่ตรงกับเงื่อนไข' : 'No OT records found'}</p>
                             {!isAdmin && currentEffectiveEmpId && (
                               <p className="text-xs text-slate-400">
                                 {language === 'th' 
-                                  ? `ไม่พบข้อมูลสำหรับรหัสพนักงาน ${currentEffectiveEmpId}` 
-                                  : `No records for employee ID ${currentEffectiveEmpId}`}
+                                  ? `ไม่พบข้อมูลสำหรับชื่อพนักงานที่ระบุ` 
+                                  : `No records for specified employee`}
                               </p>
                             )}
                           </div>
@@ -1181,9 +1324,6 @@ export const OtView: React.FC<OtViewProps> = ({
                           >
                             <td className="py-3 px-4 font-semibold text-[#002045] whitespace-nowrap">
                               {r.otDate}
-                            </td>
-                            <td className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
-                              {r.employeeId}
                             </td>
                             <td className="py-3 px-4 font-bold text-[#002045] whitespace-nowrap">
                               {r.employeeName}
@@ -1205,10 +1345,15 @@ export const OtView: React.FC<OtViewProps> = ({
                               {r.docNo}
                             </td>
                             <td className="py-3 px-4 text-center whitespace-nowrap">
-                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
                                 isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                               }`}>
-                                {r.status}
+                                {isApproved ? (
+                                  <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-700" showSparkle={false} />
+                                ) : (
+                                  <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-700" />
+                                )}
+                                <span>{r.status}</span>
                               </span>
                             </td>
                           </tr>

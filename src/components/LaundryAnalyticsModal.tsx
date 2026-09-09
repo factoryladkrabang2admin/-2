@@ -22,6 +22,7 @@ import {
 import { LaundryOrder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
+import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 
 interface LaundryAnalyticsModalProps {
   isOpen: boolean;
@@ -586,7 +587,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                           : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
                       }`}
                     >
-                      <Waves className="w-3 h-3" />
+                      <WashingMachineActiveIcon size="xs" iconClassName={filterStage === 'washing' ? 'text-white' : 'text-amber-700'} />
                       <span>{language === 'th' ? 'ซักอยู่' : 'Wash'}</span>
                     </button>
                     <button
@@ -598,7 +599,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                           : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
                       }`}
                     >
-                      <Check className="w-3 h-3" />
+                      <ReadyStatusAnimatedIcon size="xs" iconClassName={filterStage === 'ready' ? 'text-white' : 'text-emerald-700'} />
                       <span>{language === 'th' ? 'เสร็จ' : 'Ready'}</span>
                     </button>
                   </div>
@@ -647,7 +648,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                     ? 'bg-amber-50 text-amber-900 border-amber-200'
                     : 'bg-emerald-50 text-emerald-900 border-emerald-200'
                 }`}>
-                  {filterStage === 'washing' ? <Waves className="w-3 h-3 text-amber-600" /> : <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                  {filterStage === 'washing' ? <WashingMachineActiveIcon size="xs" iconClassName="text-amber-600" /> : <ReadyStatusAnimatedIcon size="xs" iconClassName="text-emerald-600" />}
                   <span>{filterStage === 'washing' ? (language === 'th' ? 'อยู่ระหว่างซัก' : 'In Washing') : (language === 'th' ? 'ซักเสร็จแล้ว' : 'Ready')}</span>
                 </span>
               )}
@@ -716,7 +717,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                 <div className="p-4 rounded-2xl bg-white border border-amber-200/80 shadow-xs flex flex-col justify-between">
                   <div className="flex items-center justify-between text-amber-700 text-xs font-bold mb-1">
                     <span>{language === 'th' ? 'อยู่ระหว่างซัก' : 'In Washing'}</span>
-                    <Waves className="w-4 h-4 text-amber-500 animate-pulse" />
+                    <WashingMachineActiveIcon size="sm" iconClassName="text-amber-500" />
                   </div>
                   <p className="text-2xl sm:text-3xl font-black text-amber-600">{inWashingCount}</p>
                   <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md self-start mt-1">
@@ -728,7 +729,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                 <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-xs flex flex-col justify-between">
                   <div className="flex items-center justify-between text-emerald-700 text-xs font-bold mb-1">
                     <span>{language === 'th' ? 'ซักเสร็จสมบูรณ์' : 'Washed & Ready'}</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <ReadyStatusAnimatedIcon size="sm" iconClassName="text-emerald-600" />
                   </div>
                   <p className="text-2xl sm:text-3xl font-black text-emerald-700">{readyCount}</p>
                   <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md self-start mt-1">
@@ -993,7 +994,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                           <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                                <CheckCircle2 className="w-5 h-5" />
+                                <ReadyStatusAnimatedIcon size="md" iconClassName="text-white" />
                               </div>
                               <div>
                                 <h4 className="font-bold text-emerald-950 text-sm">
@@ -1013,7 +1014,7 @@ export const LaundryAnalyticsModal: React.FC<LaundryAnalyticsModalProps> = ({
                           <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                                <Waves className="w-5 h-5" />
+                                <WashingMachineActiveIcon size="md" iconClassName="text-white" />
                               </div>
                               <div>
                                 <h4 className="font-bold text-amber-950 text-sm">
