@@ -39,7 +39,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   const isSending = parcel.actionType === 'ส่ง';
 
   const handleCopy = () => {
-    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | บันทึกโดย: ${parcel.operatorName} (${parcel.operatorDepartment}) | วันที่เวลา: ${parcel.timestamp}`;
+    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | วันที่เวลา: ${parcel.timestamp}`;
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

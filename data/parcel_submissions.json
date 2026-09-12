@@ -1,0 +1,41 @@
+[
+  {
+    "id": "parcel-sub-1789251483305-wpckk",
+    "timestamp": "12/9/2569 22:18:03",
+    "actionType": "ส่ง",
+    "senderName": "ระบบอัตโนมัติ",
+    "senderDepartment": "ธุรการลาดกระบัง 2",
+    "recipientName": "ปลายทางทดสอบ",
+    "recipientDepartment": "ธุรการบางชัน",
+    "itemTitle": "เอกสารทดสอบบันทึกชื่อพัสดุสำเร็จ",
+    "operatorName": "เจม",
+    "operatorDepartment": "ธุรการลาดกระบัง 2",
+    "createdAt": 1789251483324
+  },
+  {
+    "id": "parcel-sub-1789251116972-hem4e",
+    "timestamp": "13/9/2026, 05:11:38",
+    "actionType": "ส่ง",
+    "senderName": "ทดสอบ",
+    "senderDepartment": "ธุรการลาดกระบัง 1",
+    "recipientName": "ปลายทาง",
+    "recipientDepartment": "ธุรการบางชัน",
+    "itemTitle": "จดหมายเช่าที่ดิน",
+    "operatorName": "พนักงานทั่วไป (Staff)",
+    "operatorDepartment": "ธุรการลาดกระบัง 2",
+    "createdAt": 1789251116972
+  },
+  {
+    "id": "parcel-sub-1789251006748-p9ieq",
+    "timestamp": "13/9/2026, 05:09:07",
+    "actionType": "ส่ง",
+    "senderName": "ทดสอบ",
+    "senderDepartment": "ธุรการลาดกระบัง 1",
+    "recipientName": "ปลายทาง",
+    "recipientDepartment": "ธุรการบางชัน",
+    "itemTitle": "จดมอบเช่าที่ดิน",
+    "operatorName": "พนักงานทั่วไป (Staff)",
+    "operatorDepartment": "ธุรการลาดกระบัง 2",
+    "createdAt": 1789251006748
+  }
+]

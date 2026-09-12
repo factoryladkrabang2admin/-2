@@ -6,7 +6,6 @@ import {
   Inbox, 
   Package, 
   Building2, 
-  User, 
   TrendingUp, 
   PieChart as PieChartIcon,
   Calendar,
@@ -38,10 +37,9 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
     const sentPct = total > 0 ? Math.round((sent / total) * 100) : 0;
     const receivedPct = total > 0 ? Math.round((received / total) * 100) : 0;
 
-    // Sender Departments breakdown
+    // Sender & Recipient Departments breakdown
     const senderDeptMap: Record<string, number> = {};
     const recipientDeptMap: Record<string, number> = {};
-    const operatorMap: Record<string, number> = {};
 
     records.forEach(r => {
       if (r.senderDepartment && r.senderDepartment !== '-') {
@@ -50,9 +48,6 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
       if (r.recipientDepartment && r.recipientDepartment !== '-') {
         recipientDeptMap[r.recipientDepartment] = (recipientDeptMap[r.recipientDepartment] || 0) + 1;
       }
-      if (r.operatorName && r.operatorName !== '-') {
-        operatorMap[r.operatorName] = (operatorMap[r.operatorName] || 0) + 1;
-      }
     });
 
     const topSenderDepts = Object.entries(senderDeptMap)
@@ -60,10 +55,6 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
       .slice(0, 5);
 
     const topRecipientDepts = Object.entries(recipientDeptMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-
-    const topOperators = Object.entries(operatorMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
@@ -76,7 +67,6 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
       receivedPct,
       topSenderDepts,
       topRecipientDepts,
-      topOperators,
     };
   }, [records]);
 
@@ -250,35 +240,6 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                 <div className="text-xs text-slate-400 italic py-2">ไม่มีข้อมูลแผนก</div>
               )}
             </div>
-          </div>
-
-          {/* Top Operators */}
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700">
-            <div className="flex items-center gap-2 text-sm font-bold text-pink-700 dark:text-pink-300 mb-3">
-              <User className="w-4 h-4 text-pink-500" />
-              เจ้าหน้าที่ผู้ทำรายการสูงสุด (Top Operators)
-            </div>
-            {stats.topOperators.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {stats.topOperators.map(([name, count], idx) => (
-                  <div key={name} className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-900/40 text-pink-600 dark:text-pink-300 flex items-center justify-center font-bold text-xs">
-                        {idx + 1}
-                      </div>
-                      <span className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                        {name}
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-pink-50 dark:bg-pink-950 text-pink-600 dark:text-pink-300">
-                      {count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-slate-400 italic py-2">ไม่มีข้อมูลผู้ทำรายการ</div>
-            )}
           </div>
         </div>
 

@@ -102,7 +102,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
       case 'chlorine':
         return language === 'th' ? 'ค้นหาการสุ่มตรวจคลอรีน, ผู้สุ่มตรวจ, อาคาร A/B, วันที่...' : 'Search chlorine inspection, inspector, building A/B, date...';
       case 'document_delivery':
-        return language === 'th' ? 'ค้นหาเอกสาร/พัสดุ, ผู้ส่ง, ผู้รับ, แผนก, ผู้ทำรายการ...' : 'Search documents, parcels, sender, recipient, department...';
+        return language === 'th' ? 'ค้นหาเอกสาร/พัสดุ, ผู้ส่ง, ผู้รับ, แผนก...' : 'Search documents, parcels, sender, recipient, department...';
       default:
         return t.searchPlaceholder;
     }

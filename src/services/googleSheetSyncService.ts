@@ -3911,6 +3911,23 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
       }
     }
 
+    let finalItemTitle = itemTitle;
+    if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
+      try {
+        const localSubs = getLocalParcelRecords();
+        const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
+        const match = localSubs.find(
+          (sub) =>
+            norm(sub.senderName) === norm(senderName) &&
+            norm(sub.recipientName) === norm(recipientName) &&
+            sub.itemTitle
+        );
+        if (match && match.itemTitle) {
+          finalItemTitle = match.itemTitle;
+        }
+      } catch {}
+    }
+
     records.push({
       id: `parcel-${i}`,
       seq: i,
@@ -3920,7 +3937,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
       senderDepartment: senderDepartment || '-',
       recipientName: recipientName || '-',
       recipientDepartment: recipientDepartment || '-',
-      itemTitle: itemTitle || 'ไม่ระบุชื่อเอกสาร/พัสดุ',
+      itemTitle: finalItemTitle || 'ไม่ระบุชื่อเอกสาร/พัสดุ',
       operatorName: operatorName || '-',
       operatorDepartment: operatorDepartment || '-',
       dateStr,
@@ -4035,16 +4052,27 @@ export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): Parce
   return unique;
 }
 
+const PARCEL_SUBMISSIONS_STORAGE_KEY = 'proworkflow_submitted_parcel_items_v2';
+
 export function getLocalParcelRecords(): ParcelDeliveryRecord[] {
-  // Strictly return empty to ensure only authentic Google Sheet rows are displayed
   try {
-    localStorage.removeItem(PARCEL_LOCAL_STORAGE_KEY);
-  } catch {}
-  return [];
+    const raw = localStorage.getItem(PARCEL_SUBMISSIONS_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
 }
 
-export function saveLocalParcelRecord(_record: ParcelDeliveryRecord): void {
-  // Intentionally no-op to ensure non-Google Sheet records are never stored locally
+export function saveLocalParcelRecord(record: ParcelDeliveryRecord): void {
+  try {
+    if (!record || !record.itemTitle) return;
+    const existing = getLocalParcelRecords();
+    const updated = [record, ...existing.filter((r) => r.id !== record.id)].slice(0, 300);
+    localStorage.setItem(PARCEL_SUBMISSIONS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('Could not save parcel record to localStorage:', err);
+  }
 }
 
 export function mergeParcelRecords(
@@ -4080,8 +4108,30 @@ export interface ParcelSubmitResult {
   success: boolean;
   record: ParcelDeliveryRecord;
   googleSheetSynced: boolean;
+  itemTitleSyncedToSheet?: boolean;
+  detectedEntryId?: string | null;
   details?: string;
   error?: string;
+}
+
+export interface ParcelFormStatusResult {
+  formId: string;
+  hasItemTitleQuestion: boolean;
+  detectedEntryId: string | null;
+  formEditUrl: string;
+  formViewUrl: string;
+  sheetUrl: string;
+}
+
+export async function checkParcelFormStatus(forceRefresh = false): Promise<ParcelFormStatusResult | null> {
+  try {
+    const res = await fetch(`/api/parcel-form-status${forceRefresh ? '?refresh=true' : ''}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('Error checking parcel form status:', err);
+    return null;
+  }
 }
 
 export async function submitParcelDeliveryRecord(
@@ -4127,6 +4177,8 @@ export async function submitParcelDeliveryRecord(
   };
 
   let googleSheetSynced = false;
+  let itemTitleSyncedToSheet = false;
+  let detectedEntryId: string | null = null;
   let details = '';
 
   // Submit via Server Proxy Endpoint (/api/parcel-submit)
@@ -4146,9 +4198,13 @@ export async function submitParcelDeliveryRecord(
     if (res.ok) {
       const data = await res.json();
       googleSheetSynced = !!data.googleSheetSynced;
+      itemTitleSyncedToSheet = !!data.detectedItemTitleEntry;
+      detectedEntryId = data.detectedItemTitleEntry || null;
       details = data.details || '';
+      saveLocalParcelRecord(newRecord);
     } else {
       details = `Server returned status ${res.status}`;
+      saveLocalParcelRecord(newRecord);
     }
   } catch (err: any) {
     console.warn('Server proxy submit warning:', err);
@@ -4159,6 +4215,8 @@ export async function submitParcelDeliveryRecord(
     success: true,
     record: newRecord,
     googleSheetSynced,
+    itemTitleSyncedToSheet,
+    detectedEntryId,
     details,
   };
 }

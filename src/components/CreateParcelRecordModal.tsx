@@ -12,18 +12,21 @@ import {
   AlertCircle,
   ExternalLink,
   RotateCcw,
-  FileSpreadsheet,
   ArrowRight,
   Copy,
   Check,
   Info,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { AdminUserAccount } from '../data/mockData';
 import {
-  PARCEL_SHEET_URL,
   formatCurrentThaiParcelTimestamp,
   submitParcelDeliveryRecord,
+  checkParcelFormStatus,
+  ParcelFormStatusResult,
+  ParcelSubmitResult,
 } from '../services/googleSheetSyncService';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -93,6 +96,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastSavedRecord, setLastSavedRecord] = useState<ParcelDeliveryRecord | null>(null);
+  const [lastSubmitResult, setLastSubmitResult] = useState<ParcelSubmitResult | null>(null);
+  const [formStatus, setFormStatus] = useState<ParcelFormStatusResult | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [copiedData, setCopiedData] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
@@ -112,6 +118,25 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
   const wasOpenRef = useRef(false);
 
+  // Fetch form status when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      checkParcelFormStatus().then((status) => {
+        if (status) setFormStatus(status);
+      });
+    }
+  }, [isOpen]);
+
+  const handleRefreshFormStatus = async () => {
+    setIsCheckingStatus(true);
+    try {
+      const status = await checkParcelFormStatus(true);
+      if (status) setFormStatus(status);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   // Reset fields to empty ONLY when modal transitions from closed to open
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
@@ -126,6 +151,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       setRecipientName('');
       setRecipientDepartment('');
       setItemTitle('');
+      setLastSubmitResult(null);
 
       const userName = currentUser?.name || currentUser?.username || 'เจม';
       setOperatorName(userName);
@@ -169,27 +195,27 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
     // บังคับให้กรอกข้อมูลทุกช่อง หากไม่ครบไม่สามารถทำรายการได้
     if (!isSenderNameValid) {
-      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง (บังคับกรอกทุกช่อง)' : 'Sender name is required');
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง' : 'Sender name is required');
       document.getElementById('input-sender-name')?.focus();
       return;
     }
     if (!isSenderDeptValid) {
-      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง (บังคับกรอกทุกช่อง)' : 'Sender department is required');
+      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง' : 'Sender department is required');
       document.getElementById('input-sender-dept')?.focus();
       return;
     }
     if (!isRecipientNameValid) {
-      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง (บังคับกรอกทุกช่อง)' : 'Recipient name is required');
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง' : 'Recipient name is required');
       document.getElementById('input-recipient-name')?.focus();
       return;
     }
     if (!isRecipientDeptValid) {
-      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้รับ (บังคับกรอกทุกช่อง)' : 'Recipient department is required');
+      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้รับ' : 'Recipient department is required');
       document.getElementById('input-recipient-dept')?.focus();
       return;
     }
     if (!isItemTitleValid) {
-      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อเอกสาร / พัสดุ (บังคับกรอกทุกช่อง)' : 'Item title is required');
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อเอกสาร / พัสดุ' : 'Item title is required');
       document.getElementById('input-item-title')?.focus();
       return;
     }
@@ -213,6 +239,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
       if (res.success && res.record) {
         setLastSavedRecord(res.record);
+        setLastSubmitResult(res);
         setIsSuccess(true);
         onRecordCreated(res.record);
       } else {
@@ -232,6 +259,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     setHasAttemptedSubmit(false);
     setErrorMessage(null);
     setLastSavedRecord(null);
+    setLastSubmitResult(null);
     setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
     setSenderName('');
     setSenderDepartment('');
@@ -243,7 +271,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   // Copy details to clipboard
   const handleCopyDetails = async () => {
     if (!lastSavedRecord) return;
-    const text = `[บันทึกรับ-ส่งเอกสาร/พัสดุ]\nวันที่เวลา: ${lastSavedRecord.timestamp}\nประเภท: ${lastSavedRecord.actionType}\nผู้ส่ง: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nผู้รับ: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nรายการ: ${lastSavedRecord.itemTitle}\nผู้ทำรายการ: ${lastSavedRecord.operatorName}`;
+    const text = `[บันทึกรับ-ส่งเอกสาร/พัสดุ]\nวันที่เวลา: ${lastSavedRecord.timestamp}\nประเภท: ${lastSavedRecord.actionType}\nผู้ส่ง: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nผู้รับ: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nรายการ: ${lastSavedRecord.itemTitle}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedData(true);
@@ -302,13 +330,10 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex items-center h-10">
                   <h3 className="text-base font-black text-emerald-900 dark:text-emerald-100">
-                    บันทึกข้อมูลเข้า Google Sheets สำเร็จเรียบร้อยแล้ว!
+                    {lastSavedRecord.actionType === 'รับ' ? 'บันทึกข้อมูลเข้าแล้ว' : 'บันทึกข้อมูลออกแล้ว'}
                   </h3>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    ระบบได้ส่งคำขอ POST ไปยัง Google Form โดยตรง และส่งข้อมูลเข้าสู่ไฟล์ Google Sheets เรียบร้อยแล้ว โดยไม่ต้องผ่านหน้าต่างยืนยันของ Google Form
-                  </p>
                 </div>
               </div>
 
@@ -341,8 +366,45 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     </span>{' '}
                     <span className="text-slate-500">({lastSavedRecord.recipientDepartment})</span>
                   </div>
+                  <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ชื่อเอกสาร / พัสดุ:</span>
+                    <span className="font-bold text-pink-600 dark:text-pink-400 text-sm">
+                      {lastSavedRecord.itemTitle || '-'}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* Status Note on Google Sheet Item Title Column */}
+              {lastSubmitResult && !lastSubmitResult.itemTitleSyncedToSheet ? (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div className="font-bold">ข้อมูล 5 รายการหลักบันทึกเข้า Google Sheet เรียบร้อยแล้ว</div>
+                      <div className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                        หมายเหตุ: ในแบบฟอร์ม Google Form ปัจจุบันยังไม่มีคำถามสำหรับ <span className="font-bold underline">"ชื่อเอกสาร / พัสดุ"</span> ทำให้ Google Form ยังไม่นำข้อมูลนี้ไปกรอกในคอลัมน์ของ Sheet หากต้องการให้บันทึกอัตโนมัติในครั้งต่อไป สามารถกดเปิด Google Form เพื่อเพิ่มคำถาม 1 ข้อได้ทันที
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <a
+                      href="https://docs.google.com/forms/d/1FAIpQLSfhL7tVwlJ7aYMt7fCWkBnMk1hS7ZJePsjYDRxnSDxmwsqq_g/edit"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>เปิดแก้ไข Google Form (กด + เพิ่มคำถามชื่อเอกสาร)</span>
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>บันทึกชื่อเอกสาร / พัสดุ ลงใน Google Sheet เรียบร้อยสมบูรณ์</span>
+                </div>
+              )}
 
               {/* Success Actions */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -363,17 +425,6 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   {copiedData ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedData ? 'คัดลอกแล้ว' : 'คัดลอกข้อมูล'}</span>
                 </button>
-
-                <a
-                  href={PARCEL_SHEET_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ml-auto"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>เปิดดู Google Sheet</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
               </div>
             </div>
           ) : null}
@@ -385,16 +436,6 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               <span>{errorMessage}</span>
             </div>
           )}
-
-          {/* Mandatory All-Fields Notice */}
-          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs font-medium">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              {language === 'th'
-                ? 'ระบบบังคับให้กรอกข้อมูลทุกช่อง หากไม่ครบจะไม่สามารถทำรายการได้'
-                : 'All fields are strictly mandatory. Missing fields will prevent submission.'}
-            </span>
-          </div>
 
           {/* The Form */}
           <form id="parcel-google-form-html" onSubmit={handleSubmit} className="space-y-4">
@@ -623,6 +664,27 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   <span>ชื่อเอกสาร / พัสดุ</span>
                   <span className="text-rose-500 font-bold">*</span>
                 </label>
+
+                {formStatus && (
+                  <div>
+                    {formStatus.hasItemTitleQuestion ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                        <CheckCircle2 className="w-3 h-3" />
+                        เชื่อมต่อ Sheet แล้ว
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleRefreshFormStatus}
+                        className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
+                        title="คลิกเพื่อตรวจเช็ค Google Form อีกครั้ง"
+                      >
+                        <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                        ตรวจสถานะ Form
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <input
@@ -649,6 +711,38 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   <AlertCircle className="w-3 h-3 shrink-0" />
                   <span>{language === 'th' ? 'กรุณาระบุชื่อเอกสาร / พัสดุ (จำเป็น)' : 'Item title is required'}</span>
                 </p>
+              )}
+
+              {/* Notice if Google Form doesn't have the question yet */}
+              {formStatus && !formStatus.hasItemTitleQuestion && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 text-[11px] text-amber-800 dark:text-amber-200 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-100">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>คำแนะนำ: เพื่อให้ข้อมูลช่องนี้ลงใน Google Sheet</span>
+                  </div>
+                  <p className="leading-relaxed text-slate-600 dark:text-slate-300">
+                    แบบฟอร์ม Google Form ปัจจุบันมี 5 คำถามหลัก (ยังไม่มีคำถามสำหรับชื่อเอกสาร) หากต้องการให้ Google Form บันทึกช่องนี้ลง Google Sheet ด้วย สามารถกดเปิด Google Form เพื่อเพิ่มคำถาม 1 ข้อได้ทันที
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <a
+                      href={formStatus.formEditUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>เปิดแก้ไข Google Form (กด + เพิ่มคำถามชื่อเอกสาร)</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleRefreshFormStatus}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold text-[10px] hover:bg-amber-50 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                      <span>เช็คอีกครั้งเมื่อเพิ่มแล้ว</span>
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -678,9 +772,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
         <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-1.5 text-[11px]">
             {!isSuccess && !isFormComplete ? (
-              <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1.5">
+              <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{language === 'th' ? 'บังคับกรอกข้อมูลทุกช่องเพื่อทำรายการ' : 'All fields required'}</span>
+                <span>{language === 'th' ? 'กรุณากรอกข้อมูลให้ครบถ้วน' : 'Please fill in all fields'}</span>
               </span>
             ) : !isSuccess ? (
               <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">

@@ -5,7 +5,6 @@ import {
   Inbox, 
   Calendar, 
   Building2, 
-  User, 
   Clock, 
   Filter, 
   Search, 
@@ -250,21 +249,40 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     setCurrentPageCards(1);
   }, [searchQuery, quickFilter, filters]);
 
-  // KPI Metrics Calculation (Today's counts for Total, Sent, Received & Latest Active Department)
-  const metrics = useMemo(() => {
-    // Current day records
-    const todayRecords = records.filter(r => isRecordToday(r));
-    const totalToday = todayRecords.length;
-    const sentToday = todayRecords.filter(r => r.actionType === 'ส่ง').length;
-    const receivedToday = todayRecords.filter(r => r.actionType === 'รับ').length;
+  // Active filters count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.actionType !== 'all') count++;
+    if (filters.senderDepartment !== 'all') count++;
+    if (filters.recipientDepartment !== 'all') count++;
+    if (filters.startDate) count++;
+    if (filters.endDate) count++;
+    if (filters.keyword) count++;
+    return count;
+  }, [filters]);
 
-    const sentPct = totalToday > 0 ? Math.round((sentToday / totalToday) * 100) : 0;
-    const receivedPct = totalToday > 0 ? Math.round((receivedToday / totalToday) * 100) : 0;
+  // Determine if any filter/search is actively applied
+  const isFiltered = useMemo(() => {
+    return activeFiltersCount > 0 || quickFilter !== 'all' || searchQuery.trim().length > 0;
+  }, [activeFiltersCount, quickFilter, searchQuery]);
+
+  // KPI Metrics Calculation (Dynamically adapts to active filters when filtering is used)
+  const metrics = useMemo(() => {
+    const todayRecords = records.filter(r => isRecordToday(r));
+    
+    // When filtering is used, use filteredRecords; otherwise default to today's records
+    const targetRecords = isFiltered ? filteredRecords : todayRecords;
+    const totalCount = targetRecords.length;
+    const sentCount = targetRecords.filter(r => r.actionType === 'ส่ง').length;
+    const receivedCount = targetRecords.filter(r => r.actionType === 'รับ').length;
+
+    const sentPct = totalCount > 0 ? Math.round((sentCount / totalCount) * 100) : 0;
+    const receivedPct = totalCount > 0 ? Math.round((receivedCount / totalCount) * 100) : 0;
 
     // Latest active department & update details (newest record first)
-    const latestRecord = records.length > 0 ? records[0] : null;
+    const latestRecord = targetRecords.length > 0 ? targetRecords[0] : (isFiltered ? null : (records.length > 0 ? records[0] : null));
     let latestDept = '-';
-    let latestActivityText = 'ยังไม่มีข้อมูลเคลื่อนไหว';
+    let latestActivityText = isFiltered ? 'ไม่มีข้อมูลตามตัวกรองที่เลือก' : 'ยังไม่มีข้อมูลเคลื่อนไหว';
 
     if (latestRecord) {
       if (latestRecord.actionType === 'ส่ง') {
@@ -288,9 +306,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     }
 
     return {
-      total: totalToday,
-      sent: sentToday,
-      received: receivedToday,
+      isFiltered,
+      total: totalCount,
+      sent: sentCount,
+      received: receivedCount,
       sentPct,
       receivedPct,
       latestDept,
@@ -299,7 +318,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       allTimeSent: records.filter(r => r.actionType === 'ส่ง').length,
       allTimeReceived: records.filter(r => r.actionType === 'รับ').length,
     };
-  }, [records]);
+  }, [records, filteredRecords, isFiltered]);
 
   // Table pagination
   const totalPagesTable = Math.ceil(filteredRecords.length / itemsPerPageTable) || 1;
@@ -314,18 +333,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     const start = (currentPageCards - 1) * itemsPerPageCards;
     return filteredRecords.slice(start, start + itemsPerPageCards);
   }, [filteredRecords, currentPageCards]);
-
-  // Active filters count
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (filters.actionType !== 'all') count++;
-    if (filters.senderDepartment !== 'all') count++;
-    if (filters.recipientDepartment !== 'all') count++;
-    if (filters.startDate) count++;
-    if (filters.endDate) count++;
-    if (filters.keyword) count++;
-    return count;
-  }, [filters]);
 
   const clearAllFilters = () => {
     setQuickFilter('all');
@@ -424,14 +431,16 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               <RefreshCw className={`w-4 h-4 text-pink-600 dark:text-pink-400 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
 
-            {/* Analytics Button (Icon-only) */}
-            <button
-              onClick={() => setIsAnalyticsOpen(true)}
-              className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-pink-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs transition-all cursor-pointer flex items-center justify-center"
-              title="ดูสถิติและภาพรวม"
-            >
-              <BarChart3 className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-            </button>
+            {/* Analytics Button (Icon-only, Restricted to Admins & Supervisors) */}
+            {isAdmin && (
+              <button
+                onClick={() => setIsAnalyticsOpen(true)}
+                className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-pink-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs transition-all cursor-pointer flex items-center justify-center"
+                title="ดูสถิติและภาพรวม (เฉพาะผู้ดูแลและแอดมิน)"
+              >
+                <BarChart3 className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+              </button>
+            )}
 
             {/* Google Sheet Link Button (Icon-only, Restricted to Admins & Page Admins) */}
             {canAccessGoogleSheet && (
@@ -516,25 +525,29 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
         {/* Metric Cards Row (4 Cards) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative z-10">
-          {/* Card 1: Total Today */}
+          {/* Card 1: Total */}
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-pink-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                 รายการทั้งหมด
               </span>
-              <span className="text-[10px] font-bold text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60 px-2 py-0.5 rounded-full">
-                วันนี้
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                metrics.isFiltered
+                  ? 'text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200/80 dark:border-purple-800'
+                  : 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60'
+              }`}>
+                {metrics.isFiltered ? 'ตามตัวกรอง' : 'วันนี้'}
               </span>
             </div>
             <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1.5">
               {metrics.total.toLocaleString()}
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              พัสดุและเอกสารประจำวันนี้
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              {metrics.isFiltered ? 'ตามเงื่อนไขที่เลือกกรอง' : 'พัสดุและเอกสารประจำวันนี้'}
             </div>
           </div>
 
-          {/* Card 2: Sent Today */}
+          {/* Card 2: Sent */}
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-rose-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
@@ -547,12 +560,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div className="text-2xl sm:text-3xl font-black text-rose-700 dark:text-rose-300 mt-1.5">
               {metrics.sent.toLocaleString()}
             </div>
-            <div className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5">
-              เอกสาร/พัสดุขาออกวันนี้
+            <div className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5 truncate">
+              {metrics.isFiltered ? 'เอกสาร/พัสดุขาออกตามตัวกรอง' : 'เอกสาร/พัสดุขาออกวันนี้'}
             </div>
           </div>
 
-          {/* Card 3: Received Today */}
+          {/* Card 3: Received */}
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-emerald-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
@@ -565,8 +578,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div className="text-2xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-300 mt-1.5">
               {metrics.received.toLocaleString()}
             </div>
-            <div className="text-[11px] text-emerald-500 dark:text-emerald-400 mt-0.5">
-              เอกสาร/พัสดุขาเข้าวันนี้
+            <div className="text-[11px] text-emerald-500 dark:text-emerald-400 mt-0.5 truncate">
+              {metrics.isFiltered ? 'เอกสาร/พัสดุขาเข้าตามตัวกรอง' : 'เอกสาร/พัสดุขาเข้าวันนี้'}
             </div>
           </div>
 
@@ -575,7 +588,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  แผนกเคลื่อนไหวล่าสุด
+                  {metrics.isFiltered ? 'แผนกล่าสุดในตัวกรอง' : 'แผนกเคลื่อนไหวล่าสุด'}
                 </span>
                 <Building2 className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
               </div>
@@ -596,7 +609,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก, ผู้ทำรายการ..."
+              placeholder="ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-9 py-2 bg-white/90 dark:bg-slate-800/90 border border-pink-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-pink-500"
@@ -742,7 +755,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   <th className="py-3.5 px-4">ชื่อเอกสาร / พัสดุ</th>
                   <th className="py-3.5 px-4">ผู้ส่งตามหน้าซอง</th>
                   <th className="py-3.5 px-4">ผู้รับตามหน้าซอง</th>
-                  <th className="py-3.5 px-4">ผู้ทำรายการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
@@ -806,17 +818,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-slate-400" />
                           {record.recipientDepartment}
-                        </div>
-                      </td>
-
-                      {/* Operator */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1">
-                          <User className="w-3 h-3 text-pink-500" />
-                          {record.operatorName}
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {record.operatorDepartment}
                         </div>
                       </td>
                     </tr>
@@ -936,10 +937,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                   {/* Footer */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center gap-1 truncate">
-                      <User className="w-3.5 h-3.5 text-pink-500" />
-                      <span className="truncate">{record.operatorName}</span>
-                    </div>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> บันทึกแล้ว
+                    </span>
                     <span className="text-pink-600 dark:text-pink-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                       รายละเอียด <ArrowRight className="w-3 h-3" />
                     </span>
