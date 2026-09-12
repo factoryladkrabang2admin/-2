@@ -2,20 +2,16 @@ import React, { useState } from 'react';
 import { 
   X, 
   Package, 
-  Calendar, 
   Building2, 
-  User, 
   Clock, 
   Send, 
   Inbox, 
   CheckCircle2, 
-  Printer, 
   Copy, 
   Check, 
   Sparkles,
   FileText,
-  ArrowRight,
-  ShieldCheck
+  ArrowRight
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -43,10 +39,6 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   return (
@@ -165,28 +157,6 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                 {parcel.timestamp}
               </div>
             </div>
-
-            {/* Operator Name */}
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                <User className="w-4 h-4 text-pink-500" />
-                ผู้ทำรายการ
-              </div>
-              <div className="text-base font-bold text-slate-900 dark:text-white">
-                {parcel.operatorName}
-              </div>
-            </div>
-
-            {/* Operator Department */}
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                <Building2 className="w-4 h-4 text-pink-500" />
-                แผนกผู้ทำรายการ
-              </div>
-              <div className="text-base font-bold text-slate-900 dark:text-white">
-                {parcel.operatorDepartment}
-              </div>
-            </div>
           </div>
 
           {/* Status badge */}
@@ -195,9 +165,6 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               สถานะ: บันทึกข้อมูลเรียบร้อยแล้ว
             </div>
-            <span className="text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2.5 py-0.5 rounded-full font-medium">
-              Google Sheet Synced
-            </span>
           </div>
         </div>
 
@@ -220,21 +187,12 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             )}
           </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium transition-colors cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-500" />
-              <span>พิมพ์</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-            >
-              ปิด
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            ปิด
+          </button>
         </div>
       </div>
     </div>
