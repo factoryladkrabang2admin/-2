@@ -356,6 +356,10 @@ html.dark .animated-equipment-red-header {
   background: linear-gradient(-45deg, #331217, #240d10, #42181f, #19090b, #331217);
   background-size: 300% 300%;
 }
+html.dark .animated-parcel-pink-header {
+  background: linear-gradient(-45deg, #380d22, #290818, #4c112e, #200513, #380d22);
+  background-size: 300% 300%;
+}
 
 /* Header typography and controls in dark mode */
 html.dark .animated-laundry-header,
@@ -363,7 +367,8 @@ html.dark .animated-meeting-purple-header,
 html.dark .animated-schedule-green-header,
 html.dark .animated-rags-brown-header,
 html.dark .animated-ot-yellow-header,
-html.dark .animated-equipment-red-header {
+html.dark .animated-equipment-red-header,
+html.dark .animated-parcel-pink-header {
   border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
@@ -384,7 +389,10 @@ html.dark .animated-ot-yellow-header h2,
 html.dark .animated-ot-yellow-header h3,
 html.dark .animated-equipment-red-header h1,
 html.dark .animated-equipment-red-header h2,
-html.dark .animated-equipment-red-header h3 {
+html.dark .animated-equipment-red-header h3,
+html.dark .animated-parcel-pink-header h1,
+html.dark .animated-parcel-pink-header h2,
+html.dark .animated-parcel-pink-header h3 {
   color: #ffffff !important;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
@@ -394,7 +402,8 @@ html.dark .animated-meeting-purple-header p,
 html.dark .animated-schedule-green-header p,
 html.dark .animated-rags-brown-header p,
 html.dark .animated-ot-yellow-header p,
-html.dark .animated-equipment-red-header p {
+html.dark .animated-equipment-red-header p,
+html.dark .animated-parcel-pink-header p {
   color: #e2e8f0 !important;
 }
 
@@ -404,7 +413,8 @@ html.dark .animated-meeting-purple-header [class*="bg-white"],
 html.dark .animated-schedule-green-header [class*="bg-white"],
 html.dark .animated-rags-brown-header [class*="bg-white"],
 html.dark .animated-ot-yellow-header [class*="bg-white"],
-html.dark .animated-equipment-red-header [class*="bg-white"] {
+html.dark .animated-equipment-red-header [class*="bg-white"],
+html.dark .animated-parcel-pink-header [class*="bg-white"] {
   background-color: rgba(15, 23, 42, 0.8) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
   color: #f8fafc !important;
@@ -452,6 +462,25 @@ html.dark .animated-equipment-red-header [class*="bg-white"] {
 }
 
 @keyframes laundryGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Medium Pink & White Moving Gradient Header for Document / Parcel Dispatch */
+.animated-parcel-pink-header {
+  background: linear-gradient(-45deg, #fce7f3, #fff1f2, #fbcfe8, #ffffff, #f472b6, #fce7f3);
+  background-size: 300% 300%;
+  animation: parcelPinkGradientShift 12s ease infinite;
+}
+
+@keyframes parcelPinkGradientShift {
   0% {
     background-position: 0% 50%;
   }

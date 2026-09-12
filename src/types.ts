@@ -1,4 +1,24 @@
-export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'rags_gloves' | 'settings' | 'profile';
+export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'document_delivery' | 'rags_gloves' | 'settings' | 'profile';
+
+export type ParcelActionType = 'ส่ง' | 'รับ' | string;
+
+export interface ParcelDeliveryRecord {
+  id: string;
+  seq: number;
+  timestamp: string;               // วันที่เวลา เช่น "12/9/2026, 14:11:00"
+  actionType: ParcelActionType;     // ประเภท เช่น "ส่ง", "รับ"
+  senderName: string;              // ชื่อผู้ส่งตามหน้าซอง เช่น "เจม"
+  senderDepartment: string;        // แผนกผู้ส่ง เช่น "ธุรการลาดกระบัง 1"
+  recipientName: string;           // ชื่อผู้รับตามหน้าซอง เช่น "มาร์ค"
+  recipientDepartment: string;     // แผนกผู้รับ เช่น "ธุรการลาดกระบัง 2"
+  itemTitle: string;               // ชื่อเอกสาร/พัสดุ เช่น "PO ผลไม้"
+  operatorName: string;            // ชื่อผู้ทำรายการ เช่น "เจม", "มาร์ค"
+  operatorDepartment: string;      // แผนกผู้ทำรายการ เช่น "ธุรการลาดกระบัง 1"
+  dateStr?: string;                // วันที่สกัดได้ เช่น "12/9/2026" หรือ "2026-09-12"
+  timeStr?: string;                // เวลา เช่น "14:11:00"
+  status?: string;                 // สถานะ เช่น "เสร็จสิ้น"
+  note?: string;                   // หมายเหตุเพิ่มเติม
+}
 
 export interface ChlorineInspectionRecord {
   id: string;

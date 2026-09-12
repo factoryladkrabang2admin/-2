@@ -40,6 +40,7 @@ export interface Translations {
   payslip: string;
   equipmentRequisition: string;
   chlorineCheck: string;
+  documentDelivery: string;
   settings: string;
   profile: string;
   enterpriseHub: string;
@@ -292,6 +293,7 @@ export const translations: Record<Language, Translations> = {
     payslip: 'สลิปเงินเดือน',
     equipmentRequisition: 'เบิกอุปกรณ์',
     chlorineCheck: 'สุ่มตรวจคลอรีน',
+    documentDelivery: 'รับ-ส่ง เอกสาร / พัสดุ',
     settings: 'การตั้งค่า',
     profile: 'โปรไฟล์',
     enterpriseHub: 'ศูนย์กลางองค์กร',
@@ -542,6 +544,7 @@ export const translations: Record<Language, Translations> = {
     payslip: 'e-Pay Payslip',
     equipmentRequisition: 'Equipment Requisition',
     chlorineCheck: 'Chlorine Inspection',
+    documentDelivery: 'Document / Parcel',
     settings: 'Settings',
     profile: 'Profile',
     enterpriseHub: 'Enterprise Hub',

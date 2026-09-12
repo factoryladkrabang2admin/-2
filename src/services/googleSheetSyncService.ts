@@ -14,7 +14,8 @@ import {
   EquipmentRecord,
   EquipmentSubCategory,
   EquipmentItemDetail,
-  ChlorineInspectionRecord
+  ChlorineInspectionRecord,
+  ParcelDeliveryRecord
 } from '../types';
 import { INITIAL_RAGS_GLOVES_DATA } from '../data/mockRagsGlovesData';
 
@@ -3824,6 +3825,158 @@ export async function fetchGoogleSheetChlorineRecords(): Promise<ChlorineSyncRes
   });
 
   return inFlightChlorinePromise;
+}
+
+// ============================================================================
+// Google Sheet Integration for รับ-ส่ง เอกสาร / พัสดุ (Document & Parcel Delivery)
+// ============================================================================
+export const PARCEL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/edit?gid=572373504#gid=572373504';
+export const PARCEL_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/export?format=csv&gid=572373504';
+export const PARCEL_SHEET_GVIZ_CSV_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/gviz/tq?tqx=out:csv&gid=572373504';
+
+export const PARCEL_FALLBACK_CSV = `วันที่เวลา,ประเภท,ชื่อผู้ส่งตามหน้าซอง,แผนกผู้ส่ง,ชื่อผู้รับตามหน้าซอง,แผนกผู้รับ,ชื่อเอกสาร/พัสดุ,ชื่อผู้ทำรายการ,แผนกผู้ทำรายการ
+12/9/2026, 14:11:00,ส่ง,เจม,ธุรการลาดกระบัง 1,มาร์ค,ธุรการลาดกระบัง 2,PO ผลไม้,เจม,ธุรการลาดกระบัง 1
+12/9/2026, 14:18:59,รับ,เจม,ธุรการลาดกระบัง 1,มาร์ค,ธุรการลาดกระบัง 2,Po ผลไม้,มาร์ค,ธุรการลาดกระบัง 2`;
+
+export interface ParcelSyncResult {
+  success: boolean;
+  records: ParcelDeliveryRecord[];
+  rawRowsCount: number;
+  lastSyncedAt: Date;
+  error?: string;
+}
+
+export function convertSheetRowsToParcelRecords(csvText: string): ParcelDeliveryRecord[] {
+  if (!csvText || !csvText.trim()) return [];
+  const rows = parseCSV(csvText);
+  if (rows.length <= 1) return [];
+
+  const records: ParcelDeliveryRecord[] = [];
+
+  // Header: วันที่เวลา,ประเภท,ชื่อผู้ส่งตามหน้าซอง,แผนกผู้ส่ง,ชื่อผู้รับตามหน้าซอง,แผนกผู้รับ,ชื่อเอกสาร/พัสดุ,ชื่อผู้ทำรายการ,แผนกผู้ทำรายการ
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0 || row.every(cell => !cell || !cell.trim())) continue;
+
+    const timestamp = (row[0] || '').trim();
+    const actionTypeRaw = (row[1] || '').trim();
+    const senderName = (row[2] || '').trim();
+    const senderDepartment = (row[3] || '').trim();
+    const recipientName = (row[4] || '').trim();
+    const recipientDepartment = (row[5] || '').trim();
+    const itemTitle = (row[6] || '').trim();
+    const operatorName = (row[7] || '').trim();
+    const operatorDepartment = (row[8] || '').trim();
+
+    if (!timestamp && !senderName && !recipientName && !itemTitle && !actionTypeRaw) continue;
+
+    // Normalize action type (ส่ง vs รับ)
+    let actionType: 'ส่ง' | 'รับ' | string = actionTypeRaw;
+    if (actionTypeRaw.includes('ส่ง')) {
+      actionType = 'ส่ง';
+    } else if (actionTypeRaw.includes('รับ')) {
+      actionType = 'รับ';
+    }
+
+    // Extract date and time
+    let dateStr = '';
+    let timeStr = '';
+    if (timestamp) {
+      const parts = timestamp.split(/[\s,]+/);
+      if (parts.length >= 2) {
+        dateStr = parts[0] || '';
+        timeStr = parts[1] || '';
+      } else {
+        dateStr = parts[0] || '';
+      }
+    }
+
+    records.push({
+      id: `parcel-${i}`,
+      seq: i,
+      timestamp: timestamp || 'ไม่ระบุเวลา',
+      actionType,
+      senderName: senderName || '-',
+      senderDepartment: senderDepartment || '-',
+      recipientName: recipientName || '-',
+      recipientDepartment: recipientDepartment || '-',
+      itemTitle: itemTitle || 'ไม่ระบุชื่อเอกสาร/พัสดุ',
+      operatorName: operatorName || '-',
+      operatorDepartment: operatorDepartment || '-',
+      dateStr,
+      timeStr,
+      status: 'บันทึกสำเร็จ',
+    });
+  }
+
+  // Sort latest first (newest submission or row at top)
+  records.sort((a, b) => {
+    const parseDateTime = (ts: string) => {
+      try {
+        if (!ts) return 0;
+        const parts = ts.split(/[\s,]+/);
+        const datePart = parts[0];
+        const timePart = parts[1] || '00:00:00';
+        const dSub = datePart.split(/[\/\-]/);
+        if (dSub.length === 3) {
+          let d = parseInt(dSub[0], 10);
+          let m = parseInt(dSub[1], 10);
+          let y = parseInt(dSub[2], 10);
+          if (dSub[0].length === 4) {
+            y = parseInt(dSub[0], 10);
+            m = parseInt(dSub[1], 10);
+            d = parseInt(dSub[2], 10);
+          }
+          if (y < 100) y += 2000;
+          if (y > 2400) y -= 543;
+          const tSub = timePart.split(':');
+          const hh = parseInt(tSub[0] || '0', 10);
+          const mm = parseInt(tSub[1] || '0', 10);
+          const ss = parseInt(tSub[2] || '0', 10);
+          return new Date(y, m - 1, d, hh, mm, ss).getTime();
+        }
+      } catch (e) {}
+      return 0;
+    };
+
+    const valA = parseDateTime(a.timestamp);
+    const valB = parseDateTime(b.timestamp);
+    if (valB !== valA && valB > 0 && valA > 0) {
+      return valB - valA;
+    }
+    return b.seq - a.seq; // Higher row seq is newer in Google Sheet
+  });
+
+  return records;
+}
+
+let inFlightParcelPromise: Promise<ParcelSyncResult> | null = null;
+
+export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult> {
+  if (inFlightParcelPromise) return inFlightParcelPromise;
+
+  const execute = async (): Promise<ParcelSyncResult> => {
+    const now = Date.now();
+    const urls = [
+      `/api/sheet-csv?sheetId=1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0&gid=572373504&_t=${now}`,
+      `${PARCEL_SHEET_CSV_URL}&_t=${now}`,
+      `${PARCEL_SHEET_GVIZ_CSV_URL}&_t=${now}`,
+    ];
+    const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v1');
+    const records = csv ? convertSheetRowsToParcelRecords(csv) : (PARCEL_FALLBACK_CSV ? convertSheetRowsToParcelRecords(PARCEL_FALLBACK_CSV) : []);
+    return {
+      success: true,
+      records,
+      rawRowsCount: records.length,
+      lastSyncedAt: new Date(),
+    };
+  };
+
+  inFlightParcelPromise = execute().finally(() => {
+    inFlightParcelPromise = null;
+  });
+
+  return inFlightParcelPromise;
 }
 
 

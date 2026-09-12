@@ -36,6 +36,8 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({
         return language === 'th' ? 'ระบบเบิกอุปกรณ์ (Equipment Requisition)' : 'Equipment Requisition';
       case 'chlorine':
         return language === 'th' ? 'ระบบสุ่มตรวจคลอรีน (Chlorine Inspection)' : 'Chlorine Inspection';
+      case 'document_delivery':
+        return language === 'th' ? 'ระบบรับ-ส่ง เอกสาร / พัสดุ (Document & Parcel Delivery)' : 'Document & Parcel Delivery';
       case 'reports':
         return language === 'th' ? 'รายงานและสถิติ (Reports & Analytics)' : 'Reports & Analytics';
       default:

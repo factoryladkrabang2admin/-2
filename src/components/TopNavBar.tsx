@@ -101,6 +101,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         return language === 'th' ? 'ค้นหารายการเบิกอุปกรณ์, ผู้เบิก, แผนก...' : 'Search equipment requisition, requester, department...';
       case 'chlorine':
         return language === 'th' ? 'ค้นหาการสุ่มตรวจคลอรีน, ผู้สุ่มตรวจ, อาคาร A/B, วันที่...' : 'Search chlorine inspection, inspector, building A/B, date...';
+      case 'document_delivery':
+        return language === 'th' ? 'ค้นหาเอกสาร/พัสดุ, ผู้ส่ง, ผู้รับ, แผนก, ผู้ทำรายการ...' : 'Search documents, parcels, sender, recipient, department...';
       default:
         return t.searchPlaceholder;
     }

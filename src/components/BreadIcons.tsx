@@ -11,7 +11,8 @@ export type BreadKind =
   | 'muffin' 
   | 'donut' 
   | 'bun' 
-  | 'loaf';
+  | 'loaf'
+  | 'sandwich';
 
 interface BreadIconProps {
   kind?: BreadKind;
@@ -298,6 +299,29 @@ export const BunIcon: React.FC<{ size?: number; className?: string }> = ({ size 
   </svg>
 );
 
+// 10. Sandwich SVG (แซนด์วิชขนมปังนุ่ม)
+export const SandwichIcon: React.FC<{ size?: number; className?: string }> = ({ size = 28, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <g filter="drop-shadow(0px 2px 3px rgba(0,0,0,0.2))">
+      {/* Bottom bread wedge */}
+      <polygon points="12,50 52,50 32,16" fill="#F8C471" stroke="#BA4A00" strokeWidth="2" strokeLinejoin="round" />
+      {/* Inner bread soft crumb */}
+      <polygon points="15,48 49,48 32,20" fill="#FEF9E7" />
+      {/* Green lettuce layer */}
+      <path d="M12 43 Q 18 39, 24 43 T 36 43 T 48 43 T 52 43" stroke="#27AE60" strokeWidth="4" strokeLinecap="round" />
+      {/* Red tomato slices */}
+      <ellipse cx="26" cy="40" rx="6" ry="2.5" fill="#E74C3C" />
+      <ellipse cx="38" cy="40" rx="6" ry="2.5" fill="#E74C3C" />
+      {/* Yellow cheese corner */}
+      <polygon points="28,37 42,37 35,46" fill="#F4D03F" />
+      {/* Ham layer */}
+      <rect x="18" y="34" width="28" height="3" rx="1.5" fill="#F1948A" />
+      {/* Top bread crust edge */}
+      <line x1="12" y1="50" x2="32" y2="16" stroke="#D35400" strokeWidth="2.5" strokeLinecap="round" />
+    </g>
+  </svg>
+);
+
 // Main Master Bread Icon Switcher
 export const BreadIcon: React.FC<BreadIconProps> = ({ 
   kind = 'croissant', 
@@ -327,6 +351,8 @@ export const BreadIcon: React.FC<BreadIconProps> = ({
       return <DonutIcon size={size} className={combinedClass} />;
     case 'loaf':
       return <LoafIcon size={size} className={combinedClass} />;
+    case 'sandwich':
+      return <SandwichIcon size={size} className={combinedClass} />;
     case 'bun':
     default:
       return <BunIcon size={size} className={combinedClass} />;

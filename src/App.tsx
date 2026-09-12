@@ -23,6 +23,7 @@ import { PayslipView } from './components/PayslipView';
 import { EquipmentView } from './components/EquipmentView';
 import { ChlorineView } from './components/ChlorineView';
 import { MeetingRoomView } from './components/MeetingRoomView';
+import { ParcelDeliveryView } from './components/ParcelDeliveryView';
 import { RagsGlovesLogView } from './components/RagsGlovesLogView';
 import { RestrictedAccessView } from './components/RestrictedAccessView';
 import { InviteMemberModal } from './components/InviteMemberModal';
@@ -919,6 +920,13 @@ export default function App() {
                 onNavigateToMeetingRoom={() => setCurrentTab('meeting_room')}
               />
             )
+          )}
+
+          {currentTab === 'document_delivery' && (
+            <ParcelDeliveryView
+              currentUser={currentUser}
+              isAuthenticated={isAuthenticated}
+            />
           )}
 
           {currentTab === 'laundry' && (

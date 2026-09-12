@@ -12,7 +12,8 @@ import {
   CreditCard,
   Megaphone,
   PackageCheck,
-  FlaskConical
+  FlaskConical,
+  Package
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { DEFAULT_ADMIN_USER, AdminUserAccount } from '../data/mockData';
@@ -145,6 +146,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       breadKind: 'loaf',
       breadName: 'ขนมปังแถวอบหอม',
       requiresAuth: true,
+    },
+    {
+      id: 'document_delivery',
+      label: t.documentDelivery,
+      icon: <Package className="w-5 h-5" />,
+      breadKind: 'sandwich',
+      breadName: 'แซนด์วิชขนมปังนุ่ม',
+      requiresAuth: false,
     },
   ];
 

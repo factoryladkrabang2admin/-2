@@ -1588,11 +1588,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     : `${totalLaundryPieces.toLocaleString()} ${language === 'th' ? 'ชิ้น' : 'pcs'}`}
                 </span>
               </span>
-              {(timeframe === 'year' || timeframe === 'all') && (
-                <span className="text-[10px] text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded font-bold">
-                  {language === 'th' ? 'แสดงข้อมูลเหมือนไอคอนเดือนนี้' : 'Matching this month'}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -1630,7 +1625,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Card 3: การใช้ห้องประชุม & หัวข้อการประชุม (Meeting Topics & Bookings) */}
+        {/* Card 3: สรุปภาพรวมจำนวนผ้าทั้งหมด (Total Laundry Pieces) */}
+        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden select-none">
+          <div className="absolute top-3 right-3 p-3 opacity-10 text-indigo-600">
+            <Building2 className="w-16 h-16" />
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-[#43474e] uppercase tracking-wider">
+              {language === 'th' ? 'จำนวนผ้าทั้งหมด' : 'Total Laundry Pieces'}
+            </h3>
+            <span className="text-indigo-700 bg-indigo-50 p-1.5 rounded-lg border border-indigo-200/80">
+              <Building2 className="w-4 h-4" />
+            </span>
+          </div>
+
+          <div>
+            <div className="flex items-baseline gap-2.5 mt-2">
+              <span className="text-3xl sm:text-4xl font-bold text-indigo-600 tracking-tight">
+                {totalLaundryPieces.toLocaleString()}
+              </span>
+              <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200 font-medium">
+                {language === 'th' ? 'ชิ้นผ้า' : 'total pcs'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-1.5 mt-3 pt-3 border-t border-slate-100 text-[11px]">
+              <span className="flex items-center gap-1 text-slate-700 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
+                <Building2 className="w-3 h-3 text-indigo-600" />
+                <span>{deptData.departmentsCount} {language === 'th' ? 'แผนก' : 'depts'}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: การใช้ห้องประชุม & หัวข้อการประชุม (Meeting Topics & Bookings) */}
         <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden select-none">
           <div className="absolute top-3 right-3 p-3 opacity-10 text-sky-600">
             <DoorOpen className="w-16 h-16" />
@@ -1668,39 +1696,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         ? `${meetingSummary.upcomingCount} ${language === 'th' ? 'รอเริ่ม' : 'upcoming'}`
                         : `${meetingSummary.completedCount} ${language === 'th' ? 'เสร็จสิ้น' : 'done'}`)}
                 </span>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: สรุปภาพรวมจำนวนผ้าทั้งหมด (Total Laundry Pieces) */}
-        <div className="bg-white rounded-2xl border border-[#e2e8f0] card-shadow p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden select-none">
-          <div className="absolute top-3 right-3 p-3 opacity-10 text-indigo-600">
-            <Building2 className="w-16 h-16" />
-          </div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-[#43474e] uppercase tracking-wider">
-              {language === 'th' ? 'จำนวนผ้าทั้งหมด' : 'Total Laundry Pieces'}
-            </h3>
-            <span className="text-indigo-700 bg-indigo-50 p-1.5 rounded-lg border border-indigo-200/80">
-              <Building2 className="w-4 h-4" />
-            </span>
-          </div>
-
-          <div>
-            <div className="flex items-baseline gap-2.5 mt-2">
-              <span className="text-3xl sm:text-4xl font-bold text-indigo-600 tracking-tight">
-                {totalLaundryPieces.toLocaleString()}
-              </span>
-              <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200 font-medium">
-                {language === 'th' ? 'ชิ้นผ้า' : 'total pcs'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-1.5 mt-3 pt-3 border-t border-slate-100 text-[11px]">
-              <span className="flex items-center gap-1 text-slate-700 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
-                <Building2 className="w-3 h-3 text-indigo-600" />
-                <span>{deptData.departmentsCount} {language === 'th' ? 'แผนก' : 'depts'}</span>
               </span>
             </div>
           </div>
