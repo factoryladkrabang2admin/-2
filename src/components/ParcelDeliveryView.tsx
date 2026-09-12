@@ -27,7 +27,11 @@ import {
   Boxes,
   Mail,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  QrCode,
+  Copy,
+  Check,
+  Download
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
@@ -43,6 +47,7 @@ import { ParcelDetailModal } from './ParcelDetailModal';
 import { ParcelFilterModal, ParcelFilterState } from './ParcelFilterModal';
 import { ParcelAnalyticsModal } from './ParcelAnalyticsModal';
 import { ParcelCalendarView } from './ParcelCalendarView';
+import { ModernParcelQrModal } from './ModernParcelQrModal';
 
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
@@ -79,6 +84,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Advanced Filters
   const [filters, setFilters] = useState<ParcelFilterState>({
@@ -357,31 +363,39 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   รับ-ส่ง เอกสาร / พัสดุ
                 </h1>
 
-                {/* Sparkling Prominent Action Button for Form Submission (Restricted to Admins and Supervisors) */}
-                {isAdmin && (
-                  <a
-                    href={PARCEL_FORM_APP_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 shadow-md hover:shadow-xl hover:shadow-pink-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 dark:border-white/20 cursor-pointer overflow-hidden"
-                    title="เปิดหน้าบันทึก รับ - ส่งเอกสาร / พัสดุ (Google Apps Script) - เฉพาะผู้ดูแลและแอดมิน"
-                  >
-                    {/* Shimmer sweep animation */}
-                    <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
+                {/* Sparkling Prominent Action Button for Form Submission (Visible to all users) */}
+                <a
+                  href={PARCEL_FORM_APP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 shadow-md hover:shadow-xl hover:shadow-pink-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 dark:border-white/20 cursor-pointer overflow-hidden"
+                  title="เปิดหน้าบันทึก รับ - ส่งเอกสาร / พัสดุ (Google Apps Script)"
+                >
+                  {/* Shimmer sweep animation */}
+                  <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
 
-                    {/* Pulsing beacon */}
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-200 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-100"></span>
-                    </span>
+                  {/* Pulsing beacon */}
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-200 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-100"></span>
+                  </span>
 
-                    <Sparkles className="w-4 h-4 text-amber-200 animate-pulse shrink-0" />
-                    <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
-                      รับ - ส่งเอกสาร / พัสดุ
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 text-white/90 shrink-0 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                  </a>
-                )}
+                  <Sparkles className="w-4 h-4 text-amber-200 animate-pulse shrink-0" />
+                  <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
+                    รับ - ส่งเอกสาร / พัสดุ
+                  </span>
+                </a>
+
+                {/* QR Code Button placed right after the button, styled like Meeting Room */}
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/80 dark:bg-slate-800/80 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center"
+                  title={language === 'th' ? 'QR Code แบบฟอร์ม รับ - ส่งเอกสาร / พัสดุ' : 'Parcel Delivery Form QR Code'}
+                  aria-label={language === 'th' ? 'QR Code แบบฟอร์ม รับ - ส่งเอกสาร / พัสดุ' : 'Parcel Delivery Form QR Code'}
+                >
+                  <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-pink-600 dark:text-pink-400 transition-transform group-hover:scale-110" />
+                </button>
               </div>
             </div>
           </div>
@@ -1086,6 +1100,13 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
         records={records}
+      />
+
+      {/* Modern Parcel Delivery Form QR Code Modal with Cute Cartoon Mascot in Center */}
+      <ModernParcelQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        url={PARCEL_FORM_APP_URL}
       />
     </div>
   );
