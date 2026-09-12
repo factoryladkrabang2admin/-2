@@ -15,10 +15,51 @@ interface ParcelSubmissionRecord {
   operatorName?: string;
   operatorDepartment?: string;
   createdAt: number;
+  trackingCode?: string;
 }
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
+
+// Helper to generate running tracking code identical to Laundry QR code
+function extractServerDateTag(input?: string): string {
+  const now = new Date();
+  let yy = String(now.getFullYear()).slice(-2);
+  let mm = String(now.getMonth() + 1).padStart(2, '0');
+  let dd = String(now.getDate()).padStart(2, '0');
+  if (input) {
+    const clean = input.split(/[\s,]+/)[0];
+    const parts = clean.split(/[-/.]/);
+    if (parts.length === 3) {
+      let y = parseInt(clean.includes('-') ? parts[0] : parts[2], 10);
+      let m = parseInt(parts[1], 10);
+      let d = parseInt(clean.includes('-') ? parts[2] : parts[0], 10);
+      if (y > 2400) y -= 543;
+      if (y < 100) y += 2000;
+      yy = String(y).slice(-2);
+      mm = String(m).padStart(2, '0');
+      dd = String(d).padStart(2, '0');
+    }
+  }
+  return `${yy}${mm}${dd}`;
+}
+
+function generateServerParcelTrackingCode(timestamp?: string): string {
+  const dateTag = extractServerDateTag(timestamp);
+  const targetTag = `LKB2${dateTag}`.toUpperCase();
+  let maxSeq = 0;
+  for (const s of inMemorySubmissions) {
+    if (!s.trackingCode) continue;
+    const norm = s.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
+    if (norm.startsWith(targetTag)) {
+      const seqStr = norm.slice(targetTag.length);
+      const parsed = parseInt(seqStr, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) maxSeq = parsed;
+    }
+  }
+  const nextSeq = String(maxSeq + 1).padStart(2, '0');
+  return `LKB2 - ${dateTag}${nextSeq}`;
+}
 
 // Ensure data directory exists
 try {
@@ -388,11 +429,14 @@ async function startServer() {
         statusDetails = formErr.message || "Failed to submit to Google Form POST";
       }
 
-      // 3. Save to persistent storage so the app always preserves itemTitle
+      // 3. Save to persistent storage so the app always preserves itemTitle and trackingCode
+      const actionType = payload.actionType || "รับ";
+      const trackingCode = payload.trackingCode || (actionType === "ส่ง" ? generateServerParcelTrackingCode(payload.timestamp) : undefined);
+
       const savedRecord: ParcelSubmissionRecord = {
         id: `parcel-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         timestamp: payload.timestamp || new Date().toLocaleString("th-TH"),
-        actionType: payload.actionType || "รับ",
+        actionType,
         senderName: payload.senderName.trim(),
         senderDepartment: payload.senderDepartment.trim(),
         recipientName: payload.recipientName.trim(),
@@ -401,6 +445,7 @@ async function startServer() {
         operatorName: payload.operatorName?.trim() || "ธุรการ",
         operatorDepartment: payload.operatorDepartment?.trim() || "ธุรการลาดกระบัง 2",
         createdAt: Date.now(),
+        trackingCode,
       };
       saveSubmission(savedRecord);
 

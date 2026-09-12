@@ -18,6 +18,7 @@ export interface ParcelDeliveryRecord {
   timeStr?: string;                // เวลา เช่น "14:11:00"
   status?: string;                 // สถานะ เช่น "เสร็จสิ้น"
   note?: string;                   // หมายเหตุเพิ่มเติม
+  trackingCode?: string;           // รหัสติดตามสถานะ เช่น "LKB2 - 26091201"
 }
 
 export interface ChlorineInspectionRecord {

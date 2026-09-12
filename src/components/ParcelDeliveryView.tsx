@@ -86,6 +86,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [selectedQrParcel, setSelectedQrParcel] = useState<ParcelDeliveryRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Current Window URL for QR Code & Sharing
@@ -144,6 +145,21 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Auto-open modal if URL has ?track=... (e.g. scanned from QR code)
+  useEffect(() => {
+    if (typeof window === 'undefined' || records.length === 0) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackCode = urlParams.get('track');
+    if (trackCode) {
+      const cleanTrack = trackCode.replace(/[\s-]+/g, '').toLowerCase();
+      const matched = records.find(r => r.trackingCode && r.trackingCode.replace(/[\s-]+/g, '').toLowerCase() === cleanTrack);
+      if (matched) {
+        setSelectedRecord(matched);
+        setIsDetailOpen(true);
+      }
+    }
+  }, [records]);
 
   // Check if a record is from today
   const isRecordToday = (record: ParcelDeliveryRecord) => {
@@ -233,8 +249,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         const matchOperator = record.operatorName?.toLowerCase().includes(query) || record.operatorDepartment?.toLowerCase().includes(query);
         const matchType = record.actionType?.toLowerCase().includes(query);
         const matchTimestamp = record.timestamp?.toLowerCase().includes(query);
+        const matchTracking = record.trackingCode?.toLowerCase().includes(query);
 
-        if (!matchTitle && !matchSender && !matchRecipient && !matchOperator && !matchType && !matchTimestamp) {
+        if (!matchTitle && !matchSender && !matchRecipient && !matchOperator && !matchType && !matchTimestamp && !matchTracking) {
           return false;
         }
       }
@@ -408,7 +425,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 {/* QR Code Button placed right after the button, styled like Meeting Room */}
                 <button
                   type="button"
-                  onClick={() => setShowQrModal(true)}
+                  onClick={() => {
+                    setSelectedQrParcel(null);
+                    setShowQrModal(true);
+                  }}
                   className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/80 dark:bg-slate-800/80 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center"
                   title={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
                   aria-label={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
@@ -792,11 +812,28 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Item Title */}
+                      {/* Item Title & Tracking Code */}
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white line-clamp-2 max-w-xs">
                           {record.itemTitle}
                         </div>
+                        {isAdmin && record.trackingCode && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedQrParcel(record);
+                                setShowQrModal(true);
+                              }}
+                              className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
+                              title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
+                            >
+                              <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                              <span>{record.trackingCode}</span>
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Sender */}
@@ -909,6 +946,24 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     <h4 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
                       {record.itemTitle}
                     </h4>
+
+                    {isAdmin && record.trackingCode && (
+                      <div className="mt-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedQrParcel(record);
+                            setShowQrModal(true);
+                          }}
+                          className="inline-flex items-center gap-1 font-mono text-[11px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
+                          title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
+                        >
+                          <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                          <span>{record.trackingCode}</span>
+                        </button>
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
                       <Clock className="w-3.5 h-3.5" />
@@ -1025,6 +1080,26 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       <span>แผนก: {record.recipientDepartment}</span>
                       <span>ผู้บันทึก: {record.operatorName}</span>
                     </div>
+
+                    {isAdmin && record.trackingCode && (
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedQrParcel(record);
+                            setShowQrModal(true);
+                          }}
+                          className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
+                        >
+                          <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                          <span>{record.trackingCode}</span>
+                        </button>
+                        <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline">
+                          เปิด QR ติดตาม
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>
@@ -1095,6 +1170,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       <ParcelDetailModal
         isOpen={isDetailOpen}
         parcel={selectedRecord}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
         onClose={() => setIsDetailOpen(false)}
       />
 
@@ -1117,7 +1194,13 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       {/* Modern Parcel Delivery QR Code Modal with Cute Cartoon Mascot in Center */}
       <ModernParcelQrModal
         isOpen={showQrModal}
-        onClose={() => setShowQrModal(false)}
+        onClose={() => {
+          setShowQrModal(false);
+          setSelectedQrParcel(null);
+        }}
+        parcel={selectedQrParcel}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
         url={parcelWindowUrl}
       />
 
@@ -1133,6 +1216,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           }, 1500);
         }}
         currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
         existingRecords={records}
       />
     </div>

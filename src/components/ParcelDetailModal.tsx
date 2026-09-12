@@ -11,34 +11,53 @@ import {
   Check, 
   Sparkles,
   FileText,
-  ArrowRight
+  ArrowRight,
+  QrCode,
+  ExternalLink
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
+import { ModernParcelQrModal } from './ModernParcelQrModal';
 
 interface ParcelDetailModalProps {
   isOpen: boolean;
   parcel: ParcelDeliveryRecord | null;
   onClose: () => void;
+  currentUser?: AdminUserAccount | null;
+  isAuthenticated?: boolean;
 }
 
 export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   isOpen,
   parcel,
   onClose,
+  currentUser,
+  isAuthenticated,
 }) => {
   const { language } = useLanguage();
   const [copied, setCopied] = useState(false);
+  const [copiedTracking, setCopiedTracking] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+
+  const isAdmin = isUserAdminOrSupervisor(currentUser, isAuthenticated);
 
   if (!isOpen || !parcel) return null;
 
   const isSending = parcel.actionType === 'ส่ง';
 
   const handleCopy = () => {
-    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | วันที่เวลา: ${parcel.timestamp}`;
+    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | วันที่เวลา: ${parcel.timestamp}${parcel.trackingCode ? ` | รหัสติดตาม: ${parcel.trackingCode}` : ''}`;
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyTrackingCode = () => {
+    if (!parcel.trackingCode) return;
+    navigator.clipboard.writeText(parcel.trackingCode);
+    setCopiedTracking(true);
+    setTimeout(() => setCopiedTracking(false), 2000);
   };
 
   return (
@@ -159,6 +178,50 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             </div>
           </div>
 
+          {/* Tracking Code & QR Code Section (for Outgoing/Send records) - Restricted to Admins and Page Admins */}
+          {isAdmin && (parcel.trackingCode || isSending) && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-pink-50 via-rose-50 to-amber-50 dark:from-pink-950/40 dark:via-rose-950/20 dark:to-slate-900 border-2 border-pink-200 dark:border-pink-800/60 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-xs">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-pink-950 dark:text-pink-100 flex items-center gap-1.5">
+                      <span>รหัสติดตามสถานะงานส่ง</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-300 font-semibold">
+                        LKB2 - YYMMDDXX
+                      </span>
+                    </h4>
+                    <p className="text-sm text-pink-700 dark:text-pink-300 font-mono font-black mt-0.5 tracking-wider">
+                      {parcel.trackingCode || 'สร้างอัตโนมัติ'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {parcel.trackingCode && (
+                    <button
+                      onClick={handleCopyTrackingCode}
+                      className="px-2.5 py-1.5 rounded-xl border border-pink-200 dark:border-pink-800 bg-white dark:bg-slate-800 hover:bg-pink-50 text-pink-700 dark:text-pink-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      {copiedTracking ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedTracking ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setShowQrModal(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>เปิด QR Code ติดตาม</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status badge */}
           <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50">
             <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-sm font-semibold">
@@ -187,14 +250,35 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             )}
           </button>
 
-          <button
-            onClick={onClose}
-            className="px-6 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-          >
-            ปิด
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (parcel.trackingCode || isSending) && (
+              <button
+                onClick={() => setShowQrModal(true)}
+                className="px-4 py-2 rounded-xl border border-pink-300 dark:border-pink-800 text-pink-700 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-950/40 text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>QR ติดตาม</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="px-6 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              ปิด
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modern Parcel QR Modal */}
+      <ModernParcelQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        parcel={parcel}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
+      />
     </div>
   );
 };

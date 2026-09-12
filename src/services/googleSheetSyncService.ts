@@ -18,6 +18,10 @@ import {
   ParcelDeliveryRecord
 } from '../types';
 import { INITIAL_RAGS_GLOVES_DATA } from '../data/mockRagsGlovesData';
+import { 
+  assignTrackingCodesToParcels, 
+  generateParcelTrackingCode 
+} from '../utils/parcelTrackingUtils';
 
 export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/edit?resourcekey=&gid=1278573396#gid=1278573396';
 export const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/export?format=csv&gid=1278573396';
@@ -3912,21 +3916,25 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     }
 
     let finalItemTitle = itemTitle;
-    if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
-      try {
-        const localSubs = getLocalParcelRecords();
-        const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
-        const match = localSubs.find(
-          (sub) =>
-            norm(sub.senderName) === norm(senderName) &&
-            norm(sub.recipientName) === norm(recipientName) &&
-            sub.itemTitle
-        );
-        if (match && match.itemTitle) {
+    let finalTrackingCode: string | undefined = undefined;
+    try {
+      const localSubs = getLocalParcelRecords();
+      const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
+      const match = localSubs.find(
+        (sub) =>
+          norm(sub.senderName) === norm(senderName) &&
+          norm(sub.recipientName) === norm(recipientName) &&
+          (sub.itemTitle || sub.trackingCode)
+      );
+      if (match) {
+        if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
           finalItemTitle = match.itemTitle;
         }
-      } catch {}
-    }
+        if (match.trackingCode) {
+          finalTrackingCode = match.trackingCode;
+        }
+      }
+    } catch {}
 
     records.push({
       id: `parcel-${i}`,
@@ -3943,6 +3951,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
       dateStr,
       timeStr,
       status: 'บันทึกสำเร็จ',
+      trackingCode: finalTrackingCode,
     });
   }
 
@@ -3984,7 +3993,8 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     return b.seq - a.seq; // Higher row seq is newer in Google Sheet
   });
 
-  return records;
+  // Automatically assign running tracking codes to "ส่ง" records matching laundry tracking system
+  return assignTrackingCodesToParcels(records);
 }
 
 export const PARCEL_LOCAL_STORAGE_KEY = 'proworkflow_created_parcels_v1';
@@ -4102,6 +4112,7 @@ export interface NewParcelDeliveryPayload {
   itemTitle: string;
   operatorName: string;
   operatorDepartment: string;
+  trackingCode?: string;
 }
 
 export interface ParcelSubmitResult {
@@ -4159,6 +4170,11 @@ export async function submitParcelDeliveryRecord(
   const dateStr = timestamp.split(/[\s,]+/)[0] || `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
   const webhookUrl = getParcelWebhookUrl();
 
+  // Generate tracking code for 'ส่ง' transactions matching laundry tracking running numbering
+  const trackingCode = payload.actionType === 'ส่ง'
+    ? (payload.trackingCode?.trim() || generateParcelTrackingCode(timestamp))
+    : undefined;
+
   const newRecord: ParcelDeliveryRecord = {
     id: `local-parcel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     seq: Date.now(),
@@ -4174,6 +4190,7 @@ export async function submitParcelDeliveryRecord(
     dateStr,
     timeStr,
     status: 'บันทึกสำเร็จ',
+    trackingCode,
   };
 
   let googleSheetSynced = false;
@@ -4191,6 +4208,7 @@ export async function submitParcelDeliveryRecord(
       body: JSON.stringify({
         ...payload,
         timestamp,
+        trackingCode,
         webhookUrl: webhookUrl || undefined,
       }),
     });
@@ -4201,6 +4219,9 @@ export async function submitParcelDeliveryRecord(
       itemTitleSyncedToSheet = !!data.detectedItemTitleEntry;
       detectedEntryId = data.detectedItemTitleEntry || null;
       details = data.details || '';
+      if (data.record?.trackingCode) {
+        newRecord.trackingCode = data.record.trackingCode;
+      }
       saveLocalParcelRecord(newRecord);
     } else {
       details = `Server returned status ${res.status}`;

@@ -10,7 +10,8 @@
     "itemTitle": "เอกสารทดสอบบันทึกชื่อพัสดุสำเร็จ",
     "operatorName": "เจม",
     "operatorDepartment": "ธุรการลาดกระบัง 2",
-    "createdAt": 1789251483324
+    "createdAt": 1789251483324,
+    "trackingCode": "LKB2 - 26091201"
   },
   {
     "id": "parcel-sub-1789251116972-hem4e",
@@ -23,7 +24,8 @@
     "itemTitle": "จดหมายเช่าที่ดิน",
     "operatorName": "พนักงานทั่วไป (Staff)",
     "operatorDepartment": "ธุรการลาดกระบัง 2",
-    "createdAt": 1789251116972
+    "createdAt": 1789251116972,
+    "trackingCode": "LKB2 - 26091302"
   },
   {
     "id": "parcel-sub-1789251006748-p9ieq",
@@ -36,6 +38,7 @@
     "itemTitle": "จดมอบเช่าที่ดิน",
     "operatorName": "พนักงานทั่วไป (Staff)",
     "operatorDepartment": "ธุรการลาดกระบัง 2",
-    "createdAt": 1789251006748
+    "createdAt": 1789251006748,
+    "trackingCode": "LKB2 - 26091301"
   }
 ]
