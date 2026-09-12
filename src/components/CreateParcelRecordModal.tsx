@@ -1,0 +1,742 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Package,
+  Send,
+  Inbox,
+  Clock,
+  User,
+  Building,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  RotateCcw,
+  FileSpreadsheet,
+  ArrowRight,
+  Copy,
+  Check,
+  Info,
+} from 'lucide-react';
+import { ParcelDeliveryRecord } from '../types';
+import { AdminUserAccount } from '../data/mockData';
+import {
+  PARCEL_SHEET_URL,
+  formatCurrentThaiParcelTimestamp,
+  submitParcelDeliveryRecord,
+} from '../services/googleSheetSyncService';
+import { useLanguage } from '../contexts/LanguageContext';
+
+interface CreateParcelRecordModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onRecordCreated: (newRecord: ParcelDeliveryRecord) => void;
+  currentUser?: AdminUserAccount | null;
+  existingRecords?: ParcelDeliveryRecord[];
+}
+
+// Popular departments for quick selection
+const POPULAR_DEPARTMENTS = [
+  'การเงิน',
+  'ธุรการลาดกระบัง 2',
+  'ธุรการลาดกระบัง 1',
+  'บัญชี',
+  'ช่างกล บางชัน',
+  'บุคคล ลาดกระบัง',
+  'จัดซื้อ',
+  'ฝ่ายผลิต',
+  'คลังสินค้า',
+  'ประกันคุณภาพ (QA/QC)',
+];
+
+// Popular document/parcel items
+const POPULAR_ITEMS = [
+  'PO ผลไม้',
+  'ใบสั่งซื้อ (PO)',
+  'ใบกำกับภาษี / ใบเสร็จ',
+  'เอกสารสัญญา / บันทึกข้อตกลง',
+  'ใบส่งของ / ใบแจ้งหนี้',
+  'ซองเอกสารธุรการ',
+  'กล่องพัสดุด่วน',
+  'พัสดุอะไหล่ / อุปกรณ์ช่าง',
+];
+
+export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = ({
+  isOpen,
+  onClose,
+  onRecordCreated,
+  currentUser,
+  existingRecords = [],
+}) => {
+  const { language } = useLanguage();
+
+  // Core Google Form fields
+  // entry.1879722225: ประเภท ('รับ' หรือ 'ส่ง')
+  const [actionType, setActionType] = useState<'รับ' | 'ส่ง'>('รับ');
+  // entry.645686724: ชื่อผู้ส่งตามหน้าซอง
+  const [senderName, setSenderName] = useState<string>('');
+  // entry.1066148556: แผนกผู้ส่ง
+  const [senderDepartment, setSenderDepartment] = useState<string>('');
+  // entry.222826518: ชื่อผู้รับตามหน้าซอง
+  const [recipientName, setRecipientName] = useState<string>('');
+  // entry.600874339: แผนกผู้รับ
+  const [recipientDepartment, setRecipientDepartment] = useState<string>('');
+
+  // Helper app-level fields
+  const [timestamp, setTimestamp] = useState<string>('');
+  const [itemTitle, setItemTitle] = useState<string>('');
+  const [operatorName, setOperatorName] = useState<string>('');
+  const [operatorDepartment, setOperatorDepartment] = useState<string>('ธุรการลาดกระบัง 2');
+
+  // Submission & UI States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastSavedRecord, setLastSavedRecord] = useState<ParcelDeliveryRecord | null>(null);
+  const [copiedData, setCopiedData] = useState(false);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  // Field validation flags - all fields are mandatory
+  const isSenderNameValid = senderName.trim().length > 0;
+  const isSenderDeptValid = senderDepartment.trim().length > 0;
+  const isRecipientNameValid = recipientName.trim().length > 0;
+  const isRecipientDeptValid = recipientDepartment.trim().length > 0;
+  const isItemTitleValid = itemTitle.trim().length > 0;
+
+  const isFormComplete =
+    isSenderNameValid &&
+    isSenderDeptValid &&
+    isRecipientNameValid &&
+    isRecipientDeptValid &&
+    isItemTitleValid;
+
+  const wasOpenRef = useRef(false);
+
+  // Reset fields to empty ONLY when modal transitions from closed to open
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
+      setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
+      setIsSuccess(false);
+      setErrorMessage(null);
+      setCopiedData(false);
+      setHasAttemptedSubmit(false);
+      setSenderName('');
+      setSenderDepartment('');
+      setRecipientName('');
+      setRecipientDepartment('');
+      setItemTitle('');
+
+      const userName = currentUser?.name || currentUser?.username || 'เจม';
+      setOperatorName(userName);
+      if (currentUser?.department) {
+        setOperatorDepartment(currentUser.department);
+      }
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
+    }
+  }, [isOpen, currentUser]);
+
+  if (!isOpen) return null;
+
+  // Handler to refresh timestamp to current moment
+  const handleResetTimestamp = () => {
+    setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
+  };
+
+  // Quick preset from the user's provided link
+  const handleLoadSampleFromLink = () => {
+    setActionType('รับ');
+    setSenderName('ทดสอบ');
+    setSenderDepartment('การเงิน');
+    setRecipientName('เจม');
+    setRecipientDepartment('ธุรการลาดกระบัง 2');
+    setItemTitle('เอกสารการเงิน / ทดสอบ');
+    setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
+  };
+
+  // Quick switch of Action Type
+  const handleSwitchActionType = (type: 'รับ' | 'ส่ง') => {
+    if (isSuccess) setIsSuccess(false);
+    setActionType(type);
+  };
+
+  // Handle Form Submission via Google Form POST
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErrorMessage(null);
+    setHasAttemptedSubmit(true);
+
+    // บังคับให้กรอกข้อมูลทุกช่อง หากไม่ครบไม่สามารถทำรายการได้
+    if (!isSenderNameValid) {
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง (บังคับกรอกทุกช่อง)' : 'Sender name is required');
+      document.getElementById('input-sender-name')?.focus();
+      return;
+    }
+    if (!isSenderDeptValid) {
+      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง (บังคับกรอกทุกช่อง)' : 'Sender department is required');
+      document.getElementById('input-sender-dept')?.focus();
+      return;
+    }
+    if (!isRecipientNameValid) {
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง (บังคับกรอกทุกช่อง)' : 'Recipient name is required');
+      document.getElementById('input-recipient-name')?.focus();
+      return;
+    }
+    if (!isRecipientDeptValid) {
+      setErrorMessage(language === 'th' ? 'กรุณาระบุแผนกผู้รับ (บังคับกรอกทุกช่อง)' : 'Recipient department is required');
+      document.getElementById('input-recipient-dept')?.focus();
+      return;
+    }
+    if (!isItemTitleValid) {
+      setErrorMessage(language === 'th' ? 'กรุณาระบุชื่อเอกสาร / พัสดุ (บังคับกรอกทุกช่อง)' : 'Item title is required');
+      document.getElementById('input-item-title')?.focus();
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Submit via Server Endpoint /api/parcel-submit (Executes a single, clean server-to-server POST to Google Form)
+      const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
+      const res = await submitParcelDeliveryRecord({
+        timestamp: currentTs,
+        actionType,
+        senderName: senderName.trim(),
+        senderDepartment: senderDepartment.trim(),
+        recipientName: recipientName.trim(),
+        recipientDepartment: recipientDepartment.trim(),
+        itemTitle: itemTitle.trim(),
+        operatorName: operatorName.trim() || currentUser?.name || currentUser?.username || 'เจม',
+        operatorDepartment: operatorDepartment.trim() || 'ธุรการลาดกระบัง 2',
+      });
+
+      if (res.success && res.record) {
+        setLastSavedRecord(res.record);
+        setIsSuccess(true);
+        onRecordCreated(res.record);
+      } else {
+        setErrorMessage(res.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      }
+    } catch (err: any) {
+      console.error('Error submitting parcel delivery Google Form:', err);
+      setErrorMessage(err?.message || 'เกิดข้อผิดพลาดในการส่งคำขอ POST ไปยัง Google Form');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Reset form for another new entry
+  const handleResetForNewRecord = () => {
+    setIsSuccess(false);
+    setHasAttemptedSubmit(false);
+    setErrorMessage(null);
+    setLastSavedRecord(null);
+    setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
+    setSenderName('');
+    setSenderDepartment('');
+    setRecipientName('');
+    setRecipientDepartment('');
+    setItemTitle('');
+  };
+
+  // Copy details to clipboard
+  const handleCopyDetails = async () => {
+    if (!lastSavedRecord) return;
+    const text = `[บันทึกรับ-ส่งเอกสาร/พัสดุ]\nวันที่เวลา: ${lastSavedRecord.timestamp}\nประเภท: ${lastSavedRecord.actionType}\nผู้ส่ง: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nผู้รับ: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nรายการ: ${lastSavedRecord.itemTitle}\nผู้ทำรายการ: ${lastSavedRecord.operatorName}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedData(true);
+      setTimeout(() => setCopiedData(false), 2500);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Recent sender & recipient name suggestions
+  const recentSenders = Array.from(new Set(existingRecords.map((r) => r.senderName).filter(Boolean))).slice(0, 5);
+  const recentRecipients = Array.from(new Set(existingRecords.map((r) => r.recipientName).filter(Boolean))).slice(0, 5);
+
+  return (
+    <div
+      id="parcel-google-form-modal-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto"
+    >
+      <div
+        id="parcel-google-form-modal-container"
+        className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-pink-200/80 dark:border-slate-800 w-full max-w-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200 flex flex-col max-h-[94vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="bg-gradient-to-r from-pink-600 via-rose-600 to-amber-600 p-4 sm:p-5 text-white flex items-center justify-between gap-3 shrink-0 shadow-md">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
+              <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-black tracking-tight text-white drop-shadow-xs">
+                {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document & Parcel Delivery'}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              id="btn-close-parcel-modal"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/35 text-white flex items-center justify-center transition-colors cursor-pointer"
+              title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body / Form */}
+        <div className="overflow-y-auto p-4 sm:p-5 flex-1 space-y-4.5">
+          {/* Success State Banner */}
+          {isSuccess && lastSavedRecord ? (
+            <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-400 dark:border-emerald-600 space-y-4 animate-in fade-in zoom-in-95 duration-200 shadow-sm">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-black text-emerald-900 dark:text-emerald-100">
+                    บันทึกข้อมูลเข้า Google Sheets สำเร็จเรียบร้อยแล้ว!
+                  </h3>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    ระบบได้ส่งคำขอ POST ไปยัง Google Form โดยตรง และส่งข้อมูลเข้าสู่ไฟล์ Google Sheets เรียบร้อยแล้ว โดยไม่ต้องผ่านหน้าต่างยืนยันของ Google Form
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary Card */}
+              <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-800/90 border border-emerald-200 dark:border-emerald-800 text-xs space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-slate-700 dark:text-slate-300">
+                  <div>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ประเภท:</span>
+                    <span className="font-black text-pink-600 dark:text-pink-400 text-sm">
+                      {lastSavedRecord.actionType}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">วันที่เวลา:</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                      {lastSavedRecord.timestamp}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ผู้ส่ง:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {lastSavedRecord.senderName}
+                    </span>{' '}
+                    <span className="text-slate-500">({lastSavedRecord.senderDepartment})</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ผู้รับ:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {lastSavedRecord.recipientName}
+                    </span>{' '}
+                    <span className="text-slate-500">({lastSavedRecord.recipientDepartment})</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Success Actions */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleResetForNewRecord}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>บันทึกรายการใหม่อีกครั้ง</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyDetails}
+                  className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  {copiedData ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedData ? 'คัดลอกแล้ว' : 'คัดลอกข้อมูล'}</span>
+                </button>
+
+                <a
+                  href={PARCEL_SHEET_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ml-auto"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>เปิดดู Google Sheet</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center gap-2.5 text-rose-800 dark:text-rose-200 text-xs">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Mandatory All-Fields Notice */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs font-medium">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {language === 'th'
+                ? 'ระบบบังคับให้กรอกข้อมูลทุกช่อง หากไม่ครบจะไม่สามารถทำรายการได้'
+                : 'All fields are strictly mandatory. Missing fields will prevent submission.'}
+            </span>
+          </div>
+
+          {/* The Form */}
+          <form id="parcel-google-form-html" onSubmit={handleSubmit} className="space-y-4">
+            {/* Field 1: ประเภท */}
+            <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span>1. ประเภท</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              {/* Responsive Pill Selection Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Option 1: รับ (Receive) */}
+                <button
+                  type="button"
+                  id="btn-parcel-type-receive"
+                  onClick={() => handleSwitchActionType('รับ')}
+                  className={`p-3 sm:p-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition-all border-2 cursor-pointer ${
+                    actionType === 'รับ'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-800 dark:text-emerald-100 shadow-md ring-2 ring-emerald-500/20'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-300'
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                      actionType === 'รับ'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+                    }`}
+                  >
+                    <Inbox className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-black text-sm">{language === 'th' ? 'รับ' : 'Receive'}</div>
+                    <div className="text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                      {language === 'th' ? 'รับเอกสาร / พัสดุเข้า' : 'Incoming delivery'}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Option 2: ส่ง (Send) */}
+                <button
+                  type="button"
+                  id="btn-parcel-type-send"
+                  onClick={() => handleSwitchActionType('ส่ง')}
+                  className={`p-3 sm:p-3.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-3 transition-all border-2 cursor-pointer ${
+                    actionType === 'ส่ง'
+                      ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-500 text-rose-800 dark:text-rose-100 shadow-md ring-2 ring-rose-500/20'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-rose-300'
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                      actionType === 'ส่ง'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+                    }`}
+                  >
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-black text-sm">{language === 'th' ? 'ส่ง' : 'Send'}</div>
+                    <div className="text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                      {language === 'th' ? 'ส่งเอกสาร / พัสดุออก' : 'Outgoing delivery'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Field 2: ชื่อผู้ส่งตามหน้าซอง */}
+            <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-rose-600" />
+                  <span>2. ชื่อผู้ส่งตามหน้าซอง</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              <input
+                type="text"
+                id="input-sender-name"
+                value={senderName}
+                onChange={(e) => {
+                  if (isSuccess) setIsSuccess(false);
+                  setSenderName(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="เช่น ทดสอบ, เจม, มาร์ค, คุณศศิประภา"
+                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
+                  hasAttemptedSubmit && !isSenderNameValid
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-rose-500'
+                }`}
+                required
+              />
+              {hasAttemptedSubmit && !isSenderNameValid && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง (จำเป็น)' : 'Sender name is required'}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Field 3: แผนกผู้ส่ง */}
+            <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5 text-rose-600" />
+                  <span>3. แผนกผู้ส่ง</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              <input
+                type="text"
+                id="input-sender-dept"
+                value={senderDepartment}
+                onChange={(e) => {
+                  if (isSuccess) setIsSuccess(false);
+                  setSenderDepartment(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="เช่น การเงิน, ธุรการลาดกระบัง 1, ธุรการลาดกระบัง 2"
+                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
+                  hasAttemptedSubmit && !isSenderDeptValid
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-rose-500'
+                }`}
+                required
+              />
+              {hasAttemptedSubmit && !isSenderDeptValid && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง (จำเป็น)' : 'Sender department is required'}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Field 4: ชื่อผู้รับตามหน้าซอง */}
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>4. ชื่อผู้รับตามหน้าซอง</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              <input
+                type="text"
+                id="input-recipient-name"
+                value={recipientName}
+                onChange={(e) => {
+                  if (isSuccess) setIsSuccess(false);
+                  setRecipientName(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="เช่น เจม, มาร์ค, คุณศศิประภา"
+                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
+                  hasAttemptedSubmit && !isRecipientNameValid
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500'
+                }`}
+                required
+              />
+              {hasAttemptedSubmit && !isRecipientNameValid && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง (จำเป็น)' : 'Recipient name is required'}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Field 5: แผนกผู้รับ */}
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>5. แผนกผู้รับ</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              <input
+                type="text"
+                id="input-recipient-dept"
+                value={recipientDepartment}
+                onChange={(e) => {
+                  if (isSuccess) setIsSuccess(false);
+                  setRecipientDepartment(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="เช่น ธุรการลาดกระบัง 2, ธุรการลาดกระบัง 1, การเงิน"
+                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
+                  hasAttemptedSubmit && !isRecipientDeptValid
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500'
+                }`}
+                required
+              />
+              {hasAttemptedSubmit && !isRecipientDeptValid && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{language === 'th' ? 'กรุณาระบุแผนกผู้รับ (จำเป็น)' : 'Recipient department is required'}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Helper Field: ชื่อเอกสาร/พัสดุ */}
+            <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                  <span>ชื่อเอกสาร / พัสดุ</span>
+                  <span className="text-rose-500 font-bold">*</span>
+                </label>
+              </div>
+
+              <input
+                type="text"
+                id="input-item-title"
+                value={itemTitle}
+                onChange={(e) => {
+                  if (isSuccess) setIsSuccess(false);
+                  setItemTitle(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="เช่น PO ผลไม้, ใบสั่งซื้อ, ซองเอกสารทั่วไป"
+                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
+                  hasAttemptedSubmit && !isItemTitleValid
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-pink-500'
+                }`}
+                required
+              />
+              {hasAttemptedSubmit && !isItemTitleValid && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{language === 'th' ? 'กรุณาระบุชื่อเอกสาร / พัสดุ (จำเป็น)' : 'Item title is required'}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Date & Time display */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>วันที่เวลาบันทึก:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                  {timestamp || '-'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetTimestamp}
+                className="text-[11px] text-pink-600 hover:text-pink-700 font-bold flex items-center gap-1 cursor-pointer"
+                title="รีเฟรชเวลาปัจจุบัน"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>รีเฟรชเวลา</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px]">
+            {!isSuccess && !isFormComplete ? (
+              <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{language === 'th' ? 'บังคับกรอกข้อมูลทุกช่องเพื่อทำรายการ' : 'All fields required'}</span>
+              </span>
+            ) : !isSuccess ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{language === 'th' ? 'กรอกข้อมูลครบถ้วน พร้อมบันทึก' : 'Ready to save'}</span>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              id="btn-cancel-parcel-modal"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+            >
+              {language === 'th' ? 'ยกเลิก' : 'Cancel'}
+            </button>
+
+            <button
+              type="button"
+              id="btn-submit-parcel-google-form"
+              onClick={() => {
+                if (isSuccess) {
+                  handleResetForNewRecord();
+                } else {
+                  handleSubmit();
+                }
+              }}
+              disabled={isSubmitting}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
+                isSuccess
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 border border-emerald-500/50'
+                  : 'bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 text-white shadow-md shadow-pink-500/20 hover:shadow-lg'
+              }`}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>{language === 'th' ? 'กำลังบันทึกข้อมูล...' : 'Saving...'}</span>
+                </>
+              ) : isSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-white" />
+                  <span>{language === 'th' ? 'บันทึกข้อมูลแล้ว' : 'Saved'}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{language === 'th' ? 'บันทึกข้อมูล' : 'Save'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

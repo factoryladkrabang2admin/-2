@@ -3830,13 +3830,11 @@ export async function fetchGoogleSheetChlorineRecords(): Promise<ChlorineSyncRes
 // ============================================================================
 // Google Sheet Integration for รับ-ส่ง เอกสาร / พัสดุ (Document & Parcel Delivery)
 // ============================================================================
-export const PARCEL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/edit?gid=572373504#gid=572373504';
-export const PARCEL_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/export?format=csv&gid=572373504';
-export const PARCEL_SHEET_GVIZ_CSV_URL = 'https://docs.google.com/spreadsheets/d/1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0/gviz/tq?tqx=out:csv&gid=572373504';
+export const PARCEL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330/edit?gid=1955620947#gid=1955620947';
+export const PARCEL_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330/export?format=csv&gid=1955620947';
+export const PARCEL_SHEET_GVIZ_CSV_URL = 'https://docs.google.com/spreadsheets/d/1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330/gviz/tq?tqx=out:csv&gid=1955620947';
 
-export const PARCEL_FALLBACK_CSV = `วันที่เวลา,ประเภท,ชื่อผู้ส่งตามหน้าซอง,แผนกผู้ส่ง,ชื่อผู้รับตามหน้าซอง,แผนกผู้รับ,ชื่อเอกสาร/พัสดุ,ชื่อผู้ทำรายการ,แผนกผู้ทำรายการ
-12/9/2026, 14:11:00,ส่ง,เจม,ธุรการลาดกระบัง 1,มาร์ค,ธุรการลาดกระบัง 2,PO ผลไม้,เจม,ธุรการลาดกระบัง 1
-12/9/2026, 14:18:59,รับ,เจม,ธุรการลาดกระบัง 1,มาร์ค,ธุรการลาดกระบัง 2,Po ผลไม้,มาร์ค,ธุรการลาดกระบัง 2`;
+export const PARCEL_FALLBACK_CSV = '';
 
 export interface ParcelSyncResult {
   success: boolean;
@@ -3853,20 +3851,42 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
 
   const records: ParcelDeliveryRecord[] = [];
 
-  // Header: วันที่เวลา,ประเภท,ชื่อผู้ส่งตามหน้าซอง,แผนกผู้ส่ง,ชื่อผู้รับตามหน้าซอง,แผนกผู้รับ,ชื่อเอกสาร/พัสดุ,ชื่อผู้ทำรายการ,แผนกผู้ทำรายการ
+  // Determine column indexes from header row
+  const headerRow = rows[0].map((c) => (c || '').trim().toLowerCase());
+  let timestampIdx = headerRow.findIndex((h) => h.includes('ประทับเวลา') || h.includes('วันที่') || h.includes('timestamp'));
+  let actionTypeIdx = headerRow.findIndex((h) => h.includes('ประเภท'));
+  let senderNameIdx = headerRow.findIndex((h) => h.includes('ชื่อผู้ส่ง'));
+  let senderDeptIdx = headerRow.findIndex((h) => h.includes('แผนกผู้ส่ง'));
+  let recipientNameIdx = headerRow.findIndex((h) => h.includes('ชื่อผู้รับ'));
+  let recipientDeptIdx = headerRow.findIndex((h) => h.includes('แผนกผู้รับ'));
+  let itemTitleIdx = headerRow.findIndex((h) => h.includes('ชื่อเอกสาร') || h.includes('พัสดุ') || h.includes('คอลัมน์ 6') || h.includes('รายการ'));
+  let operatorNameIdx = headerRow.findIndex((h) => h.includes('ผู้ทำรายการ') && !h.includes('แผนก'));
+  let operatorDeptIdx = headerRow.findIndex((h) => h.includes('แผนกผู้ทำรายการ'));
+
+  // Default index positions fallback
+  if (timestampIdx === -1) timestampIdx = 0;
+  if (actionTypeIdx === -1) actionTypeIdx = 1;
+  if (senderNameIdx === -1) senderNameIdx = 2;
+  if (senderDeptIdx === -1) senderDeptIdx = 3;
+  if (recipientNameIdx === -1) recipientNameIdx = 4;
+  if (recipientDeptIdx === -1) recipientDeptIdx = 5;
+  if (itemTitleIdx === -1 && rows[0].length > 6) itemTitleIdx = 6;
+  if (operatorNameIdx === -1 && rows[0].length > 7) operatorNameIdx = 7;
+  if (operatorDeptIdx === -1 && rows[0].length > 8) operatorDeptIdx = 8;
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    if (!row || row.length === 0 || row.every(cell => !cell || !cell.trim())) continue;
+    if (!row || row.length === 0 || row.every((cell) => !cell || !cell.trim())) continue;
 
-    const timestamp = (row[0] || '').trim();
-    const actionTypeRaw = (row[1] || '').trim();
-    const senderName = (row[2] || '').trim();
-    const senderDepartment = (row[3] || '').trim();
-    const recipientName = (row[4] || '').trim();
-    const recipientDepartment = (row[5] || '').trim();
-    const itemTitle = (row[6] || '').trim();
-    const operatorName = (row[7] || '').trim();
-    const operatorDepartment = (row[8] || '').trim();
+    const timestamp = (row[timestampIdx] || '').trim();
+    const actionTypeRaw = (row[actionTypeIdx] || '').trim();
+    const senderName = (row[senderNameIdx] || '').trim();
+    const senderDepartment = (row[senderDeptIdx] || '').trim();
+    const recipientName = (row[recipientNameIdx] || '').trim();
+    const recipientDepartment = (row[recipientDeptIdx] || '').trim();
+    const itemTitle = itemTitleIdx >= 0 ? (row[itemTitleIdx] || '').trim() : '';
+    const operatorName = operatorNameIdx >= 0 ? (row[operatorNameIdx] || '').trim() : '';
+    const operatorDepartment = operatorDeptIdx >= 0 ? (row[operatorDeptIdx] || '').trim() : '';
 
     if (!timestamp && !senderName && !recipientName && !itemTitle && !actionTypeRaw) continue;
 
@@ -3950,6 +3970,199 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
   return records;
 }
 
+export const PARCEL_LOCAL_STORAGE_KEY = 'proworkflow_created_parcels_v1';
+export const PARCEL_WEBHOOK_STORAGE_KEY = 'proworkflow_parcel_webhook_url_v1';
+export const PARCEL_FORM_APP_URL = 'https://script.google.com/macros/s/AKfycbwAFd2MCDiWydPz3ycfRuWC6Jv3IKtGpn-tnhm4mNbHkJn4W2AyJ9hlVydURxGdGhh9gw/exec';
+
+// Google Form Direct Integration
+export const GOOGLE_PARCEL_FORM_ID = '1FAIpQLSfhL7tVwlJ7aYMt7fCWkBnMk1hS7ZJePsjYDRxnSDxmwsqq_g';
+export const GOOGLE_PARCEL_FORM_VIEW_URL = `https://docs.google.com/forms/d/e/${GOOGLE_PARCEL_FORM_ID}/viewform`;
+export const GOOGLE_PARCEL_FORM_RESPONSE_URL = `https://docs.google.com/forms/d/e/${GOOGLE_PARCEL_FORM_ID}/formResponse`;
+
+// Exact Google Form field entry mappings
+export const GOOGLE_PARCEL_FORM_ENTRIES = {
+  actionType: 'entry.1879722225',       // ประเภท ('รับ' หรือ 'ส่ง')
+  senderName: 'entry.645686724',        // ชื่อผู้ส่งตามหน้าซอง
+  senderDepartment: 'entry.1066148556',  // แผนกผู้ส่ง
+  recipientName: 'entry.222826518',     // ชื่อผู้รับตามหน้าซอง
+  recipientDepartment: 'entry.600874339',// แผนกผู้รับ
+};
+
+export function getParcelWebhookUrl(): string {
+  try {
+    const saved = localStorage.getItem(PARCEL_WEBHOOK_STORAGE_KEY);
+    if (saved && saved.trim().startsWith('http')) {
+      return saved.trim();
+    }
+  } catch (err) {
+    console.warn('Could not read parcel webhook from localStorage:', err);
+  }
+  return '';
+}
+
+export function setParcelWebhookUrl(url: string): void {
+  try {
+    if (!url || !url.trim()) {
+      localStorage.removeItem(PARCEL_WEBHOOK_STORAGE_KEY);
+    } else {
+      localStorage.setItem(PARCEL_WEBHOOK_STORAGE_KEY, url.trim());
+    }
+  } catch (err) {
+    console.error('Could not save parcel webhook to localStorage:', err);
+  }
+}
+
+export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
+  if (!records || !Array.isArray(records)) return [];
+  const seenIds = new Set<string>();
+  const unique: ParcelDeliveryRecord[] = [];
+
+  for (const item of records) {
+    if (!item) continue;
+    // Clone shallowly to avoid mutating originals
+    const rec = { ...item };
+    
+    // Ensure id is present and unique
+    if (!rec.id || seenIds.has(rec.id)) {
+      rec.id = `parcel-${rec.seq || Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    }
+
+    if (!seenIds.has(rec.id)) {
+      seenIds.add(rec.id);
+      unique.push(rec);
+    }
+  }
+  return unique;
+}
+
+export function getLocalParcelRecords(): ParcelDeliveryRecord[] {
+  // Strictly return empty to ensure only authentic Google Sheet rows are displayed
+  try {
+    localStorage.removeItem(PARCEL_LOCAL_STORAGE_KEY);
+  } catch {}
+  return [];
+}
+
+export function saveLocalParcelRecord(_record: ParcelDeliveryRecord): void {
+  // Intentionally no-op to ensure non-Google Sheet records are never stored locally
+}
+
+export function mergeParcelRecords(
+  sheetRecords: ParcelDeliveryRecord[],
+  _localRecords?: ParcelDeliveryRecord[]
+): ParcelDeliveryRecord[] {
+  return deduplicateParcelRecords(Array.isArray(sheetRecords) ? sheetRecords : []);
+}
+
+export function formatCurrentThaiParcelTimestamp(d: Date = new Date()): string {
+  const day = d.getDate();
+  const month = d.getMonth() + 1;
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${month}/${year}, ${hh}:${mm}:${ss}`;
+}
+
+export interface NewParcelDeliveryPayload {
+  timestamp?: string;
+  actionType: 'ส่ง' | 'รับ' | string;
+  senderName: string;
+  senderDepartment: string;
+  recipientName: string;
+  recipientDepartment: string;
+  itemTitle: string;
+  operatorName: string;
+  operatorDepartment: string;
+}
+
+export interface ParcelSubmitResult {
+  success: boolean;
+  record: ParcelDeliveryRecord;
+  googleSheetSynced: boolean;
+  details?: string;
+  error?: string;
+}
+
+export async function submitParcelDeliveryRecord(
+  payload: NewParcelDeliveryPayload
+): Promise<ParcelSubmitResult> {
+  // บังคับให้กรอกข้อมูลทุกช่อง หากไม่ครบไม่สามารถทำรายการได้
+  if (
+    !payload.senderName?.trim() ||
+    !payload.senderDepartment?.trim() ||
+    !payload.recipientName?.trim() ||
+    !payload.recipientDepartment?.trim() ||
+    !payload.itemTitle?.trim()
+  ) {
+    return {
+      success: false,
+      record: null as any,
+      googleSheetSynced: false,
+      error: 'กรุณากรอกข้อมูลให้ครบทุกช่องก่อนทำรายการ (บังคับกรอกทุกช่อง)',
+    };
+  }
+
+  const now = new Date();
+  const timestamp = payload.timestamp?.trim() || formatCurrentThaiParcelTimestamp(now);
+  const timeStr = timestamp.split(/[\s,]+/)[1] || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  const dateStr = timestamp.split(/[\s,]+/)[0] || `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+  const webhookUrl = getParcelWebhookUrl();
+
+  const newRecord: ParcelDeliveryRecord = {
+    id: `local-parcel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    seq: Date.now(),
+    timestamp,
+    actionType: payload.actionType,
+    senderName: payload.senderName.trim(),
+    senderDepartment: payload.senderDepartment.trim(),
+    recipientName: payload.recipientName.trim(),
+    recipientDepartment: payload.recipientDepartment.trim(),
+    itemTitle: payload.itemTitle.trim(),
+    operatorName: payload.operatorName.trim(),
+    operatorDepartment: payload.operatorDepartment.trim(),
+    dateStr,
+    timeStr,
+    status: 'บันทึกสำเร็จ',
+  };
+
+  let googleSheetSynced = false;
+  let details = '';
+
+  // Submit via Server Proxy Endpoint (/api/parcel-submit)
+  try {
+    const res = await fetch('/api/parcel-submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...payload,
+        timestamp,
+        webhookUrl: webhookUrl || undefined,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      googleSheetSynced = !!data.googleSheetSynced;
+      details = data.details || '';
+    } else {
+      details = `Server returned status ${res.status}`;
+    }
+  } catch (err: any) {
+    console.warn('Server proxy submit warning:', err);
+    details = err?.message || 'Proxy error';
+  }
+
+  return {
+    success: true,
+    record: newRecord,
+    googleSheetSynced,
+    details,
+  };
+}
+
 let inFlightParcelPromise: Promise<ParcelSyncResult> | null = null;
 
 export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult> {
@@ -3958,16 +4171,17 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
   const execute = async (): Promise<ParcelSyncResult> => {
     const now = Date.now();
     const urls = [
-      `/api/sheet-csv?sheetId=1CO-XRCyLfQx3BWWtuF8L0GSNE5DT7NxkVtl8kvkWtF0&gid=572373504&_t=${now}`,
+      `/api/sheet-csv?sheetId=1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330&gid=1955620947&_t=${now}`,
       `${PARCEL_SHEET_CSV_URL}&_t=${now}`,
       `${PARCEL_SHEET_GVIZ_CSV_URL}&_t=${now}`,
     ];
-    const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v1');
-    const records = csv ? convertSheetRowsToParcelRecords(csv) : (PARCEL_FALLBACK_CSV ? convertSheetRowsToParcelRecords(PARCEL_FALLBACK_CSV) : []);
+    const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v3');
+    const parsedRecords = csv ? convertSheetRowsToParcelRecords(csv) : [];
+
     return {
       success: true,
-      records,
-      rawRowsCount: records.length,
+      records: parsedRecords,
+      rawRowsCount: parsedRecords.length,
       lastSyncedAt: new Date(),
     };
   };

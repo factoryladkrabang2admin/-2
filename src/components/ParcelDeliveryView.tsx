@@ -38,7 +38,8 @@ import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   fetchGoogleSheetParcelRecords, 
-  PARCEL_SHEET_URL 
+  PARCEL_SHEET_URL,
+  deduplicateParcelRecords
 } from '../services/googleSheetSyncService';
 
 // Google Apps Script URL for Parcel & Document Form
@@ -48,6 +49,7 @@ import { ParcelFilterModal, ParcelFilterState } from './ParcelFilterModal';
 import { ParcelAnalyticsModal } from './ParcelAnalyticsModal';
 import { ParcelCalendarView } from './ParcelCalendarView';
 import { ModernParcelQrModal } from './ModernParcelQrModal';
+import { CreateParcelRecordModal } from './CreateParcelRecordModal';
 
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
@@ -85,6 +87,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Current Window URL for QR Code & Sharing
+  const parcelWindowUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}?tab=document_delivery`
+    : '';
 
   // Advanced Filters
   const [filters, setFilters] = useState<ParcelFilterState>({
@@ -111,7 +119,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     try {
       const res = await fetchGoogleSheetParcelRecords();
       if (res && res.records) {
-        setRecords(res.records);
+        setRecords(deduplicateParcelRecords(res.records));
         setLastSyncedAt(res.lastSyncedAt);
       }
     } catch (err) {
@@ -123,12 +131,17 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   }, []);
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('proworkflow_created_parcels_v1');
+      localStorage.removeItem('proworkflow_parcel_delivery_csv_v2');
+      localStorage.removeItem('proworkflow_parcel_delivery_csv_v1');
+    } catch {}
     loadData();
 
-    // Periodic auto-refresh every 2 seconds for real-time tracking
+    // Periodic auto-refresh every 3 seconds for real-time tracking
     const interval = setInterval(() => {
       loadData(false, true);
-    }, 2000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [loadData]);
@@ -363,13 +376,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   รับ-ส่ง เอกสาร / พัสดุ
                 </h1>
 
-                {/* Sparkling Prominent Action Button for Form Submission (Visible to all users) */}
-                <a
-                  href={PARCEL_FORM_APP_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                {/* Sparkling Prominent Action Button for Form Submission (Opens Create Modal) */}
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(true)}
                   className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 shadow-md hover:shadow-xl hover:shadow-pink-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 dark:border-white/20 cursor-pointer overflow-hidden"
-                  title="เปิดหน้าบันทึก รับ - ส่งเอกสาร / พัสดุ (Google Apps Script)"
+                  title="คลิกเพื่อสร้างรายการ รับ - ส่งเอกสาร / พัสดุ ใหม่ (บันทึกลง Google Sheet)"
                 >
                   {/* Shimmer sweep animation */}
                   <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
@@ -384,15 +396,15 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
                     รับ - ส่งเอกสาร / พัสดุ
                   </span>
-                </a>
+                </button>
 
                 {/* QR Code Button placed right after the button, styled like Meeting Room */}
                 <button
                   type="button"
                   onClick={() => setShowQrModal(true)}
                   className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/80 dark:bg-slate-800/80 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center"
-                  title={language === 'th' ? 'QR Code แบบฟอร์ม รับ - ส่งเอกสาร / พัสดุ' : 'Parcel Delivery Form QR Code'}
-                  aria-label={language === 'th' ? 'QR Code แบบฟอร์ม รับ - ส่งเอกสาร / พัสดุ' : 'Parcel Delivery Form QR Code'}
+                  title={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
+                  aria-label={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
                 >
                   <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-pink-600 dark:text-pink-400 transition-transform group-hover:scale-110" />
                 </button>
@@ -734,11 +746,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
-                {paginatedRecordsTable.map((record) => {
+                {paginatedRecordsTable.map((record, index) => {
                   const isSent = record.actionType === 'ส่ง';
                   return (
                     <tr 
-                      key={record.id}
+                      key={`${record.id}-${record.seq || index}`}
                       onClick={() => handleOpenDetail(record)}
                       title="คลิกเพื่อดูรายละเอียด"
                       className="hover:bg-pink-50/40 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
@@ -869,11 +881,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         /* View 2: Cards View (6 items per page) */
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {paginatedRecordsCards.map((record) => {
+            {paginatedRecordsCards.map((record, index) => {
               const isSent = record.actionType === 'ส่ง';
               return (
                 <div
-                  key={record.id}
+                  key={`${record.id}-${record.seq || index}`}
                   onClick={() => handleOpenDetail(record)}
                   className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-pink-100/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer flex flex-col justify-between gap-4 group"
                 >
@@ -988,9 +1000,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
               {filteredRecords
                 .filter(r => r.actionType === 'ส่ง')
-                .map(record => (
+                .map((record, index) => (
                   <div
-                    key={record.id}
+                    key={`${record.id}-${record.seq || index}`}
                     onClick={() => handleOpenDetail(record)}
                     className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-rose-100 dark:border-slate-700 shadow-xs hover:border-rose-300 transition-all cursor-pointer space-y-2.5"
                   >
@@ -1040,9 +1052,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
               {filteredRecords
                 .filter(r => r.actionType === 'รับ')
-                .map(record => (
+                .map((record, index) => (
                   <div
-                    key={record.id}
+                    key={`${record.id}-${record.seq || index}`}
                     onClick={() => handleOpenDetail(record)}
                     className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-emerald-100 dark:border-slate-700 shadow-xs hover:border-emerald-300 transition-all cursor-pointer space-y-2.5"
                   >
@@ -1102,11 +1114,26 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         records={records}
       />
 
-      {/* Modern Parcel Delivery Form QR Code Modal with Cute Cartoon Mascot in Center */}
+      {/* Modern Parcel Delivery QR Code Modal with Cute Cartoon Mascot in Center */}
       <ModernParcelQrModal
         isOpen={showQrModal}
         onClose={() => setShowQrModal(false)}
-        url={PARCEL_FORM_APP_URL}
+        url={parcelWindowUrl}
+      />
+
+      {/* Create Record Modal (Both Receive & Send, strictly matching Google Sheet columns) */}
+      <CreateParcelRecordModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onRecordCreated={() => {
+          // Immediately reload from Google Sheet, and reload again after short delay for Sheet synchronization
+          loadData(true, false);
+          setTimeout(() => {
+            loadData(false, true);
+          }, 1500);
+        }}
+        currentUser={currentUser}
+        existingRecords={records}
       />
     </div>
   );

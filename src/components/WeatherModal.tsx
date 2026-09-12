@@ -36,7 +36,7 @@ export const WeatherModal: React.FC<WeatherModalProps> = ({
   const [weather, setWeather] = useState<WeatherData | null>(cachedWeather || null);
   const [loading, setLoading] = useState(false);
   const [autoShow, setAutoShow] = useState(() => {
-    return localStorage.getItem('auto_show_weather_modal') !== 'false';
+    return localStorage.getItem('auto_show_weather_modal') === 'true';
   });
 
   const loadWeather = async () => {

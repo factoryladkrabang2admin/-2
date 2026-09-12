@@ -154,7 +154,7 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
 
       ctx.fillStyle = '#64748B';
       ctx.font = '500 20px sans-serif';
-      ctx.fillText('สแกน QR Code ด้วยกล้องมือถือเพื่อเปิดแบบฟอร์ม', size / 2, 115);
+      ctx.fillText('สแกน QR Code เพื่อเปิดหน้าต่างทำรายการ', size / 2, 115);
 
       // 3. Render the QR SVG to Image and draw on canvas
       const svgElement = qrContainerRef.current?.querySelector('svg');
@@ -189,7 +189,7 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
           // 4. Footer brand
           ctx.fillStyle = '#BE185D';
           ctx.font = 'bold 22px sans-serif';
-          ctx.fillText('✨ สแกนเพื่อบันทึกข้อมูลเรียลไทม์ ✨', size / 2, size + 115);
+          ctx.fillText('✨ สแกนเพื่อเข้าสู่หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ ✨', size / 2, size + 115);
 
           // Trigger download
           const link = document.createElement('a');
@@ -235,11 +235,11 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
                   {language === 'th' ? 'QR Code รับ - ส่งเอกสาร / พัสดุ' : 'Parcel Delivery QR Code'}
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 border border-pink-300/60">
-                  Modern
+                  Direct Link
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {language === 'th' ? 'สแกนด้วยมือถือเพื่อเปิดแบบฟอร์มทันที' : 'Scan to open document & parcel delivery form'}
+                {language === 'th' ? 'สแกนด้วยมือถือเพื่อเปิดหน้าต่างทำรายการทันที' : 'Scan to open delivery window immediately'}
               </p>
             </div>
           </div>
@@ -264,7 +264,7 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
               className="relative p-4 sm:p-5 bg-white rounded-[22px] overflow-hidden flex items-center justify-center"
             >
               {/* Modern Tech-Corner Accents */}
-              <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-pink-500 rounded-tl-md pointer-events-none" />
+              <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-pink-500 rounded-tl-md pointer-events-none" />
               <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-pink-500 rounded-tr-md pointer-events-none" />
               <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-pink-500 rounded-bl-md pointer-events-none" />
               <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-pink-500 rounded-br-md pointer-events-none" />
@@ -313,7 +313,7 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
           {/* Subtitle Badge */}
           <div className="mt-3.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 dark:from-pink-950/40 dark:via-slate-800 dark:to-slate-850 text-pink-900 dark:text-pink-200 border border-pink-200/80 dark:border-pink-900/60 text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
             <PackageCheck className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
-            <span>{language === 'th' ? 'แบบฟอร์ม Google Apps Script บันทึกส่งพัสดุ' : 'Google Apps Script Parcel & Document Form'}</span>
+            <span>{language === 'th' ? 'หน้าต่างแสดงข้อมูลและทำรายการ รับ-ส่ง เอกสาร / พัสดุ' : 'Document & Parcel Delivery Window'}</span>
           </div>
 
           {/* URL Box with Quick Copy Button */}
@@ -356,7 +356,7 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
             className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md shadow-pink-500/25 active:scale-95 transition-all cursor-pointer"
           >
             <ExternalLink className="w-4 h-4" />
-            <span>{language === 'th' ? 'เปิดแบบฟอร์ม' : 'Open Form'}</span>
+            <span>{language === 'th' ? 'เปิดหน้าต่างนี้' : 'Open Window'}</span>
           </a>
 
           {/* Download High Quality QR Code Image */}

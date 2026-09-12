@@ -264,9 +264,9 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
 
                 {/* Mini Indicators */}
                 <div className="space-y-1 overflow-hidden">
-                  {dayRecords.slice(0, 2).map((rec) => (
+                  {dayRecords.slice(0, 2).map((rec, index) => (
                     <div 
-                      key={rec.id}
+                      key={`${rec.id}-${rec.seq || index}`}
                       className={`text-[9px] sm:text-[10px] truncate px-1 rounded-sm font-medium ${
                         rec.actionType === 'ส่ง' 
                           ? 'bg-rose-100/90 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' 
@@ -316,11 +316,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {selectedDayRecords.map(rec => {
+              {selectedDayRecords.map((rec, index) => {
                 const isSent = rec.actionType === 'ส่ง';
                 return (
                   <div
-                    key={rec.id}
+                    key={`${rec.id}-${rec.seq || index}`}
                     onClick={() => onSelectRecord(rec)}
                     className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-pink-300 dark:hover:border-pink-700 bg-slate-50/60 dark:bg-slate-800/60 hover:bg-pink-50/40 dark:hover:bg-pink-950/20 transition-all cursor-pointer flex flex-col justify-between gap-2"
                   >

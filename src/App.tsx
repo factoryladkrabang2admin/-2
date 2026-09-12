@@ -72,24 +72,13 @@ export default function App() {
   const [weatherModalOpen, setWeatherModalOpen] = useState<boolean>(false);
   const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null);
 
-  // Load weather and automatically show modal on page load (if enabled and not dismissed in session)
+  // Load weather data for the top navigation bar without auto-opening the modal
   useEffect(() => {
     fetchCurrentWeather()
       .then((data) => {
         setCurrentWeather(data);
       })
       .catch((err) => console.warn('Weather fetch error:', err));
-
-    const autoShow = localStorage.getItem('auto_show_weather_modal') !== 'false';
-    const alreadyShown = sessionStorage.getItem('weather_modal_shown_session') === 'true';
-    if (autoShow && !alreadyShown) {
-      // Small smooth delay after mount so initial page layout is ready
-      const timer = setTimeout(() => {
-        setWeatherModalOpen(true);
-        sessionStorage.setItem('weather_modal_shown_session', 'true');
-      }, 800);
-      return () => clearTimeout(timer);
-    }
   }, []);
 
   const handleLoginSuccess = (user: AdminUserAccount) => {
@@ -454,16 +443,21 @@ export default function App() {
         const urlParams = new URLSearchParams(window.location.search);
         
         // 1. Check tab param or hash
+        const validTabs: NavigationTab[] = [
+          'dashboard', 'announcements', 'projects', 'team', 'reports', 'laundry',
+          'meeting_room', 'maintenance', 'schedule', 'ot', 'payslip', 'equipment',
+          'chlorine', 'document_delivery', 'rags_gloves', 'settings', 'profile'
+        ];
         const tabParam = urlParams.get('tab') as NavigationTab | null;
         let hashTab: string = '';
         if (window.location.hash) {
           const cleanHash = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
-          if (['dashboard', 'reports', 'laundry', 'maintenance', 'ot', 'rags_gloves'].includes(cleanHash)) {
+          if (validTabs.includes(cleanHash as NavigationTab)) {
             hashTab = cleanHash;
           }
         }
 
-        if (tabParam && ['dashboard', 'reports', 'laundry', 'maintenance', 'ot', 'rags_gloves'].includes(tabParam)) {
+        if (tabParam && validTabs.includes(tabParam)) {
           setCurrentTab(tabParam);
         } else if (hashTab) {
           setCurrentTab(hashTab as NavigationTab);
