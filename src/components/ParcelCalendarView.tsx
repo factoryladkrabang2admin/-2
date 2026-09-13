@@ -360,7 +360,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                         <span className="text-xs text-slate-400">{rec.timeStr || rec.timestamp}</span>
                       </div>
                       {rec.trackingCode && (
-                        <span className="font-mono text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                        <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded border ${
+                          isSent
+                            ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800'
+                            : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800'
+                        }`}>
                           {rec.trackingCode}
                         </span>
                       )}
@@ -461,7 +465,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                         </div>
 
                         {rec.trackingCode && (
-                          <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60">
+                          <span className={`font-mono text-xs font-black px-2 py-0.5 rounded-md border ${
+                            isSent
+                              ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/60'
+                              : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/60'
+                          }`}>
                             {rec.trackingCode}
                           </span>
                         )}

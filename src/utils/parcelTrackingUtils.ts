@@ -129,18 +129,18 @@ export function getParcelTrackingUrl(trackingCode: string): string {
 }
 
 /**
- * Assigns tracking codes to "ส่ง" parcel records if missing, ordered chronologically
- * so every "ส่ง" transaction in the system has a consistent, trackable QR code.
+ * Assigns tracking codes to parcel records ("ส่ง" and "รับ") if missing, ordered chronologically
+ * so every transaction in the system has a consistent, trackable tracking code.
  */
 export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
   if (!records || records.length === 0) return [];
 
-  // Group send records by dateTag to assign sequence numbers if missing
+  // Group records by dateTag to assign sequence numbers if missing
   const dateSeqMap = new Map<string, number>();
 
-  // First pass: find existing max sequence per date
+  // First pass: find existing max sequence per date across all records with tracking codes
   records.forEach((r) => {
-    if (r.actionType === 'ส่ง' && r.trackingCode) {
+    if (r.trackingCode) {
       const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
       const targetTag = `LKB2${dateTag}`.toUpperCase();
       const normalized = r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
@@ -156,31 +156,63 @@ export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): P
     }
   });
 
-  // Second pass: assign tracking codes for "ส่ง" records that do not have one yet
-  // We process records in chronological order (by seq ascending) to give earlier rows earlier sequence
+  // Sort by sequence or timestamp
   const sortedBySeq = [...records].sort((a, b) => (a.seq || 0) - (b.seq || 0));
 
   const codeAssignmentMap = new Map<string, string>();
+  // Map of known send items by normalized title/sender to match with receive items
+  const sendItemMap = new Map<string, string>();
+
   sortedBySeq.forEach((r) => {
     if (r.actionType === 'ส่ง') {
-      if (r.trackingCode) {
-        codeAssignmentMap.set(r.id, r.trackingCode);
-      } else {
+      let code = r.trackingCode;
+      if (!code) {
         const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
         const currentSeq = (dateSeqMap.get(dateTag) || 0) + 1;
         dateSeqMap.set(dateTag, currentSeq);
-        const generatedCode = `LKB2 - ${dateTag}${String(currentSeq).padStart(2, '0')}`;
-        codeAssignmentMap.set(r.id, generatedCode);
+        code = `LKB2 - ${dateTag}${String(currentSeq).padStart(2, '0')}`;
+      }
+      codeAssignmentMap.set(r.id, code);
+
+      // Index for matching with 'รับ'
+      if (r.itemTitle) {
+        const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
+        sendItemMap.set(key, code);
+      }
+    }
+  });
+
+  // Assign for 'รับ' records
+  sortedBySeq.forEach((r) => {
+    if (r.actionType === 'รับ') {
+      if (r.trackingCode) {
+        codeAssignmentMap.set(r.id, r.trackingCode);
+      } else {
+        // Try to match with send item
+        let matchedCode: string | undefined;
+        if (r.itemTitle) {
+          const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
+          matchedCode = sendItemMap.get(key);
+        }
+
+        if (matchedCode) {
+          codeAssignmentMap.set(r.id, matchedCode);
+        } else {
+          // Generate tracking code for this received record
+          const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
+          const currentSeq = (dateSeqMap.get(dateTag) || 0) + 1;
+          dateSeqMap.set(dateTag, currentSeq);
+          const generatedCode = `LKB2 - ${dateTag}${String(currentSeq).padStart(2, '0')}`;
+          codeAssignmentMap.set(r.id, generatedCode);
+        }
       }
     }
   });
 
   return records.map((r) => {
-    if (r.actionType === 'ส่ง') {
-      const assigned = codeAssignmentMap.get(r.id);
-      if (assigned && r.trackingCode !== assigned) {
-        return { ...r, trackingCode: assigned };
-      }
+    const assigned = codeAssignmentMap.get(r.id);
+    if (assigned && r.trackingCode !== assigned) {
+      return { ...r, trackingCode: assigned };
     }
     return r;
   });

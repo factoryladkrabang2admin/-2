@@ -286,7 +286,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
       const effectiveTrackingCode = actionType === 'ส่ง'
         ? generateParcelTrackingCode(currentTs, existingRecords)
-        : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : undefined));
+        : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(currentTs, existingRecords)));
 
       const res = await submitParcelDeliveryRecord({
         timestamp: currentTs,
@@ -302,7 +302,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       });
 
       if (res.success && res.record) {
-        if (actionType === 'ส่ง' && !res.record.trackingCode) {
+        if (!res.record.trackingCode && effectiveTrackingCode) {
           res.record.trackingCode = effectiveTrackingCode;
         }
         setLastSavedRecord(res.record);
@@ -447,22 +447,50 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     </span>{' '}
                     <span className="text-slate-500">({lastSavedRecord.recipientDepartment})</span>
                   </div>
-                  <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ชื่อเอกสาร / พัสดุ:</span>
-                    <span className="font-bold text-pink-600 dark:text-pink-400 text-sm">
-                      {lastSavedRecord.itemTitle || '-'}
-                    </span>
+                  <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ชื่อเอกสาร / พัสดุ:</span>
+                      <span className="font-bold text-pink-600 dark:text-pink-400 text-sm">
+                        {lastSavedRecord.itemTitle || '-'}
+                      </span>
+                    </div>
+                    {lastSavedRecord.trackingCode && (
+                      <div className="text-right">
+                        <span className="text-slate-400 dark:text-slate-500 text-[10px] block">รหัสติดตาม:</span>
+                        <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md border ${
+                          lastSavedRecord.actionType === 'รับ'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                        }`}>
+                          {lastSavedRecord.trackingCode}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Tracking Code Note for 'ส่ง' (Outgoing) Deliveries */}
-              {lastSavedRecord.actionType === 'ส่ง' && lastSavedRecord.trackingCode && (
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2">
+              {/* Tracking Code Note for both 'รับ' and 'ส่ง' Deliveries */}
+              {lastSavedRecord.trackingCode && (
+                <div className={`p-4 rounded-2xl border space-y-2 ${
+                  lastSavedRecord.actionType === 'รับ'
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80'
+                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80'
+                }`}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">รหัสติดตามสถานะ:</span>
-                      <span className="font-mono font-black text-sm text-pink-700 dark:text-pink-400 tracking-wider">
+                      <span className={`text-xs font-bold ${
+                        lastSavedRecord.actionType === 'รับ'
+                          ? 'text-emerald-800 dark:text-emerald-300'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}>
+                        {lastSavedRecord.actionType === 'รับ' ? 'รหัสติดตาม (รับเอกสาร/พัสดุแล้ว):' : 'รหัสติดตามสถานะ:'}
+                      </span>
+                      <span className={`font-mono font-black text-sm tracking-wider ${
+                        lastSavedRecord.actionType === 'รับ'
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-pink-700 dark:text-pink-400'
+                      }`}>
                         {lastSavedRecord.trackingCode}
                       </span>
                     </div>
@@ -470,7 +498,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     <button
                       type="button"
                       onClick={handleCopyTrackingCode}
-                      className="px-2.5 py-1 rounded-lg border border-pink-200 dark:border-pink-800 bg-white dark:bg-slate-800 hover:bg-pink-50 text-pink-700 dark:text-pink-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                        lastSavedRecord.actionType === 'รับ'
+                          ? 'border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 hover:bg-emerald-50 text-emerald-700 dark:text-emerald-300'
+                          : 'border-pink-200 dark:border-pink-800 bg-white dark:bg-slate-800 hover:bg-pink-50 text-pink-700 dark:text-pink-300'
+                      }`}
                     >
                       {copiedTrackingCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedTrackingCode ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}</span>
