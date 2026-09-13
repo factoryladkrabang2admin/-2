@@ -51,6 +51,7 @@ import { ParcelAnalyticsModal } from './ParcelAnalyticsModal';
 import { ParcelCalendarView } from './ParcelCalendarView';
 import { ModernParcelQrModal } from './ModernParcelQrModal';
 import { CreateParcelRecordModal } from './CreateParcelRecordModal';
+import { ParcelScanReceiveModal } from './ParcelScanReceiveModal';
 
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
@@ -77,8 +78,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  // View Mode
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  // View Mode: Default to 'cards' view
+  const [viewMode, setViewMode] = useState<ViewMode>('cards');
 
   // Search and quick filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,6 +92,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedQrParcel, setSelectedQrParcel] = useState<ParcelDeliveryRecord | null>(null);
+  const [showScanReceiveModal, setShowScanReceiveModal] = useState(false);
+  const [selectedScanParcel, setSelectedScanParcel] = useState<ParcelDeliveryRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Current Window URL for QR Code & Sharing
@@ -155,22 +158,23 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     if (!code) return null;
     const cleanTrack = code.replace(/[\s\-_]+/g, '').toLowerCase();
 
-    // 1. Check in candidate records
-    let matched = candidateRecords.find((r) => {
+    const isMatch = (r: ParcelDeliveryRecord) => {
       const rCode = (r.trackingCode || '').replace(/[\s\-_]+/g, '').toLowerCase();
       const rId = (r.id || '').replace(/[\s\-_]+/g, '').toLowerCase();
-      return (rCode && rCode === cleanTrack) || (rId && rId === cleanTrack);
-    });
+      return Boolean(
+        (rCode && (rCode === cleanTrack || rCode.includes(cleanTrack) || cleanTrack.includes(rCode))) ||
+        (rId && (rId === cleanTrack || rId.includes(cleanTrack)))
+      );
+    };
+
+    // 1. Check in candidate records
+    let matched = candidateRecords.find(isMatch);
 
     // 2. Check in local storage submissions
     if (!matched) {
       try {
         const localRecords = getLocalParcelRecords();
-        matched = localRecords.find((r) => {
-          const rCode = (r.trackingCode || '').replace(/[\s\-_]+/g, '').toLowerCase();
-          const rId = (r.id || '').replace(/[\s\-_]+/g, '').toLowerCase();
-          return (rCode && rCode === cleanTrack) || (rId && rId === cleanTrack);
-        });
+        matched = localRecords.find(isMatch);
       } catch {}
     }
 
@@ -200,9 +204,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   }, [initialTrackCode]);
 
   // Immediate check on mount (using local records if server records are still fetching)
+  // Send the tracking code directly to the search input so the user sees it and filters records immediately
   useEffect(() => {
     const code = getActiveTrackCode();
     if (code) {
+      setSearchQuery(code);
+      setQuickFilter('all');
       const localRecords = getLocalParcelRecords();
       const matched = findParcelByTrackCode(code, localRecords);
       if (matched) {
@@ -216,6 +223,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   useEffect(() => {
     const code = getActiveTrackCode();
     if (!code) return;
+
+    // Run tracking code into search input to highlight and filter the record
+    setSearchQuery(code);
+    setQuickFilter('all');
 
     if (records.length > 0) {
       const matched = findParcelByTrackCode(code, records);
@@ -289,10 +300,16 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   // Filtered records
   const filteredRecords = useMemo(() => {
     return records.filter(record => {
-      // Quick filter
+      // General Search query or keyword filter
+      const query = (searchQuery || filters.keyword).toLowerCase().trim();
+      const cleanQuery = query.replace(/[\s\-_]/g, '');
+      const cleanTracking = (record.trackingCode || '').toLowerCase().replace(/[\s\-_]/g, '');
+      const isDirectTrackingMatch = Boolean(cleanQuery && cleanTracking && (cleanTracking.includes(cleanQuery) || cleanQuery.includes(cleanTracking)));
+
+      // Quick filter (if user is specifically searching/scanning a tracking number, don't filter out by today)
       if (quickFilter === 'ส่ง' && record.actionType !== 'ส่ง') return false;
       if (quickFilter === 'รับ' && record.actionType !== 'รับ') return false;
-      if (quickFilter === 'today' && !isRecordToday(record)) return false;
+      if (quickFilter === 'today' && !isDirectTrackingMatch && !isRecordToday(record)) return false;
 
       // Advanced Action type filter
       if (filters.actionType !== 'all' && record.actionType !== filters.actionType) {
@@ -339,8 +356,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         }
       }
 
-      // General Search query or keyword filter
-      const query = (searchQuery || filters.keyword).toLowerCase().trim();
+      // Keyword match across all key fields (Document Title, Sender, Recipient, Operator, Tracking Code)
       if (query) {
         const matchTitle = record.itemTitle?.toLowerCase().includes(query);
         const matchSender = record.senderName?.toLowerCase().includes(query) || record.senderDepartment?.toLowerCase().includes(query);
@@ -348,7 +364,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         const matchOperator = record.operatorName?.toLowerCase().includes(query) || record.operatorDepartment?.toLowerCase().includes(query);
         const matchType = record.actionType?.toLowerCase().includes(query);
         const matchTimestamp = record.timestamp?.toLowerCase().includes(query);
-        const matchTracking = record.trackingCode?.toLowerCase().includes(query);
+        const matchTracking = isDirectTrackingMatch || record.trackingCode?.toLowerCase().includes(query);
 
         if (!matchTitle && !matchSender && !matchRecipient && !matchOperator && !matchType && !matchTimestamp && !matchTracking) {
           return false;
@@ -521,18 +537,24 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   </span>
                 </button>
 
-                {/* QR Code Button placed right after the button, styled like Meeting Room */}
+                {/* ไอคอน QR Code รับเอกสาร / พัสดุ (เปิดฟังก์ชันกล้องพร้อมสแกนลงรับ) */}
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedQrParcel(null);
-                    setShowQrModal(true);
+                    setSelectedScanParcel(null);
+                    setShowScanReceiveModal(true);
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/80 dark:bg-slate-800/80 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center"
-                  title={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
-                  aria-label={language === 'th' ? 'QR Code หน้าต่าง รับ-ส่ง เอกสาร / พัสดุ' : 'Parcel Delivery Window QR Code'}
+                  className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/90 dark:bg-slate-800/90 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center gap-1.5"
+                  title={language === 'th' ? 'ไอคอน QR Code รับเอกสาร / พัสดุ (เปิดกล้องสแกนรับเข้า)' : 'Scan Receive Parcel QR Code (Camera Scanner)'}
+                  aria-label={language === 'th' ? 'ไอคอน QR Code รับเอกสาร / พัสดุ' : 'Scan Receive Parcel QR Code'}
                 >
-                  <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-pink-600 dark:text-pink-400 transition-transform group-hover:scale-110" />
+                  <div className="relative flex items-center justify-center">
+                    <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-pink-600 dark:text-pink-400 transition-transform group-hover:scale-110" />
+                    <span className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 border border-white dark:border-slate-800 animate-pulse" />
+                  </div>
+                  <span className="hidden xl:inline text-xs font-bold text-pink-700 dark:text-pink-300 whitespace-nowrap">
+                    สแกนรับพัสดุ
+                  </span>
                 </button>
               </div>
             </div>
@@ -874,6 +896,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   <th className="py-3.5 px-4">ชื่อเอกสาร / พัสดุ</th>
                   <th className="py-3.5 px-4">ผู้ส่งตามหน้าซอง</th>
                   <th className="py-3.5 px-4">ผู้รับตามหน้าซอง</th>
+                  <th className="py-3.5 px-4">รหัสติดตาม</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
@@ -911,28 +934,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Item Title & Tracking Code */}
+                      {/* Item Title */}
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white line-clamp-2 max-w-xs">
                           {record.itemTitle}
                         </div>
-                        {isAdmin && record.trackingCode && (
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedQrParcel(record);
-                                setShowQrModal(true);
-                              }}
-                              className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
-                              title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
-                            >
-                              <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                              <span>{record.trackingCode}</span>
-                            </button>
-                          </div>
-                        )}
                       </td>
 
                       {/* Sender */}
@@ -955,6 +961,27 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                           <Building2 className="w-3 h-3 text-slate-400" />
                           {record.recipientDepartment}
                         </div>
+                      </td>
+
+                      {/* Tracking Code (หลังคอลัมน์ ผู้รับตามหน้าซอง) */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {record.trackingCode ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedQrParcel(record);
+                              setShowQrModal(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 font-mono text-xs font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
+                            title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                            <span>{record.trackingCode}</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-xs font-mono">-</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1036,9 +1063,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       }`}>
                         {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
                         {isSent ? 'รายการส่ง' : 'รายการรับ'}
-                      </span>
-                      <span className="text-xs text-slate-400 font-mono">
-                        #{record.seq}
                       </span>
                     </div>
 
@@ -1160,8 +1184,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     onClick={() => handleOpenDetail(record)}
                     className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-rose-100 dark:border-slate-700 shadow-xs hover:border-rose-300 transition-all cursor-pointer space-y-2.5"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-mono text-slate-400">#{record.seq}</span>
+                    <div className="flex items-center justify-end">
                       <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
                     </div>
 
@@ -1232,8 +1255,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     onClick={() => handleOpenDetail(record)}
                     className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-emerald-100 dark:border-slate-700 shadow-xs hover:border-emerald-300 transition-all cursor-pointer space-y-2.5"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-mono text-slate-400">#{record.seq}</span>
+                    <div className="flex items-center justify-end">
                       <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
                     </div>
 
@@ -1272,6 +1294,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         onClose={handleCloseDetailModal}
+        onReceiveParcel={(parcel) => {
+          setSelectedScanParcel(parcel);
+          setShowScanReceiveModal(true);
+        }}
       />
 
       {/* Filter Modal */}
@@ -1301,6 +1327,25 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         url={parcelWindowUrl}
+      />
+
+      {/* Camera QR Code Scanner & Instant Google Sheet Receive Modal */}
+      <ParcelScanReceiveModal
+        isOpen={showScanReceiveModal}
+        onClose={() => {
+          setShowScanReceiveModal(false);
+          setSelectedScanParcel(null);
+        }}
+        existingRecords={records}
+        currentUser={currentUser}
+        initialParcel={selectedScanParcel}
+        onReceiveSuccess={() => {
+          // Immediately reload from Google Sheet, and reload again after short delay for Google Sheet sync
+          loadData(true, false);
+          setTimeout(() => {
+            loadData(false, true);
+          }, 1500);
+        }}
       />
 
       {/* Create Record Modal (Both Receive & Send, strictly matching Google Sheet columns) */}

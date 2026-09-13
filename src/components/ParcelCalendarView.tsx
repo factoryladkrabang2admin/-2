@@ -64,6 +64,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
   });
 
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [isDayModalOpen, setIsDayModalOpen] = useState<boolean>(false);
   const [typeFilter, setTypeFilter] = useState<'all' | 'ส่ง' | 'รับ'>('all');
 
   const currentYear = currentDate.getFullYear();
@@ -99,17 +100,24 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
     setSelectedDay(null);
+    setIsDayModalOpen(false);
   };
 
   const handleNextMonth = () => {
     setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
     setSelectedDay(null);
+    setIsDayModalOpen(false);
   };
 
   const handleToday = () => {
     const now = new Date();
     setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1));
     setSelectedDay(now.getDate());
+  };
+
+  const handleDayClick = (dayNum: number) => {
+    setSelectedDay(dayNum);
+    setIsDayModalOpen(true);
   };
 
   const thaiMonths = [
@@ -225,6 +233,8 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
             const dayRecords = recordsByDay[dayNum] || [];
             const hasRecords = dayRecords.length > 0;
             const isSelected = selectedDay === dayNum;
+            const sentCount = dayRecords.filter(r => r.actionType === 'ส่ง').length;
+            const receivedCount = dayRecords.filter(r => r.actionType === 'รับ').length;
 
             const isToday = 
               new Date().getDate() === dayNum &&
@@ -234,7 +244,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
             return (
               <div
                 key={`day-${dayNum}`}
-                onClick={() => setSelectedDay(dayNum)}
+                onClick={() => handleDayClick(dayNum)}
                 className={`h-20 sm:h-24 p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                   isSelected
                     ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-xs ring-2 ring-pink-400/50'
@@ -262,8 +272,36 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                   )}
                 </div>
 
-                {/* Mini Indicators */}
-                <div className="space-y-1 overflow-hidden">
+                {/* Mobile and Tablet mode (< lg:): Display as clean numbers */}
+                <div className="lg:hidden flex flex-col items-center justify-center flex-1 py-0.5">
+                  {hasRecords ? (
+                    <div className="flex flex-col items-center justify-center gap-1 w-full">
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {sentCount > 0 && (
+                          <span 
+                            className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-black bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                            title={`ส่ง ${sentCount} รายการ`}
+                          >
+                            <span>📤</span>
+                            <span>{sentCount}</span>
+                          </span>
+                        )}
+                        {receivedCount > 0 && (
+                          <span 
+                            className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                            title={`รับ ${receivedCount} รายการ`}
+                          >
+                            <span>📥</span>
+                            <span>{receivedCount}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Desktop mode (>= lg:): Detailed items preview */}
+                <div className="hidden lg:block space-y-1 overflow-hidden">
                   {dayRecords.slice(0, 2).map((rec, index) => (
                     <div 
                       key={`${rec.id}-${rec.seq || index}`}
@@ -289,7 +327,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
         </div>
       </div>
 
-      {/* Selected Day Drawer / Details */}
+      {/* Selected Day Details Section (Desktop / Inline view) */}
       {selectedDay && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-pink-200 dark:border-slate-800 p-5 shadow-sm animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
@@ -302,12 +340,20 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 {selectedDayRecords.length} รายการ
               </span>
             </div>
-            <button
-              onClick={() => setSelectedDay(null)}
-              className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDayModalOpen(true)}
+                className="text-xs px-3 py-1 rounded-lg bg-pink-50 dark:bg-pink-950/50 hover:bg-pink-100 text-pink-700 dark:text-pink-300 font-bold transition-colors cursor-pointer border border-pink-200 dark:border-pink-800"
+              >
+                เปิดในหน้าต่าง
+              </button>
+              <button
+                onClick={() => setSelectedDay(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {selectedDayRecords.length === 0 ? (
@@ -335,7 +381,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                         </span>
                         <span className="text-xs text-slate-400">{rec.timeStr || rec.timestamp}</span>
                       </div>
-                      <span className="text-xs text-slate-400">ลำดับที่ {rec.seq}</span>
+                      {rec.trackingCode && (
+                        <span className="font-mono text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                          {rec.trackingCode}
+                        </span>
+                      )}
                     </div>
 
                     <div className="font-bold text-sm text-slate-900 dark:text-white line-clamp-1">
@@ -352,6 +402,133 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Day Details Modal Window (หน้าต่างป๊อปอัปเมื่อกดดูข้อมูล) */}
+      {isDayModalOpen && selectedDay !== null && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setIsDayModalOpen(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-pink-100 dark:border-slate-800 w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-pink-600 via-rose-500 to-pink-500 text-white flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center shadow-inner">
+                  <Calendar className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-white">
+                      รายการวันที่ {selectedDay} {language === 'th' ? `${thaiMonths[currentMonth]} ${currentYear + 543}` : monthLabel}
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-xs font-bold border border-white/30">
+                      {selectedDayRecords.length} รายการ
+                    </span>
+                  </div>
+                  <p className="text-xs text-pink-100/90 mt-0.5">
+                    รับ-ส่ง เอกสาร / พัสดุ
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDayModalOpen(false)}
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="ปิดหน้าต่าง"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3 flex-1">
+              {selectedDayRecords.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Package className="w-12 h-12 mx-auto mb-2 opacity-30 text-pink-500" />
+                  <p className="text-sm font-semibold">ไม่มีบันทึกรับ-ส่ง เอกสาร / พัสดุ ในวันที่เลือก</p>
+                </div>
+              ) : (
+                selectedDayRecords.map((rec, index) => {
+                  const isSent = rec.actionType === 'ส่ง';
+                  return (
+                    <div
+                      key={`${rec.id}-${rec.seq || index}`}
+                      onClick={() => {
+                        setIsDayModalOpen(false);
+                        onSelectRecord(rec);
+                      }}
+                      className="p-4 rounded-2xl border border-pink-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60 hover:bg-pink-50/40 dark:hover:bg-pink-950/20 hover:border-pink-300 dark:hover:border-pink-700 transition-all cursor-pointer flex flex-col gap-2.5 group"
+                    >
+                      {/* Item Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
+                            isSent 
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-200 dark:border-rose-800' 
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
+                          }`}>
+                            {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
+                            {isSent ? 'รายการส่ง' : 'รายการรับ'}
+                          </span>
+                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {rec.timeStr || rec.timestamp}
+                          </span>
+                        </div>
+
+                        {rec.trackingCode && (
+                          <span className="font-mono text-xs font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60">
+                            {rec.trackingCode}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title */}
+                      <div className="font-bold text-sm sm:text-base text-slate-900 dark:text-white group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
+                        {rec.itemTitle}
+                      </div>
+
+                      {/* Sender -> Recipient */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-600 dark:text-slate-300 pt-1.5 border-t border-slate-100 dark:border-slate-700/60">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-slate-400">ผู้ส่ง:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{rec.senderName}</span>
+                          <span className="text-slate-400">({rec.senderDepartment})</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-slate-400">ผู้รับ:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{rec.recipientName}</span>
+                          <span className="text-slate-400">({rec.recipientDepartment})</span>
+                        </div>
+                      </div>
+
+                      {/* View Details Prompt */}
+                      <div className="flex items-center justify-end text-xs text-pink-600 dark:text-pink-400 font-bold group-hover:translate-x-0.5 transition-transform pt-1">
+                        ดูรายละเอียด <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDayModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

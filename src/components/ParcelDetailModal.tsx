@@ -13,7 +13,8 @@ import {
   FileText,
   ArrowRight,
   QrCode,
-  ExternalLink
+  ExternalLink,
+  PackageCheck
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -26,6 +27,7 @@ interface ParcelDetailModalProps {
   onClose: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
+  onReceiveParcel?: (parcel: ParcelDeliveryRecord) => void;
 }
 
 export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
@@ -34,6 +36,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   onClose,
   currentUser,
   isAuthenticated,
+  onReceiveParcel,
 }) => {
   const { language } = useLanguage();
   const [copied, setCopied] = useState(false);
@@ -316,6 +319,21 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               >
                 <QrCode className="w-4 h-4" />
                 <span>QR ติดตาม</span>
+              </button>
+            )}
+
+            {isSending && onReceiveParcel && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReceiveParcel(parcel);
+                  onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                title="กดลงรับเอกสาร/พัสดุนี้ทันที"
+              >
+                <PackageCheck className="w-4 h-4" />
+                <span>กดรับเอกสาร / พัสดุ</span>
               </button>
             )}
 

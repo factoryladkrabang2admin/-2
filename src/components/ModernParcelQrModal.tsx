@@ -172,14 +172,32 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
     );
   }
 
-  const fallbackOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const fallbackPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const fallbackOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  const fallbackPath = typeof window !== 'undefined' && window.location?.pathname ? window.location.pathname : '';
+  const baseUrl = `${fallbackOrigin}${fallbackPath}`;
   
-  const effectiveUrl = propUrl || (
-    isParcelTracking
-      ? `${fallbackOrigin}${fallbackPath}?tab=document_delivery&track=${encodeURIComponent(trackingCode)}`
-      : `${fallbackOrigin}${fallbackPath}?tab=document_delivery`
-  );
+  // Ensure that parcel tracking QR code ALWAYS encodes the exact tracking code parameter
+  const effectiveUrl = (isParcelTracking && trackingCode)
+    ? `${baseUrl}?tab=document_delivery&track=${encodeURIComponent(trackingCode)}`
+    : (propUrl || `${baseUrl}?tab=document_delivery`);
+
+  // Dynamically generate an SVG data URI badge for the center of the QR code containing the tracking code number
+  const trackingBadgeSvg = useMemo(() => {
+    if (!trackingCode) return null;
+    const cleanCode = trackingCode.trim();
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 64" width="180" height="64">
+  <defs>
+    <linearGradient id="badgeBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#FFF1F2"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="176" height="60" rx="12" fill="url(#badgeBg)" stroke="#F43F5E" stroke-width="4"/>
+  <text x="90" y="21" fill="#E11D48" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" text-anchor="middle" letter-spacing="1">รหัสติดตามสถานะ</text>
+  <text x="90" y="47" fill="#0F172A" font-size="16" font-family="'Courier New', Courier, monospace" font-weight="900" text-anchor="middle" letter-spacing="0.5">${cleanCode}</text>
+</svg>`.trim();
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svgString)}`;
+  }, [trackingCode]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(effectiveUrl);
@@ -278,8 +296,39 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
           ctx.lineWidth = 3;
           ctx.stroke();
 
-          // Draw the QR image (which already includes the cute cartoon excavated center)
+          // Draw the QR image
           ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+          // If parcel tracking, draw crisp high-resolution tracking code badge in the center of the QR code
+          if (isParcelTracking && trackingCode) {
+            const badgeW = 280;
+            const badgeH = 104;
+            const badgeX = (size - badgeW) / 2;
+            const badgeY = qrY + (qrSize - badgeH) / 2;
+
+            ctx.save();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.shadowColor = 'rgba(244, 63, 94, 0.35)';
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 20);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+
+            ctx.strokeStyle = '#F43F5E';
+            ctx.lineWidth = 4.5;
+            ctx.stroke();
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#E11D48';
+            ctx.font = 'bold 18px sans-serif';
+            ctx.fillText('รหัสติดตามสถานะ', size / 2, badgeY + 34);
+
+            ctx.fillStyle = '#0F172A';
+            ctx.font = 'bold 26px monospace';
+            ctx.fillText(trackingCode, size / 2, badgeY + 74);
+            ctx.restore();
+          }
 
           if (isParcelTracking && parcel) {
             // Details box at bottom of canvas
@@ -435,41 +484,69 @@ export const ModernParcelQrModal: React.FC<ModernParcelQrModalProps> = ({
               {/* Gentle Laser Scanning Beam Animation */}
               <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-pink-500 to-transparent shadow-[0_0_12px_#f43f5e] animate-pulse pointer-events-none opacity-40 top-1/2 -translate-y-1/2" />
 
-              {/* High-Resolution SVG QR Code with High Error Correction and Cute Cartoon Excavation */}
+              {/* High-Resolution SVG QR Code with High Error Correction (30%) */}
               <QRCodeSVG
                 value={effectiveUrl}
                 size={230}
-                level="H" // High error correction level (30%) ensures instant scan reliability with center logo
+                level="H" // High error correction level (30%) ensures instant scan reliability with center tracking badge
                 fgColor="#0f172a"
                 bgColor="#ffffff"
                 marginSize={1}
-                imageSettings={{
-                  src: CUTE_CARTOON_MASCOT_SVG,
-                  height: 60,
-                  width: 60,
-                  excavate: true, // Cleans underlying dark QR blocks cleanly around the cute mascot
-                }}
+                imageSettings={
+                  isParcelTracking && trackingCode
+                    ? {
+                        src: trackingBadgeSvg || CUTE_CARTOON_MASCOT_SVG,
+                        height: 48,
+                        width: 124,
+                        excavate: true, // Cleans underlying dark QR blocks cleanly around the center badge
+                      }
+                    : {
+                        src: CUTE_CARTOON_MASCOT_SVG,
+                        height: 60,
+                        width: 60,
+                        excavate: true,
+                      }
+                }
               />
 
-              {/* Cute Cartoon Mascot Optical Layer with subtle hover bounce */}
-              <div 
-                className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                aria-hidden="true"
-              >
-                <div className="relative w-15 h-15 rounded-full p-0.5 bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 shadow-md shadow-pink-500/30 transform transition-transform group-hover:scale-105">
-                  <img
-                    src={CUTE_CARTOON_MASCOT_SVG}
-                    alt="Cute Delivery Mascot"
-                    className="w-full h-full rounded-full bg-white object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  {/* Subtle twinkle star badge */}
-                  <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75" />
-                    <Sparkles className="relative w-3.5 h-3.5 text-amber-400 fill-amber-300 drop-shadow-xs" />
-                  </span>
+              {/* Center Element: If parcel tracking, show the tracking code number in the center */}
+              {isParcelTracking && trackingCode ? (
+                <div 
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <div className="relative px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-xl bg-white dark:bg-slate-900 border-2 border-rose-500 shadow-md shadow-rose-500/25 flex flex-col items-center justify-center pointer-events-auto transform transition-transform group-hover:scale-105">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-black uppercase text-rose-600 dark:text-rose-400 tracking-wider">
+                        {language === 'th' ? 'รหัสติดตามสถานะ' : 'TRACKING CODE'}
+                      </span>
+                      <Sparkles className="w-2.5 h-2.5 text-amber-500 fill-amber-400" />
+                    </div>
+                    <span className="font-mono font-black text-xs sm:text-sm text-slate-900 dark:text-white tracking-wider whitespace-nowrap">
+                      {trackingCode}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Cute Cartoon Mascot Optical Layer for general QR */
+                <div 
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <div className="relative w-15 h-15 rounded-full p-0.5 bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 shadow-md shadow-pink-500/30 transform transition-transform group-hover:scale-105">
+                    <img
+                      src={CUTE_CARTOON_MASCOT_SVG}
+                      alt="Cute Delivery Mascot"
+                      className="w-full h-full rounded-full bg-white object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75" />
+                      <Sparkles className="relative w-3.5 h-3.5 text-amber-400 fill-amber-300 drop-shadow-xs" />
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
