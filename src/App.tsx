@@ -153,6 +153,7 @@ export default function App() {
   const [createLaundryModalOpen, setCreateLaundryModalOpen] = useState(false);
   const [selectedLaundryOrder, setSelectedLaundryOrder] = useState<LaundryOrder | null>(null);
   const [standaloneTrackingOrder, setStandaloneTrackingOrder] = useState<LaundryOrder | null>(null);
+  const [parcelTrackCode, setParcelTrackCode] = useState<string | null>(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'language' | 'general' | 'notifications' | 'security'>('general');
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -472,47 +473,54 @@ export default function App() {
         }
 
         if (trackCode) {
-          const currentOrders = realtimeHub.getStoredLaundryOrders();
-          const normalized = trackCode.replace(/[\s\-_]/g, '').toLowerCase();
-          const matched = currentOrders.find((o) => {
-            const orderCodeNorm = o.trackingCode.replace(/[\s\-_]/g, '').toLowerCase();
-            const orderIdNorm = o.id.replace(/[\s\-_]/g, '').toLowerCase();
-            return orderCodeNorm === normalized || orderIdNorm === normalized;
-          });
+          const cleanTrack = trackCode.replace(/[\s\-_]/g, '').toLowerCase();
+          const isDocDelivery = tabParam === 'document_delivery' || hashTab === 'document_delivery' || cleanTrack.startsWith('lkb') || cleanTrack.includes('lkb2');
 
-          if (matched) {
-            setStandaloneTrackingOrder(matched);
-            setSelectedLaundryOrder(matched);
-            setCurrentTab('laundry');
-          } else if (trackCode) {
-            const fallbackOrder: LaundryOrder = {
-              id: trackCode,
-              trackingCode: trackCode,
-              customerName: 'ผู้ส่งผ้า / Staff',
-              customerRoomOrDept: 'แผนกผ้า / Laundry Dept',
-              serviceType: 'Wash & Fold',
-              priority: 'normal',
-              stage: 'washing',
-              items: [{ id: '1', name: 'รายการผ้าทั่วไป (General Linen)', quantity: 1, category: 'Clothing', unitPrice: 0 }],
-              totalWeightKg: 1,
-              totalPrice: 0,
-              paymentStatus: 'Paid',
-              assignedStaff: 'Staff',
-              specialInstructions: 'ประเภทผ้า: รายการผ้าทั่วไป | กำลังดำเนินการซัก-อบ',
-              receivedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              estimatedCompletion: 'ตามกำหนดการแผนก',
-              historyTimeline: [
-                {
-                  stage: 'received',
-                  label: 'รับผ้าเข้าระบบ',
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  note: 'รับผ้าเข้าระบบเรียบร้อย',
-                  operator: 'Staff'
-                }
-              ]
-            };
-            setStandaloneTrackingOrder(fallbackOrder);
-            setCurrentTab('laundry');
+          if (isDocDelivery) {
+            setCurrentTab('document_delivery');
+            setParcelTrackCode(trackCode);
+          } else {
+            const currentOrders = realtimeHub.getStoredLaundryOrders();
+            const matched = currentOrders.find((o) => {
+              const orderCodeNorm = o.trackingCode.replace(/[\s\-_]/g, '').toLowerCase();
+              const orderIdNorm = o.id.replace(/[\s\-_]/g, '').toLowerCase();
+              return orderCodeNorm === cleanTrack || orderIdNorm === cleanTrack;
+            });
+
+            if (matched) {
+              setStandaloneTrackingOrder(matched);
+              setSelectedLaundryOrder(matched);
+              setCurrentTab('laundry');
+            } else if (!tabParam || tabParam === 'laundry') {
+              const fallbackOrder: LaundryOrder = {
+                id: trackCode,
+                trackingCode: trackCode,
+                customerName: 'ผู้ส่งผ้า / Staff',
+                customerRoomOrDept: 'แผนกผ้า / Laundry Dept',
+                serviceType: 'Wash & Fold',
+                priority: 'normal',
+                stage: 'washing',
+                items: [{ id: '1', name: 'รายการผ้าทั่วไป (General Linen)', quantity: 1, category: 'Clothing', unitPrice: 0 }],
+                totalWeightKg: 1,
+                totalPrice: 0,
+                paymentStatus: 'Paid',
+                assignedStaff: 'Staff',
+                specialInstructions: 'ประเภทผ้า: รายการผ้าทั่วไป | กำลังดำเนินการซัก-อบ',
+                receivedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                estimatedCompletion: 'ตามกำหนดการแผนก',
+                historyTimeline: [
+                  {
+                    stage: 'received',
+                    label: 'รับผ้าเข้าระบบ',
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    note: 'รับผ้าเข้าระบบเรียบร้อย',
+                    operator: 'Staff'
+                  }
+                ]
+              };
+              setStandaloneTrackingOrder(fallbackOrder);
+              setCurrentTab('laundry');
+            }
           }
         }
       } catch {
@@ -920,6 +928,7 @@ export default function App() {
             <ParcelDeliveryView
               currentUser={currentUser}
               isAuthenticated={isAuthenticated}
+              initialTrackCode={parcelTrackCode}
             />
           )}
 

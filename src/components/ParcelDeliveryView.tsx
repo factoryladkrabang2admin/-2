@@ -38,7 +38,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { 
   fetchGoogleSheetParcelRecords, 
   PARCEL_SHEET_URL,
-  deduplicateParcelRecords
+  deduplicateParcelRecords,
+  getLocalParcelRecords,
+  formatCurrentThaiParcelTimestamp
 } from '../services/googleSheetSyncService';
 
 // Google Apps Script URL for Parcel & Document Form
@@ -53,6 +55,7 @@ import { CreateParcelRecordModal } from './CreateParcelRecordModal';
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
+  initialTrackCode?: string | null;
 }
 
 type ViewMode = 'table' | 'cards' | 'board' | 'calendar';
@@ -60,6 +63,7 @@ type ViewMode = 'table' | 'cards' | 'board' | 'calendar';
 export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   currentUser,
   isAuthenticated,
+  initialTrackCode,
 }) => {
   const { language } = useLanguage();
 
@@ -146,20 +150,115 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return () => clearInterval(interval);
   }, [loadData]);
 
-  // Auto-open modal if URL has ?track=... (e.g. scanned from QR code)
-  useEffect(() => {
-    if (typeof window === 'undefined' || records.length === 0) return;
+  // Function to search and match a parcel by tracking code or ID
+  const findParcelByTrackCode = useCallback((code: string, candidateRecords: ParcelDeliveryRecord[]) => {
+    if (!code) return null;
+    const cleanTrack = code.replace(/[\s\-_]+/g, '').toLowerCase();
+
+    // 1. Check in candidate records
+    let matched = candidateRecords.find((r) => {
+      const rCode = (r.trackingCode || '').replace(/[\s\-_]+/g, '').toLowerCase();
+      const rId = (r.id || '').replace(/[\s\-_]+/g, '').toLowerCase();
+      return (rCode && rCode === cleanTrack) || (rId && rId === cleanTrack);
+    });
+
+    // 2. Check in local storage submissions
+    if (!matched) {
+      try {
+        const localRecords = getLocalParcelRecords();
+        matched = localRecords.find((r) => {
+          const rCode = (r.trackingCode || '').replace(/[\s\-_]+/g, '').toLowerCase();
+          const rId = (r.id || '').replace(/[\s\-_]+/g, '').toLowerCase();
+          return (rCode && rCode === cleanTrack) || (rId && rId === cleanTrack);
+        });
+      } catch {}
+    }
+
+    // 3. Fallback: match by sequence number at the end of tracking code (e.g. 01 in LKB2-26091201)
+    if (!matched && cleanTrack.length >= 2) {
+      const lastDigits = parseInt(cleanTrack.slice(-2), 10);
+      if (!isNaN(lastDigits) && lastDigits > 0) {
+        matched = candidateRecords.find(r => r.seq === lastDigits);
+      }
+    }
+
+    return matched || null;
+  }, []);
+
+  // Helper to extract tracking code from URL or prop
+  const getActiveTrackCode = useCallback(() => {
+    if (initialTrackCode) return initialTrackCode;
+    if (typeof window === 'undefined') return null;
     const urlParams = new URLSearchParams(window.location.search);
-    const trackCode = urlParams.get('track');
-    if (trackCode) {
-      const cleanTrack = trackCode.replace(/[\s-]+/g, '').toLowerCase();
-      const matched = records.find(r => r.trackingCode && r.trackingCode.replace(/[\s-]+/g, '').toLowerCase() === cleanTrack);
+    let code = urlParams.get('track') || urlParams.get('tracking');
+    if (!code && window.location.hash) {
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : window.location.hash.replace(/^#\/?/, '');
+      const hashParams = new URLSearchParams(hashQuery);
+      code = hashParams.get('track') || hashParams.get('tracking');
+    }
+    return code;
+  }, [initialTrackCode]);
+
+  // Immediate check on mount (using local records if server records are still fetching)
+  useEffect(() => {
+    const code = getActiveTrackCode();
+    if (code) {
+      const localRecords = getLocalParcelRecords();
+      const matched = findParcelByTrackCode(code, localRecords);
       if (matched) {
         setSelectedRecord(matched);
         setIsDetailOpen(true);
       }
     }
-  }, [records]);
+  }, [getActiveTrackCode, findParcelByTrackCode]);
+
+  // Auto-open modal when records are loaded or updated if URL has ?track=...
+  useEffect(() => {
+    const code = getActiveTrackCode();
+    if (!code) return;
+
+    if (records.length > 0) {
+      const matched = findParcelByTrackCode(code, records);
+      if (matched) {
+        setSelectedRecord(matched);
+        setIsDetailOpen(true);
+        return;
+      }
+    }
+
+    // Fallback if not found after records loaded
+    if (!loading && records.length > 0 && !selectedRecord) {
+      const cleanTrack = code.replace(/[\s\-_]+/g, '').toUpperCase();
+      const tempRecord: ParcelDeliveryRecord = {
+        id: `temp-${cleanTrack}`,
+        seq: 1,
+        timestamp: formatCurrentThaiParcelTimestamp(),
+        actionType: 'ส่ง',
+        senderName: 'ระบบงานพัสดุและไปรษณีย์',
+        senderDepartment: 'ธุรการลาดกระบัง',
+        recipientName: 'ผู้รับตามหน้าซอง / ปลายทาง',
+        recipientDepartment: 'ลาดกระบัง',
+        itemTitle: `พัสดุ/เอกสาร รหัส ${code}`,
+        operatorName: 'ระบบส่วนกลาง',
+        operatorDepartment: 'ธุรการ',
+        status: 'บันทึกข้อมูลเข้าระบบเรียบร้อยแล้ว',
+        trackingCode: code
+      };
+      setSelectedRecord(tempRecord);
+      setIsDetailOpen(true);
+    }
+  }, [records, loading, getActiveTrackCode, findParcelByTrackCode, selectedRecord]);
+
+  // Handler to close detail and cleanly remove ?track from URL
+  const handleCloseDetailModal = () => {
+    setIsDetailOpen(false);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('track');
+      url.searchParams.delete('tracking');
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
 
   // Check if a record is from today
   const isRecordToday = (record: ParcelDeliveryRecord) => {
@@ -1172,7 +1271,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         parcel={selectedRecord}
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
-        onClose={() => setIsDetailOpen(false)}
+        onClose={handleCloseDetailModal}
       />
 
       {/* Filter Modal */}

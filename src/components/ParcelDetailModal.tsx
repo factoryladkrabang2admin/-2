@@ -153,6 +153,48 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             </div>
           </div>
 
+          {/* Status badge & Timeline (สถานะปัจจุบัน) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-emerald-50 via-teal-50 to-emerald-50/50 dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-slate-900 border-2 border-emerald-200 dark:border-emerald-800/60 shadow-xs space-y-3.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span>สถานะปัจจุบัน (Current Status)</span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    {parcel.status || (isSending ? 'บันทึกข้อมูลจัดส่งเรียบร้อยแล้ว' : 'รับเอกสาร/พัสดุเข้าเรียบร้อยแล้ว')}
+                  </h3>
+                </div>
+              </div>
+
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300/80">
+                ✓ สมบูรณ์ในระบบ
+              </span>
+            </div>
+
+            {/* Visual 3-Step Tracking Timeline */}
+            <div className="pt-2 border-t border-emerald-200/70 dark:border-emerald-800/40 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div className="bg-white/80 dark:bg-slate-800/70 p-2.5 rounded-xl border border-emerald-100 dark:border-slate-700">
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">1. วันและเวลาบันทึก</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{parcel.timestamp}</div>
+              </div>
+              <div className="bg-white/80 dark:bg-slate-800/70 p-2.5 rounded-xl border border-emerald-100 dark:border-slate-700">
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">2. ผู้ทำรายการ</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate">{parcel.operatorName} ({parcel.operatorDepartment || 'ลาดกระบัง'})</div>
+              </div>
+              <div className="bg-white/80 dark:bg-slate-800/70 p-2.5 rounded-xl border border-emerald-100 dark:border-slate-700">
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">3. การดำเนินการ</div>
+                <div className="font-semibold text-emerald-700 dark:text-emerald-300 mt-0.5 truncate">
+                  {isSending ? 'ส่งมอบตามรายชื่อ' : 'รับเข้าคลังเอกสาร'}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Details Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Item Title */}
@@ -176,10 +218,32 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                 {parcel.timestamp}
               </div>
             </div>
+
+            {/* Operator Name */}
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                <Package className="w-4 h-4 text-pink-500" />
+                ผู้ทำรายการบันทึก
+              </div>
+              <div className="text-base font-bold text-slate-900 dark:text-white">
+                {parcel.operatorName || '-'}
+              </div>
+            </div>
+
+            {/* Operator Department */}
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                <Building2 className="w-4 h-4 text-pink-500" />
+                แผนกผู้ทำรายการ
+              </div>
+              <div className="text-base font-bold text-slate-900 dark:text-white">
+                {parcel.operatorDepartment || '-'}
+              </div>
+            </div>
           </div>
 
-          {/* Tracking Code & QR Code Section (for Outgoing/Send records) - Restricted to Admins and Page Admins */}
-          {isAdmin && (parcel.trackingCode || isSending) && (
+          {/* Tracking Code Section (for Outgoing/Send records) */}
+          {(parcel.trackingCode || isSending) && (
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-pink-50 via-rose-50 to-amber-50 dark:from-pink-950/40 dark:via-rose-950/20 dark:to-slate-900 border-2 border-pink-200 dark:border-pink-800/60 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -188,7 +252,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                   </div>
                   <div>
                     <h4 className="font-bold text-xs text-pink-950 dark:text-pink-100 flex items-center gap-1.5">
-                      <span>รหัสติดตามสถานะงานส่ง</span>
+                      <span>รหัสติดตามสถานะ</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-300 font-semibold">
                         LKB2 - YYMMDDXX
                       </span>
@@ -210,25 +274,19 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                     </button>
                   )}
 
-                  <button
-                    onClick={() => setShowQrModal(true)}
-                    className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>เปิด QR Code ติดตาม</span>
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowQrModal(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>เปิด QR Code ติดตาม</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           )}
-
-          {/* Status badge */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50">
-            <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-sm font-semibold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              สถานะ: บันทึกข้อมูลเรียบร้อยแล้ว
-            </div>
-          </div>
         </div>
 
         {/* Footer actions */}

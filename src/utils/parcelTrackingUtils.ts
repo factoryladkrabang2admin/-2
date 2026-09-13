@@ -123,9 +123,9 @@ export function generateParcelTrackingCode(
  */
 export function getParcelTrackingUrl(trackingCode: string): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(trackingCode)}`;
+    return `${window.location.origin}${window.location.pathname}?tab=document_delivery&track=${encodeURIComponent(trackingCode)}`;
   }
-  return `https://ais-pre-kcsgriqdb22tud2aea6ska-762469056329.asia-southeast1.run.app/?track=${encodeURIComponent(trackingCode)}`;
+  return `https://ais-pre-kcsgriqdb22tud2aea6ska-762469056329.asia-southeast1.run.app/?tab=document_delivery&track=${encodeURIComponent(trackingCode)}`;
 }
 
 /**
