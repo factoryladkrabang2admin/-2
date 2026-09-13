@@ -178,7 +178,7 @@ let cachedParcelEntries: DetectedParcelFormEntries = {
   senderDeptEntry: "entry.1066148556",
   recipientNameEntry: "entry.222826518",
   recipientDeptEntry: "entry.600874339",
-  itemTitleEntry: "entry.1686437864",
+  itemTitleEntry: process.env.GOOGLE_PARCEL_ITEM_TITLE_ENTRY_ID || "entry.1686437864",
   trackingCodeEntry: "entry.1154218643",
 };
 let lastFormCheckTime = 0;
