@@ -217,3 +217,312 @@ export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): P
     return r;
   });
 }
+
+/**
+ * Checks if a parcel record represents a received document/parcel ("รับ")
+ */
+export function isParcelReceived(actionType?: string): boolean {
+  return (actionType || '').trim() === 'รับ';
+}
+
+/**
+ * Normalizes tracking code for comparison by stripping whitespace, hyphens, and lowercase/uppercase
+ */
+export function normalizeParcelTrackingCode(code?: string): string {
+  if (!code) return '';
+  return code.replace(/[\s\-_]/g, '').toUpperCase();
+}
+
+/**
+ * Gets a set of tracking codes and item keys that have been confirmed received ("รับแล้ว")
+ */
+export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Set<string> {
+  const receivedCodes = new Set<string>();
+
+  // 1. From records in memory
+  if (Array.isArray(records)) {
+    records.forEach((r) => {
+      if (r.actionType === 'รับ') {
+        if (r.trackingCode) {
+          const norm = normalizeParcelTrackingCode(r.trackingCode);
+          if (norm) receivedCodes.add(norm);
+        }
+        if (r.itemTitle) {
+          receivedCodes.add(`title:${r.itemTitle.trim().toLowerCase()}`);
+        }
+      } else if (r.actionType === 'ส่ง') {
+        const isStatusReceived =
+          (r.status || '').includes('รับแล้ว') ||
+          (r.note || '').includes('รับแล้ว');
+        if (isStatusReceived && r.trackingCode) {
+          const norm = normalizeParcelTrackingCode(r.trackingCode);
+          if (norm) receivedCodes.add(norm);
+        }
+      }
+    });
+  }
+
+  // 2. From localStorage cache of received tracking codes
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr)) {
+          arr.forEach((c) => {
+            if (typeof c === 'string') {
+              receivedCodes.add(normalizeParcelTrackingCode(c));
+            }
+          });
+        }
+      }
+    } catch {}
+  }
+
+  return receivedCodes;
+}
+
+/**
+ * Checks if a parcel record represents a received document/parcel, OR
+ * if an outgoing ("ส่ง") document/parcel has been received ("รับแล้ว").
+ */
+export function isParcelConfirmedReceived(
+  record: ParcelDeliveryRecord,
+  allRecords?: ParcelDeliveryRecord[],
+  receivedCodesSet?: Set<string>
+): boolean {
+  if (!record) return false;
+
+  // 1. Incoming ("รับ") is always received
+  if (record.actionType === 'รับ') return true;
+
+  // 2. Explicit status or note indicating "รับแล้ว"
+  if (
+    (record.status || '').includes('รับแล้ว') ||
+    (record.note || '').includes('รับแล้ว')
+  ) {
+    return true;
+  }
+
+  const normCode = normalizeParcelTrackingCode(record.trackingCode);
+  const titleKey = record.itemTitle ? `title:${record.itemTitle.trim().toLowerCase()}` : '';
+
+  // 3. Check against pre-computed or on-the-fly received set
+  const set = receivedCodesSet || (allRecords ? getReceivedTrackingCodesSet(allRecords) : null);
+  if (set) {
+    if (normCode && set.has(normCode)) return true;
+    if (titleKey && set.has(titleKey)) return true;
+  }
+
+  // 4. Fallback check directly against allRecords if set was not provided
+  if (allRecords && allRecords.length > 0) {
+    const isMatchedInRecords = allRecords.some((r) => {
+      if (r.actionType !== 'รับ') return false;
+      if (normCode && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode) {
+        return true;
+      }
+      if (
+        record.itemTitle &&
+        r.itemTitle &&
+        record.itemTitle.trim().toLowerCase() === r.itemTitle.trim().toLowerCase()
+      ) {
+        return true;
+      }
+      return false;
+    });
+    if (isMatchedInRecords) return true;
+  }
+
+  // 5. Check localStorage directly
+  if (normCode && typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr) && arr.some((c) => normalizeParcelTrackingCode(c) === normCode)) {
+          return true;
+        }
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
+/**
+ * Saves a tracking code or item title to local received cache
+ */
+export function markTrackingCodeAsReceivedLocally(trackingCode?: string, itemTitle?: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
+    let arr: string[] = [];
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) arr = parsed;
+      } catch {}
+    }
+
+    if (trackingCode) {
+      const norm = normalizeParcelTrackingCode(trackingCode);
+      if (norm && !arr.includes(norm)) arr.push(norm);
+    }
+    if (itemTitle) {
+      const titleKey = `title:${itemTitle.trim().toLowerCase()}`;
+      if (!arr.includes(titleKey)) arr.push(titleKey);
+    }
+
+    localStorage.setItem('proworkflow_received_tracking_codes_v1', JSON.stringify(arr));
+    // Trigger storage event for live reactive updates across components
+    window.dispatchEvent(new Event('parcel_received_updated'));
+  } catch {}
+}
+
+/**
+ * Formats display text for received parcels, e.g. "LKB2 - 26091201 รับแล้ว"
+ */
+export function formatReceivedTrackingBadge(trackingCode?: string): {
+  code: string;
+  suffix: string;
+  fullText: string;
+} {
+  const clean = (trackingCode || '').trim();
+  const baseCode = clean.replace(/รับแล้ว$/g, '').trim();
+  return {
+    code: baseCode,
+    suffix: 'รับแล้ว',
+    fullText: baseCode ? `${baseCode} รับแล้ว` : 'รับแล้ว',
+  };
+}
+
+export interface CheckAlreadyReceivedResult {
+  isAlreadyReceived: boolean;
+  reason?: 'tracking_code_received' | 'outgoing_confirmed' | 'duplicate_item_match' | 'local_cache';
+  matchedRecord?: ParcelDeliveryRecord;
+  message?: string;
+  duplicateDetails?: {
+    timestamp?: string;
+    itemTitle?: string;
+    senderName?: string;
+    recipientName?: string;
+    recipientDepartment?: string;
+    operatorName?: string;
+    trackingCode?: string;
+  };
+}
+
+/**
+ * Checks if a parcel or tracking code has already been received, preventing duplicate transactions.
+ * (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้)
+ */
+export function checkParcelAlreadyReceived(options: {
+  queryTrackingCode?: string;
+  trackingCode?: string;
+  itemTitle?: string;
+  senderName?: string;
+  recipientName?: string;
+  actionType?: 'รับ' | 'ส่ง';
+  allRecords?: ParcelDeliveryRecord[];
+}): CheckAlreadyReceivedResult {
+  const effectiveCode = options.queryTrackingCode || options.trackingCode;
+  const { itemTitle, senderName, recipientName, actionType = 'รับ', allRecords = [] } = options;
+
+  const normCode = normalizeParcelTrackingCode(effectiveCode);
+  const receivedCodesSet = getReceivedTrackingCodesSet(allRecords);
+
+  // 1. Check by Tracking Code
+  if (normCode) {
+    // Check if there is an incoming ("รับ") record with this tracking code
+    const incomingMatch = allRecords.find(
+      (r) => r.actionType === 'รับ' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
+    );
+    if (incomingMatch) {
+      return {
+        isAlreadyReceived: true,
+        reason: 'tracking_code_received',
+        matchedRecord: incomingMatch,
+        message: `รหัสติดตาม "${effectiveCode}" ถูกบันทึกรับไปแล้วเมื่อ ${incomingMatch.timestamp || 'ก่อนหน้านี้'} โดย ${incomingMatch.recipientName || 'ผู้รับ'} (${incomingMatch.recipientDepartment || '-'}) ไม่สามารถทำรายการซ้ำได้`,
+        duplicateDetails: {
+          timestamp: incomingMatch.timestamp,
+          itemTitle: incomingMatch.itemTitle,
+          senderName: incomingMatch.senderName,
+          recipientName: incomingMatch.recipientName,
+          recipientDepartment: incomingMatch.recipientDepartment,
+          operatorName: incomingMatch.operatorName,
+          trackingCode: incomingMatch.trackingCode,
+        },
+      };
+    }
+
+    // Check if there is an outgoing ("ส่ง") record with this tracking code that has already been received
+    const outgoingMatch = allRecords.find(
+      (r) => r.actionType === 'ส่ง' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
+    );
+    if (outgoingMatch && isParcelConfirmedReceived(outgoingMatch, allRecords, receivedCodesSet)) {
+      return {
+        isAlreadyReceived: true,
+        reason: 'outgoing_confirmed',
+        matchedRecord: outgoingMatch,
+        message: `รหัสติดตาม "${effectiveCode}" (${outgoingMatch.itemTitle || 'เอกสาร/พัสดุ'}) มีสถานะรับแล้ว ไม่สามารถทำรายการรับซ้ำได้`,
+        duplicateDetails: {
+          timestamp: outgoingMatch.timestamp,
+          itemTitle: outgoingMatch.itemTitle,
+          senderName: outgoingMatch.senderName,
+          recipientName: outgoingMatch.recipientName,
+          recipientDepartment: outgoingMatch.recipientDepartment,
+          operatorName: outgoingMatch.operatorName,
+          trackingCode: outgoingMatch.trackingCode,
+        },
+      };
+    }
+
+    // Check against local cached received codes
+    if (receivedCodesSet.has(normCode)) {
+      return {
+        isAlreadyReceived: true,
+        reason: 'local_cache',
+        message: `รหัสติดตาม "${effectiveCode}" ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้`,
+        duplicateDetails: {
+          trackingCode: effectiveCode,
+        },
+      };
+    }
+  }
+
+  // 2. If actionType is 'รับ', check by Item Title + Sender + Recipient matching
+  if (actionType === 'รับ' && itemTitle && itemTitle.trim() && senderName && senderName.trim() && recipientName && recipientName.trim()) {
+    const cleanTitle = itemTitle.trim().toLowerCase();
+    const cleanSender = senderName.trim().toLowerCase();
+    const cleanRecipient = recipientName.trim().toLowerCase();
+
+    const duplicateReceivedMatch = allRecords.find((r) => {
+      if (r.actionType !== 'รับ') return false;
+      const rTitle = (r.itemTitle || '').trim().toLowerCase();
+      const rSender = (r.senderName || '').trim().toLowerCase();
+      const rRecipient = (r.recipientName || '').trim().toLowerCase();
+      return rTitle === cleanTitle && rSender === cleanSender && rRecipient === cleanRecipient;
+    });
+
+    if (duplicateReceivedMatch) {
+      return {
+        isAlreadyReceived: true,
+        reason: 'duplicate_item_match',
+        matchedRecord: duplicateReceivedMatch,
+        message: `ข้อมูลเอกสาร/พัสดุ "${itemTitle}" (จาก ${senderName} ถึง ${recipientName}) ถูกทำรายการรับไปแล้วเมื่อ ${duplicateReceivedMatch.timestamp || 'ก่อนหน้านี้'} ไม่สามารถทำรายการซ้ำได้`,
+        duplicateDetails: {
+          timestamp: duplicateReceivedMatch.timestamp,
+          itemTitle: duplicateReceivedMatch.itemTitle,
+          senderName: duplicateReceivedMatch.senderName,
+          recipientName: duplicateReceivedMatch.recipientName,
+          recipientDepartment: duplicateReceivedMatch.recipientDepartment,
+          operatorName: duplicateReceivedMatch.operatorName,
+          trackingCode: duplicateReceivedMatch.trackingCode,
+        },
+      };
+    }
+  }
+
+  return { isAlreadyReceived: false };
+}
+

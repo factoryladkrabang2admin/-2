@@ -49,6 +49,10 @@ import { ParcelFilterModal, ParcelFilterState } from './ParcelFilterModal';
 import { ParcelAnalyticsModal } from './ParcelAnalyticsModal';
 import { ParcelCalendarView } from './ParcelCalendarView';
 import { CreateParcelRecordModal } from './CreateParcelRecordModal';
+import { 
+  getReceivedTrackingCodesSet, 
+  isParcelConfirmedReceived 
+} from '../utils/parcelTrackingUtils';
 
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
@@ -84,10 +88,29 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
   // Modal states
   const [selectedRecord, setSelectedRecord] = useState<ParcelDeliveryRecord | null>(null);
+  const [recordToReceive, setRecordToReceive] = useState<ParcelDeliveryRecord | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [localReceivedVer, setLocalReceivedVer] = useState(0);
+
+  useEffect(() => {
+    const handleReceivedUpdate = () => {
+      setLocalReceivedVer((v) => v + 1);
+    };
+    window.addEventListener('parcel_received_updated', handleReceivedUpdate);
+    return () => window.removeEventListener('parcel_received_updated', handleReceivedUpdate);
+  }, []);
+
+  const receivedTrackingCodesSet = useMemo(() => {
+    return getReceivedTrackingCodesSet(records);
+  }, [records, localReceivedVer]);
+
+  const handleQuickReceive = useCallback((record: ParcelDeliveryRecord) => {
+    setRecordToReceive(record);
+    setIsCreateModalOpen(true);
+  }, []);
 
   // Advanced Filters
   const [filters, setFilters] = useState<ParcelFilterState>({
@@ -506,7 +529,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 {/* Sparkling Prominent Action Button for Form Submission (Opens Create Modal) */}
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(true)}
+                  onClick={() => {
+                    setRecordToReceive(null);
+                    setIsCreateModalOpen(true);
+                  }}
                   className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 shadow-md hover:shadow-xl hover:shadow-pink-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 dark:border-white/20 cursor-pointer overflow-hidden"
                   title="คลิกเพื่อสร้างรายการ รับ - ส่งเอกสาร / พัสดุ ใหม่ (บันทึกลง Google Sheet)"
                 >
@@ -874,6 +900,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
                 {paginatedRecordsTable.map((record, index) => {
                   const isSent = record.actionType === 'ส่ง';
+                  const isConfirmedReceived = isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
                   return (
                     <tr 
                       key={`${record.id}-${record.seq || index}`}
@@ -898,11 +925,13 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
                           isSent 
-                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300 dark:border-rose-800' 
+                            ? isConfirmedReceived
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300 dark:border-rose-800' 
                             : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
                         }`}>
                           {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
-                          {isSent ? 'ส่ง' : 'รับ'}
+                          {isSent ? (isConfirmedReceived ? 'ส่ง (รับแล้ว)' : 'ส่ง') : 'รับ'}
                         </span>
                       </td>
 
@@ -938,11 +967,53 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       {/* Tracking Code (หลังคอลัมน์ ผู้รับตามหน้าซอง) */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         {record.trackingCode ? (
-                          <span className="inline-flex items-center font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                            {record.trackingCode}
-                          </span>
+                          isConfirmedReceived ? (
+                            <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg border bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                              <span className="text-emerald-700 dark:text-emerald-300 font-black">
+                                {record.trackingCode}
+                              </span>
+                              <span className="font-sans font-bold text-[11px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900/90 px-1.5 py-0.5 rounded-md">
+                                รับแล้ว
+                              </span>
+                            </span>
+                          ) : (
+                            <div className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                                {record.trackingCode}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuickReceive(record);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                title="กดรับเอกสารหรือพัสดุนี้"
+                              >
+                                <Inbox className="w-3 h-3" />
+                                <span>กดรับ</span>
+                              </button>
+                            </div>
+                          )
                         ) : (
-                          <span className="text-slate-400 text-xs font-mono">-</span>
+                          isConfirmedReceived ? (
+                            <span className="inline-flex items-center gap-1 font-sans text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-300">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> รับแล้ว
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleQuickReceive(record);
+                              }}
+                              className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                              title="กดรับเอกสารหรือพัสดุนี้"
+                            >
+                              <Inbox className="w-3 h-3" />
+                              <span>กดรับ</span>
+                            </button>
+                          )
                         )}
                       </td>
                     </tr>
@@ -1009,28 +1080,44 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {paginatedRecordsCards.map((record, index) => {
               const isSent = record.actionType === 'ส่ง';
+              const isConfirmedReceived = isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
               return (
                 <div
                   key={`${record.id}-${record.seq || index}`}
                   onClick={() => handleOpenDetail(record)}
-                  className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-pink-100/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer flex flex-col justify-between gap-4 group"
+                  className={`bg-white dark:bg-slate-900 rounded-3xl p-5 border ${
+                    isSent && isConfirmedReceived 
+                      ? 'border-emerald-200/90 dark:border-emerald-800/80 ring-1 ring-emerald-400/20' 
+                      : 'border-pink-100/80 dark:border-slate-800'
+                  } shadow-sm hover:shadow-md hover:border-pink-300 dark:hover:border-pink-800 transition-all cursor-pointer flex flex-col justify-between gap-4 group`}
                 >
                   {/* Card Header */}
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                        isSent 
-                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300' 
-                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300'
+                        !isSent 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300' 
+                          : isConfirmedReceived
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300'
                       }`}>
-                        {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
-                        {isSent ? 'รายการส่ง' : 'รายการรับ'}
+                        {!isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                        {!isSent ? 'รายการรับ' : isConfirmedReceived ? 'รายการส่ง (รับแล้ว)' : 'รายการส่ง'}
                       </span>
 
                       {record.trackingCode && (
-                        <span className="font-mono text-xs font-bold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-950/60 px-2 py-0.5 rounded-lg border border-pink-200 dark:border-pink-800/60 shadow-2xs">
-                          {record.trackingCode}
-                        </span>
+                        isConfirmedReceived ? (
+                          <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 shadow-2xs flex items-center gap-1.5">
+                            <span className="font-black text-emerald-700 dark:text-emerald-300">{record.trackingCode}</span>
+                            <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.5 rounded-md">
+                              รับแล้ว
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="font-mono text-xs font-bold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-950/60 px-2 py-0.5 rounded-lg border border-pink-200 dark:border-pink-800/60 shadow-2xs">
+                            {record.trackingCode}
+                          </span>
+                        )
                       )}
                     </div>
 
@@ -1065,9 +1152,28 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                   {/* Footer */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> บันทึกแล้ว
-                    </span>
+                    {isConfirmedReceived ? (
+                      <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-800">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        {record.trackingCode ? (
+                          <span className="font-mono font-black">{record.trackingCode}</span>
+                        ) : null}
+                        <span>รับแล้ว</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleQuickReceive(record);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="กดรับพัสดุนี้"
+                      >
+                        <Inbox className="w-3.5 h-3.5" />
+                        <span>กดรับพัสดุนี้</span>
+                      </button>
+                    )}
                     <span className="text-pink-600 dark:text-pink-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                       รายละเอียด <ArrowRight className="w-3 h-3" />
                     </span>
@@ -1128,31 +1234,70 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
               {filteredRecords
                 .filter(r => r.actionType === 'ส่ง')
-                .map((record, index) => (
-                  <div
-                    key={`${record.id}-${record.seq || index}`}
-                    onClick={() => handleOpenDetail(record)}
-                    className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-rose-100 dark:border-slate-700 shadow-xs hover:border-rose-300 transition-all cursor-pointer space-y-2.5"
-                  >
-                    <div className="flex items-center justify-end">
-                      <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
-                    </div>
+                .map((record, index) => {
+                  const isReceived = isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
+                  return (
+                    <div
+                      key={`${record.id}-${record.seq || index}`}
+                      onClick={() => handleOpenDetail(record)}
+                      className={`bg-white dark:bg-slate-800/90 rounded-2xl p-4 border ${
+                        isReceived ? 'border-emerald-300/90 dark:border-emerald-700/80 ring-1 ring-emerald-400/20' : 'border-rose-100 dark:border-slate-700'
+                      } shadow-xs hover:border-pink-300 transition-all cursor-pointer space-y-2.5`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        {record.trackingCode ? (
+                          isReceived ? (
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg border bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700 flex items-center gap-1.5 shadow-2xs">
+                              <span className="text-emerald-700 dark:text-emerald-300 font-black">
+                                {record.trackingCode}
+                              </span>
+                              <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
+                                รับแล้ว
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="font-mono text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                              {record.trackingCode}
+                            </span>
+                          )
+                        ) : <span />}
+                        <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
+                      </div>
 
-                    <div className="font-bold text-sm text-slate-900 dark:text-white line-clamp-2">
-                      {record.itemTitle}
-                    </div>
+                      <div className="font-bold text-sm text-slate-900 dark:text-white line-clamp-2">
+                        {record.itemTitle}
+                      </div>
 
-                    <div className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-1">
-                      <span className="truncate font-medium">{record.senderName}</span>
-                      <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate font-medium">{record.recipientName}</span>
-                    </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-1">
+                        <span className="truncate font-medium">{record.senderName}</span>
+                        <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate font-medium">{record.recipientName}</span>
+                      </div>
 
-                    <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                      <span>แผนก: {record.recipientDepartment}</span>
+                      <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                        <span>แผนก: {record.recipientDepartment}</span>
+                        {isReceived ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 text-[11px]">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> รับแล้ว
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickReceive(record);
+                            }}
+                            className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            title="กดรับเอกสารหรือพัสดุนี้"
+                          >
+                            <Inbox className="w-3 h-3" />
+                            <span>กดรับ</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
 
@@ -1184,7 +1329,21 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     onClick={() => handleOpenDetail(record)}
                     className="bg-white dark:bg-slate-800/90 rounded-2xl p-4 border border-emerald-100 dark:border-slate-700 shadow-xs hover:border-emerald-300 transition-all cursor-pointer space-y-2.5"
                   >
-                    <div className="flex items-center justify-end">
+                    <div className="flex items-center justify-between gap-2">
+                      {record.trackingCode ? (
+                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg border bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700 flex items-center gap-1.5 shadow-2xs">
+                          <span className="text-emerald-700 dark:text-emerald-300 font-black">
+                            {record.trackingCode}
+                          </span>
+                          <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
+                            รับแล้ว
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="font-sans text-[11px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300">
+                          รับแล้ว
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
                     </div>
 
@@ -1200,6 +1359,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                     <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
                       <span>แผนก: {record.recipientDepartment}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> รับแล้ว
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1219,9 +1381,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       <ParcelDetailModal
         isOpen={isDetailOpen}
         parcel={selectedRecord}
+        allRecords={records}
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         onClose={handleCloseDetailModal}
+        onQuickReceive={handleQuickReceive}
       />
 
       {/* Filter Modal */}
@@ -1243,7 +1407,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       {/* Create Record Modal (Both Receive & Send, strictly matching Google Sheet columns) */}
       <CreateParcelRecordModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setRecordToReceive(null);
+        }}
+        initialRecordToReceive={recordToReceive}
         onRecordCreated={() => {
           // Immediately reload from Google Sheet, and reload again after short delay for Sheet synchronization
           loadData(true, false);

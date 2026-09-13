@@ -10,11 +10,13 @@ import {
   Check, 
   Sparkles,
   FileText,
-  ArrowRight
+  ArrowRight,
+  CheckCircle2
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AdminUserAccount } from '../data/mockData';
+import { isParcelConfirmedReceived } from '../utils/parcelTrackingUtils';
 
 interface ParcelDetailModalProps {
   isOpen: boolean;
@@ -22,6 +24,8 @@ interface ParcelDetailModalProps {
   onClose: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
+  onQuickReceive?: (parcel: ParcelDeliveryRecord) => void;
+  allRecords?: ParcelDeliveryRecord[];
 }
 
 export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
@@ -30,6 +34,8 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   onClose,
   currentUser,
   isAuthenticated,
+  onQuickReceive,
+  allRecords,
 }) => {
   const { language } = useLanguage();
   const [copied, setCopied] = useState(false);
@@ -38,6 +44,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   if (!isOpen || !parcel) return null;
 
   const isSending = parcel.actionType === 'ส่ง';
+  const isConfirmedReceived = isParcelConfirmedReceived(parcel, allRecords);
 
   const handleCopy = () => {
     const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | วันที่เวลา: ${parcel.timestamp}${parcel.trackingCode ? ` | รหัสติดตาม: ${parcel.trackingCode}` : ''}`;
@@ -72,16 +79,29 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide border ${
-                    isSending 
-                      ? 'bg-rose-900/30 text-rose-100 border-white/30' 
-                      : 'bg-emerald-900/30 text-emerald-100 border-white/30'
+                    !isSending 
+                      ? 'bg-emerald-900/40 text-emerald-100 border-emerald-400/60 shadow-xs'
+                      : isConfirmedReceived
+                        ? 'bg-emerald-900/40 text-emerald-100 border-emerald-400/60 shadow-xs'
+                        : 'bg-rose-900/30 text-rose-100 border-white/30'
                   }`}>
-                    {isSending ? '📤 รายการส่ง' : '📥 รายการรับ'}
+                    {!isSending ? '📥 รายการรับ' : isConfirmedReceived ? '📤 รายการส่ง (รับแล้ว)' : '📤 รายการส่ง'}
                   </span>
                   {parcel.trackingCode && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-white/20 text-white border border-white/30 backdrop-blur-xs">
-                      <span>รหัสติดตาม:</span>
-                      <span className="tracking-wider">{parcel.trackingCode}</span>
+                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border backdrop-blur-xs ${
+                      isConfirmedReceived
+                        ? 'bg-emerald-950/70 text-emerald-100 border-emerald-400/70 shadow-xs'
+                        : 'bg-white/20 text-white border-white/30'
+                    }`}>
+                      <span>{isConfirmedReceived ? (isSending ? 'รหัสติดตาม (รับแล้ว):' : 'รหัสติดตามที่รับ:') : 'รหัสติดตาม:'}</span>
+                      <span className={`tracking-wider font-black ${isConfirmedReceived ? 'text-emerald-300' : ''}`}>
+                        {parcel.trackingCode}
+                      </span>
+                      {isConfirmedReceived && (
+                        <span className="font-sans font-bold text-[11px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md">
+                          รับแล้ว
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={handleCopyTrackingCode}
@@ -157,6 +177,33 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             </div>
           </div>
 
+          {/* Received Status Banner if isConfirmedReceived */}
+          {isConfirmedReceived && (
+            <div className="p-4 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                    สถานะการรับเอกสาร / พัสดุ
+                  </div>
+                  <div className="font-bold text-sm text-emerald-900 dark:text-emerald-100 flex items-center gap-2 flex-wrap">
+                    <span>{isSending ? 'เอกสาร / พัสดุขาส่งนี้ ปลายทางได้กดรับเรียบร้อยแล้ว' : 'รับเอกสาร / พัสดุแล้ว'}</span>
+                    {parcel.trackingCode && (
+                      <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                        <span className="font-black text-emerald-700 dark:text-emerald-300">{parcel.trackingCode}</span>
+                        <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
+                          รับแล้ว
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Details Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Item Title */}
@@ -203,6 +250,27 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2">
+            {isSending && (
+              isConfirmedReceived ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>ปลายทางได้รับแล้ว</span>
+                </div>
+              ) : onQuickReceive ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onQuickReceive(parcel);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="กดรับเอกสารหรือพัสดุนี้"
+                >
+                  <Inbox className="w-4 h-4" />
+                  <span>กดรับเอกสาร / พัสดุนี้</span>
+                </button>
+              ) : null
+            )}
             <button
               onClick={onClose}
               className="px-6 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"

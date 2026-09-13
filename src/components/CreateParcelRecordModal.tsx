@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   Package,
@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Sparkles,
   Search,
+  ShieldAlert,
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
@@ -31,7 +32,11 @@ import {
   ParcelSubmitResult,
 } from '../services/googleSheetSyncService';
 import { useLanguage } from '../contexts/LanguageContext';
-import { generateParcelTrackingCode } from '../utils/parcelTrackingUtils';
+import {
+  generateParcelTrackingCode,
+  markTrackingCodeAsReceivedLocally,
+  checkParcelAlreadyReceived,
+} from '../utils/parcelTrackingUtils';
 
 interface CreateParcelRecordModalProps {
   isOpen: boolean;
@@ -40,6 +45,7 @@ interface CreateParcelRecordModalProps {
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
   existingRecords?: ParcelDeliveryRecord[];
+  initialRecordToReceive?: ParcelDeliveryRecord | null;
 }
 
 // Popular departments for quick selection
@@ -75,6 +81,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   currentUser,
   isAuthenticated,
   existingRecords = [],
+  initialRecordToReceive = null,
 }) => {
   const { language } = useLanguage();
   const isAdmin = isUserAdminOrSupervisor(currentUser, isAuthenticated);
@@ -118,6 +125,27 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     ? generateParcelTrackingCode(timestamp || new Date(), existingRecords)
     : '';
 
+  // Effective tracking code preview when receiving ('รับ')
+  const projectedReceiveTrackingCode = actionType === 'รับ'
+    ? (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(timestamp || new Date(), existingRecords)))
+    : '';
+
+  // ตรวจสอบการทำรายการซ้ำแบบเรียลไทม์ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
+  const duplicateStatus = useMemo(() => {
+    const codeToCheck = actionType === 'รับ'
+      ? (searchTrackingCode.trim() || matchedParcel?.trackingCode || undefined)
+      : undefined;
+
+    return checkParcelAlreadyReceived({
+      trackingCode: codeToCheck,
+      itemTitle: itemTitle.trim() || undefined,
+      senderName: senderName.trim() || undefined,
+      recipientName: recipientName.trim() || undefined,
+      actionType,
+      allRecords: existingRecords,
+    });
+  }, [searchTrackingCode, matchedParcel, itemTitle, senderName, recipientName, actionType, existingRecords]);
+
   // Field validation flags - all fields are mandatory
   const isSenderNameValid = senderName.trim().length > 0;
   const isSenderDeptValid = senderDepartment.trim().length > 0;
@@ -130,7 +158,8 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     isSenderDeptValid &&
     isRecipientNameValid &&
     isRecipientDeptValid &&
-    isItemTitleValid;
+    isItemTitleValid &&
+    !duplicateStatus.isAlreadyReceived;
 
   const wasOpenRef = useRef(false);
 
@@ -153,7 +182,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     }
   };
 
-  // Reset fields to empty ONLY when modal transitions from closed to open
+  // Reset fields to empty or prefill with initialRecordToReceive when modal opens
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       wasOpenRef.current = true;
@@ -162,14 +191,32 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       setErrorMessage(null);
       setCopiedData(false);
       setHasAttemptedSubmit(false);
-      setSenderName('');
-      setSenderDepartment('');
-      setRecipientName('');
-      setRecipientDepartment('');
-      setItemTitle('');
       setLastSubmitResult(null);
-      setSearchTrackingCode('');
-      setMatchedParcel(null);
+
+      if (initialRecordToReceive) {
+        // Pre-fill for "กดรับเอกสารหรือพัสดุ"
+        setActionType('รับ');
+        setSenderName(initialRecordToReceive.senderName || '');
+        setSenderDepartment(initialRecordToReceive.senderDepartment || '');
+        setRecipientName(initialRecordToReceive.recipientName || '');
+        setRecipientDepartment(initialRecordToReceive.recipientDepartment || '');
+        setItemTitle(initialRecordToReceive.itemTitle || '');
+        if (initialRecordToReceive.trackingCode) {
+          setSearchTrackingCode(initialRecordToReceive.trackingCode);
+          setMatchedParcel(initialRecordToReceive);
+        } else {
+          setSearchTrackingCode('');
+          setMatchedParcel(null);
+        }
+      } else {
+        setSenderName('');
+        setSenderDepartment('');
+        setRecipientName('');
+        setRecipientDepartment('');
+        setItemTitle('');
+        setSearchTrackingCode('');
+        setMatchedParcel(null);
+      }
 
       const userName = currentUser?.name || currentUser?.username || 'เจม';
       setOperatorName(userName);
@@ -179,7 +226,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     } else if (!isOpen) {
       wasOpenRef.current = false;
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, initialRecordToReceive]);
 
   if (!isOpen) return null;
 
@@ -279,15 +326,30 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       return;
     }
 
+    const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
+    const effectiveTrackingCode = actionType === 'ส่ง'
+      ? generateParcelTrackingCode(currentTs, existingRecords)
+      : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(currentTs, existingRecords)));
+
+    // ตรวจสอบการทำรายการซ้ำ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
+    const duplicateCheck = checkParcelAlreadyReceived({
+      trackingCode: effectiveTrackingCode,
+      itemTitle: itemTitle.trim(),
+      senderName: senderName.trim(),
+      recipientName: recipientName.trim(),
+      actionType,
+      allRecords: existingRecords,
+    });
+
+    if (duplicateCheck.isAlreadyReceived) {
+      setErrorMessage(duplicateCheck.message || 'รหัสติดตามหรือข้อมูลนี้ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       // Submit via Server Endpoint /api/parcel-submit (Executes a single, clean server-to-server POST to Google Form)
-      const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
-      const effectiveTrackingCode = actionType === 'ส่ง'
-        ? generateParcelTrackingCode(currentTs, existingRecords)
-        : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(currentTs, existingRecords)));
-
       const res = await submitParcelDeliveryRecord({
         timestamp: currentTs,
         actionType,
@@ -305,6 +367,14 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
         if (!res.record.trackingCode && effectiveTrackingCode) {
           res.record.trackingCode = effectiveTrackingCode;
         }
+
+        if (actionType === 'รับ') {
+          markTrackingCodeAsReceivedLocally(effectiveTrackingCode, itemTitle);
+          if (matchedParcel?.trackingCode) {
+            markTrackingCodeAsReceivedLocally(matchedParcel.trackingCode, matchedParcel.itemTitle);
+          }
+        }
+
         setLastSavedRecord(res.record);
         setLastSubmitResult(res);
         setIsSuccess(true);
@@ -457,12 +527,19 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     {lastSavedRecord.trackingCode && (
                       <div className="text-right">
                         <span className="text-slate-400 dark:text-slate-500 text-[10px] block">รหัสติดตาม:</span>
-                        <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md border ${
+                        <span className={`font-mono font-bold text-xs px-2.5 py-1 rounded-md border inline-flex items-center gap-1.5 ${
                           lastSavedRecord.actionType === 'รับ'
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs'
                             : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                         }`}>
-                          {lastSavedRecord.trackingCode}
+                          <span className={lastSavedRecord.actionType === 'รับ' ? 'text-emerald-700 dark:text-emerald-300 font-black' : ''}>
+                            {lastSavedRecord.trackingCode}
+                          </span>
+                          {lastSavedRecord.actionType === 'รับ' && (
+                            <span className="font-sans font-bold text-[11px] bg-emerald-200/80 dark:bg-emerald-900/90 text-emerald-900 dark:text-emerald-100 px-1.5 py-0.5 rounded-md">
+                              รับแล้ว
+                            </span>
+                          )}
                         </span>
                       </div>
                     )}
@@ -474,25 +551,32 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               {lastSavedRecord.trackingCode && (
                 <div className={`p-4 rounded-2xl border space-y-2 ${
                   lastSavedRecord.actionType === 'รับ'
-                    ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80'
+                    ? 'bg-emerald-50/80 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-700'
                     : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80'
                 }`}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs font-bold ${
                         lastSavedRecord.actionType === 'รับ'
-                          ? 'text-emerald-800 dark:text-emerald-300'
+                          ? 'text-emerald-900 dark:text-emerald-200'
                           : 'text-slate-500 dark:text-slate-400'
                       }`}>
                         {lastSavedRecord.actionType === 'รับ' ? 'รหัสติดตาม (รับเอกสาร/พัสดุแล้ว):' : 'รหัสติดตามสถานะ:'}
                       </span>
-                      <span className={`font-mono font-black text-sm tracking-wider ${
-                        lastSavedRecord.actionType === 'รับ'
-                          ? 'text-emerald-700 dark:text-emerald-300'
-                          : 'text-pink-700 dark:text-pink-400'
-                      }`}>
-                        {lastSavedRecord.trackingCode}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-mono font-black text-sm tracking-wider ${
+                          lastSavedRecord.actionType === 'รับ'
+                            ? 'text-emerald-700 dark:text-emerald-300'
+                            : 'text-pink-700 dark:text-pink-400'
+                        }`}>
+                          {lastSavedRecord.trackingCode}
+                        </span>
+                        {lastSavedRecord.actionType === 'รับ' && (
+                          <span className="font-sans font-bold text-xs bg-emerald-200/90 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700">
+                            รับแล้ว
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <button
@@ -539,6 +623,16 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <div className="p-2.5 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>บันทึกชื่อเอกสาร / พัสดุ ลงใน Google Sheet เรียบร้อยสมบูรณ์</span>
+                </div>
+              )}
+
+              {/* Status Note on Google Sheet Tracking Code Column */}
+              {lastSavedRecord.trackingCode && (
+                <div className="p-2.5 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    เพิ่มรหัสติดตาม <span className="font-mono font-black">{lastSavedRecord.trackingCode}</span> เข้าไปใน Google Sheet เรียบร้อยแล้ว
+                  </span>
                 </div>
               )}
 
@@ -703,7 +797,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
                   {/* Match Result Banner */}
                   {matchedParcel && (
-                    <div className="p-2.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 text-xs text-emerald-900 dark:text-emerald-100 space-y-1 animate-in fade-in">
+                    <div className="p-2.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 text-xs text-emerald-900 dark:text-emerald-100 space-y-1.5 animate-in fade-in">
                       <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-200">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span>ดึงข้อมูลที่ส่งเรียบร้อยแล้ว: {matchedParcel.itemTitle}</span>
@@ -711,6 +805,44 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       <div className="text-[11px] text-emerald-700 dark:text-emerald-300 pl-5">
                         ผู้ส่ง: {matchedParcel.senderName} ({matchedParcel.senderDepartment}) ➔ ผู้รับ: {matchedParcel.recipientName} ({matchedParcel.recipientDepartment})
                       </div>
+                      {matchedParcel.trackingCode && (
+                        <div className="pl-5 pt-0.5 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">รหัสติดตาม:</span>
+                          <span className="font-mono font-black text-xs text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1 shadow-2xs">
+                            <span>{matchedParcel.trackingCode}</span>
+                            <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-800 px-1.5 py-0.2 rounded">
+                              รับแล้ว
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Duplicate Alert Banner (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้) */}
+                  {duplicateStatus.isAlreadyReceived && (
+                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border-2 border-rose-400 dark:border-rose-700 text-xs text-rose-900 dark:text-rose-100 space-y-1 animate-in fade-in">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-800 dark:text-rose-200">
+                        <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                        <span>ตั้งค่าระบบ: รายการนี้ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้</span>
+                      </div>
+                      <p className="text-[11px] text-rose-700 dark:text-rose-300 pl-5 leading-relaxed">
+                        {duplicateStatus.message}
+                      </p>
+                    </div>
+                  )}
+
+                  {!matchedParcel && projectedReceiveTrackingCode && !duplicateStatus.isAlreadyReceived && (
+                    <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between">
+                      <span className="text-[11px] text-emerald-800 dark:text-emerald-200 font-semibold">
+                        รหัสติดตามที่จะบันทึกรับ:
+                      </span>
+                      <span className="font-mono font-bold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
+                        <span className="font-black">{projectedReceiveTrackingCode}</span>
+                        <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-800 px-1.5 py-0.2 rounded">
+                          รับแล้ว
+                        </span>
+                      </span>
                     </div>
                   )}
 
@@ -979,8 +1111,13 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
         {/* Modal Footer Actions */}
         <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-1.5 text-[11px]">
-            {!isSuccess && !isFormComplete ? (
+          <div className="flex items-center gap-1.5 text-[11px] min-w-0">
+            {duplicateStatus.isAlreadyReceived ? (
+              <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5 truncate" title={duplicateStatus.message}>
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{duplicateStatus.message || (language === 'th' ? 'รายการนี้ถูกรับไปแล้ว (ห้ามทำรายการซ้ำ)' : 'Already received')}</span>
+              </span>
+            ) : !isSuccess && !isFormComplete ? (
               <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>{language === 'th' ? 'กรุณากรอกข้อมูลให้ครบถ้วน' : 'Please fill in all fields'}</span>
@@ -993,7 +1130,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             ) : null}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2 shrink-0">
             <button
               type="button"
               id="btn-cancel-parcel-modal"
@@ -1013,10 +1150,12 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   handleSubmit();
                 }
               }}
-              disabled={isSubmitting}
-              className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:pointer-events-none ${
+              disabled={isSubmitting || (duplicateStatus.isAlreadyReceived && !isSuccess)}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 isSuccess
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 border border-emerald-500/50'
+                  : duplicateStatus.isAlreadyReceived
+                  ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 text-white shadow-md shadow-pink-500/20 hover:shadow-lg'
               }`}
             >
@@ -1029,6 +1168,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-white" />
                   <span>{language === 'th' ? 'บันทึกข้อมูลแล้ว' : 'Saved'}</span>
+                </>
+              ) : duplicateStatus.isAlreadyReceived ? (
+                <>
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>{language === 'th' ? 'รายการนี้ถูกรับแล้ว (ห้ามซ้ำ)' : 'Already Received'}</span>
                 </>
               ) : (
                 <>

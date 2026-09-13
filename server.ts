@@ -161,17 +161,36 @@ function stringifyCsv(rows: string[][]): string {
     .join("\r\n");
 }
 
-// Google Form dynamic entry detection for itemTitle (ชื่อเอกสาร / พัสดุ)
-let cachedItemTitleEntryId: string | null = null;
+// Google Form dynamic entry detection for itemTitle and trackingCode
+interface DetectedParcelFormEntries {
+  actionTypeEntry: string;
+  senderNameEntry: string;
+  senderDeptEntry: string;
+  recipientNameEntry: string;
+  recipientDeptEntry: string;
+  itemTitleEntry: string | null;
+  trackingCodeEntry: string | null;
+}
+
+let cachedParcelEntries: DetectedParcelFormEntries = {
+  actionTypeEntry: "entry.1879722225",
+  senderNameEntry: "entry.645686724",
+  senderDeptEntry: "entry.1066148556",
+  recipientNameEntry: "entry.222826518",
+  recipientDeptEntry: "entry.600874339",
+  itemTitleEntry: "entry.1686437864",
+  trackingCodeEntry: "entry.1154218643",
+};
 let lastFormCheckTime = 0;
 
-async function getOrDetectItemTitleEntryId(formId: string): Promise<string | null> {
-  if (process.env.GOOGLE_PARCEL_ITEM_TITLE_ENTRY_ID) {
-    return process.env.GOOGLE_PARCEL_ITEM_TITLE_ENTRY_ID.trim();
-  }
+async function getOrDetectParcelFormEntries(formId: string): Promise<DetectedParcelFormEntries> {
   const now = Date.now();
-  if (cachedItemTitleEntryId && now - lastFormCheckTime < 30000) {
-    return cachedItemTitleEntryId;
+  if (
+    now - lastFormCheckTime < 30000 &&
+    cachedParcelEntries.itemTitleEntry &&
+    cachedParcelEntries.trackingCodeEntry
+  ) {
+    return cachedParcelEntries;
   }
 
   try {
@@ -181,35 +200,53 @@ async function getOrDetectItemTitleEntryId(formId: string): Promise<string | nul
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
-    if (!res.ok) return cachedItemTitleEntryId;
-    const html = await res.text();
-    const match = html.match(/FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);\s*<\/script>/s);
-    if (!match) return cachedItemTitleEntryId;
-    const data = JSON.parse(match[1]);
-    const items = data[1]?.[1];
-    if (Array.isArray(items)) {
-      const knownEntries = ["1879722225", "645686724", "1066148556", "222826518", "600874339"];
-      for (const item of items) {
-        const title = (item[1] || "").trim();
-        const entryId = item[4]?.[0]?.[0];
-        if (!entryId) continue;
-        const entryStr = `entry.${entryId}`;
-        if (knownEntries.includes(String(entryId))) {
-          continue;
-        }
-        if (/เอกสาร|พัสดุ|ชื่อ|รายการ|item|title|parcel/i.test(title) || items.length > 5) {
-          cachedItemTitleEntryId = entryStr;
-          lastFormCheckTime = now;
-          console.log(`[Google Form] Detected item title entry ID: ${entryStr} (Title: ${title})`);
-          return entryStr;
+    if (res.ok) {
+      const html = await res.text();
+      const match = html.match(/FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);\s*<\/script>/s);
+      if (match) {
+        const data = JSON.parse(match[1]);
+        const items = data[1]?.[1];
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            const title = (item[1] || "").trim();
+            const entryId = item[4]?.[0]?.[0];
+            if (!entryId) continue;
+            const entryStr = `entry.${entryId}`;
+            const tLower = title.toLowerCase();
+
+            if (tLower.includes("ประเภท")) {
+              cachedParcelEntries.actionTypeEntry = entryStr;
+            } else if (tLower.includes("ชื่อผู้ส่ง")) {
+              cachedParcelEntries.senderNameEntry = entryStr;
+            } else if (tLower.includes("แผนกผู้ส่ง")) {
+              cachedParcelEntries.senderDeptEntry = entryStr;
+            } else if (tLower.includes("ชื่อผู้รับ")) {
+              cachedParcelEntries.recipientNameEntry = entryStr;
+            } else if (tLower.includes("แผนกผู้รับ")) {
+              cachedParcelEntries.recipientDeptEntry = entryStr;
+            } else if (/รหัส|ติดตาม|tracking/i.test(title)) {
+              cachedParcelEntries.trackingCodeEntry = entryStr;
+              console.log(`[Google Form] Detected tracking code entry ID: ${entryStr} (Title: ${title})`);
+            } else if (/เอกสาร|พัสดุ|ชื่อ|รายการ|item|title/i.test(title)) {
+              cachedParcelEntries.itemTitleEntry = entryStr;
+              console.log(`[Google Form] Detected item title entry ID: ${entryStr} (Title: ${title})`);
+            }
+          }
         }
       }
     }
     lastFormCheckTime = now;
   } catch (err) {
-    console.warn("[Google Form] Error detecting entry ID:", err);
+    console.warn("[Google Form] Error detecting entries:", err);
   }
-  return cachedItemTitleEntryId;
+
+  return cachedParcelEntries;
+}
+
+// Backward-compatibility wrapper for item title entry detection
+async function getOrDetectItemTitleEntryId(formId: string): Promise<string | null> {
+  const entries = await getOrDetectParcelFormEntries(formId);
+  return entries.itemTitleEntry;
 }
 
 // Clean and normalize strings for matching
@@ -270,6 +307,13 @@ async function startServer() {
               titleColIdx = 6;
             }
 
+            let trackingColIdx = header.findIndex(
+              (h) => h.includes("รหัสติดตาม") || h.includes("tracking") || h.includes("รหัส")
+            );
+            if (trackingColIdx === -1 && rows[0].length > 7) {
+              trackingColIdx = 7;
+            }
+
             const senderColIdx = header.findIndex((h) => h.includes("ชื่อผู้ส่ง"));
             const recipientColIdx = header.findIndex((h) => h.includes("ชื่อผู้รับ"));
             const actionColIdx = header.findIndex((h) => h.includes("ประเภท"));
@@ -279,36 +323,51 @@ async function startServer() {
               if (!rows[0][titleColIdx] || !rows[0][titleColIdx].trim()) {
                 rows[0][titleColIdx] = "ชื่อเอกสาร / พัสดุ";
               }
+            }
 
-              for (let i = 1; i < rows.length; i++) {
-                const row = rows[i];
-                if (!row || row.length === 0) continue;
+            if (trackingColIdx >= 0) {
+              if (!rows[0][trackingColIdx] || !rows[0][trackingColIdx].trim()) {
+                rows[0][trackingColIdx] = "รหัสติดตาม";
+              }
+            }
 
-                // If column is missing or empty string
-                const currentVal = (row[titleColIdx] || "").trim();
-                if (!currentVal) {
-                  const sName = senderColIdx >= 0 ? normalizeText(row[senderColIdx]) : "";
-                  const rName = recipientColIdx >= 0 ? normalizeText(row[recipientColIdx]) : "";
-                  const aType = actionColIdx >= 0 ? normalizeText(row[actionColIdx]) : "";
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              if (!row || row.length === 0) continue;
 
-                  // Find best matching saved submission
-                  const match = inMemorySubmissions.find((sub) => {
-                    const matchSender = !sName || normalizeText(sub.senderName) === sName;
-                    const matchRecipient = !rName || normalizeText(sub.recipientName) === rName;
-                    const matchAction = !aType || normalizeText(sub.actionType) === aType;
-                    return matchSender && matchRecipient && matchAction && sub.itemTitle;
-                  });
+              const currentTitle = titleColIdx >= 0 ? (row[titleColIdx] || "").trim() : "";
+              const currentTracking = trackingColIdx >= 0 ? (row[trackingColIdx] || "").trim() : "";
 
-                  if (match && match.itemTitle) {
+              if (!currentTitle || !currentTracking) {
+                const sName = senderColIdx >= 0 ? normalizeText(row[senderColIdx]) : "";
+                const rName = recipientColIdx >= 0 ? normalizeText(row[recipientColIdx]) : "";
+                const aType = actionColIdx >= 0 ? normalizeText(row[actionColIdx]) : "";
+
+                // Find best matching saved submission
+                const match = inMemorySubmissions.find((sub) => {
+                  const matchSender = !sName || normalizeText(sub.senderName) === sName;
+                  const matchRecipient = !rName || normalizeText(sub.recipientName) === rName;
+                  const matchAction = !aType || normalizeText(sub.actionType) === aType;
+                  return matchSender && matchRecipient && matchAction;
+                });
+
+                if (match) {
+                  if (!currentTitle && match.itemTitle && titleColIdx >= 0) {
                     while (row.length <= titleColIdx) {
                       row.push("");
                     }
                     row[titleColIdx] = match.itemTitle;
                   }
+                  if (!currentTracking && match.trackingCode && trackingColIdx >= 0) {
+                    while (row.length <= trackingColIdx) {
+                      row.push("");
+                    }
+                    row[trackingColIdx] = match.trackingCode;
+                  }
                 }
               }
-              csvText = stringifyCsv(rows);
             }
+            csvText = stringifyCsv(rows);
           }
         } catch (enrichErr) {
           console.warn("Could not enrich parcel CSV:", enrichErr);
@@ -337,14 +396,15 @@ async function startServer() {
     try {
       const GOOGLE_PARCEL_FORM_ID = "1FAIpQLSfhL7tVwlJ7aYMt7fCWkBnMk1hS7ZJePsjYDRxnSDxmwsqq_g";
       if (req.query.refresh === "true") {
-        cachedItemTitleEntryId = null;
         lastFormCheckTime = 0;
       }
-      const detectedItemTitleEntry = await getOrDetectItemTitleEntryId(GOOGLE_PARCEL_FORM_ID);
+      const formEntries = await getOrDetectParcelFormEntries(GOOGLE_PARCEL_FORM_ID);
       return res.json({
         formId: GOOGLE_PARCEL_FORM_ID,
-        hasItemTitleQuestion: !!detectedItemTitleEntry,
-        detectedEntryId: detectedItemTitleEntry,
+        hasItemTitleQuestion: !!formEntries.itemTitleEntry,
+        detectedEntryId: formEntries.itemTitleEntry,
+        hasTrackingCodeQuestion: !!formEntries.trackingCodeEntry,
+        detectedTrackingEntryId: formEntries.trackingCodeEntry,
         formEditUrl: `https://docs.google.com/forms/d/${GOOGLE_PARCEL_FORM_ID}/edit`,
         formViewUrl: `https://docs.google.com/forms/d/e/${GOOGLE_PARCEL_FORM_ID}/viewform`,
         sheetUrl: "https://docs.google.com/spreadsheets/d/1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330/edit?gid=1955620947",
@@ -372,22 +432,69 @@ async function startServer() {
         });
       }
 
+      const actionType = payload.actionType || "รับ";
+      const trackingCode = payload.trackingCode || (actionType === "ส่ง" ? generateServerParcelTrackingCode(payload.timestamp) : "");
+
+      // Duplicate prevention on server for already received codes:
+      // (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้)
+      if (actionType === "รับ" && trackingCode) {
+        const norm = trackingCode.replace(/[\s\-_]/g, "").toLowerCase();
+        const alreadyReceived = inMemorySubmissions.some((s) => {
+          if (!s.trackingCode) return false;
+          const sNorm = s.trackingCode.replace(/[\s\-_]/g, "").toLowerCase();
+          return sNorm === norm && s.actionType === "รับ";
+        });
+        if (alreadyReceived) {
+          return res.status(400).json({
+            success: false,
+            error: `รหัสติดตาม "${trackingCode}" ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้`,
+          });
+        }
+      }
+
+      // Check duplicate by exact title + sender + recipient for receiving
+      if (actionType === "รับ" && payload.itemTitle && payload.senderName && payload.recipientName) {
+        const normTitle = normalizeText(payload.itemTitle);
+        const normSender = normalizeText(payload.senderName);
+        const normRecipient = normalizeText(payload.recipientName);
+        const duplicateReceived = inMemorySubmissions.some((s) => {
+          if (s.actionType !== "รับ") return false;
+          return (
+            normalizeText(s.itemTitle) === normTitle &&
+            normalizeText(s.senderName) === normSender &&
+            normalizeText(s.recipientName) === normRecipient
+          );
+        });
+        if (duplicateReceived) {
+          return res.status(400).json({
+            success: false,
+            error: `ข้อมูลเอกสาร/พัสดุ "${payload.itemTitle.trim()}" (จาก ${payload.senderName.trim()} ถึง ${payload.recipientName.trim()}) ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้`,
+          });
+        }
+      }
+
       const GOOGLE_PARCEL_FORM_ID = "1FAIpQLSfhL7tVwlJ7aYMt7fCWkBnMk1hS7ZJePsjYDRxnSDxmwsqq_g";
       const GOOGLE_FORM_ACTION_URL = `https://docs.google.com/forms/d/e/${GOOGLE_PARCEL_FORM_ID}/formResponse`;
 
       // 1. Prepare Google Form POST parameters
+      const formEntries = await getOrDetectParcelFormEntries(GOOGLE_PARCEL_FORM_ID);
       const formParams = new URLSearchParams();
-      // Required Google Form entry mappings
-      formParams.append("entry.1879722225", payload.actionType || "รับ");
-      formParams.append("entry.645686724", payload.senderName || "");
-      formParams.append("entry.1066148556", payload.senderDepartment || "");
-      formParams.append("entry.222826518", payload.recipientName || "");
-      formParams.append("entry.600874339", payload.recipientDepartment || "");
 
-      // Check dynamically if the user has added a question in Google Form for "ชื่อเอกสาร / พัสดุ"
-      const detectedItemTitleEntry = await getOrDetectItemTitleEntryId(GOOGLE_PARCEL_FORM_ID);
-      if (detectedItemTitleEntry) {
-        formParams.append(detectedItemTitleEntry, payload.itemTitle || "");
+      // Required Google Form entry mappings
+      formParams.append(formEntries.actionTypeEntry, actionType);
+      formParams.append(formEntries.senderNameEntry, payload.senderName || "");
+      formParams.append(formEntries.senderDeptEntry, payload.senderDepartment || "");
+      formParams.append(formEntries.recipientNameEntry, payload.recipientName || "");
+      formParams.append(formEntries.recipientDeptEntry, payload.recipientDepartment || "");
+
+      // Question for "ชื่อเอกสาร / พัสดุ"
+      if (formEntries.itemTitleEntry && payload.itemTitle) {
+        formParams.append(formEntries.itemTitleEntry, payload.itemTitle.trim());
+      }
+
+      // Requirement 2: เมื่อกดทำรายการส่งเสร็จ ให้เพิ่มรหัสติดตามเข้าไปใน Google sheet ด้วย
+      if (formEntries.trackingCodeEntry && trackingCode) {
+        formParams.append(formEntries.trackingCodeEntry, trackingCode);
       }
 
       formParams.append("fvv", "1");
@@ -417,10 +524,11 @@ async function startServer() {
 
         if (isSuccess) {
           googleSheetSynced = true;
-          if (detectedItemTitleEntry) {
-            statusDetails = `ส่งข้อมูลครบถ้วนรวมทั้งชื่อเอกสาร/พัสดุ (${detectedItemTitleEntry}) ไปยัง Google Form และ Google Sheet สำเร็จเรียบร้อยแล้ว`;
+          const trackingMsg = trackingCode ? ` (เพิ่มรหัสติดตาม: ${trackingCode} เข้า Google Sheet ด้วยแล้ว)` : "";
+          if (formEntries.itemTitleEntry) {
+            statusDetails = `ส่งข้อมูลครบถ้วนรวมทั้งชื่อเอกสาร/พัสดุ และรหัสติดตาม ไปยัง Google Form และ Google Sheet สำเร็จเรียบร้อยแล้ว${trackingMsg}`;
           } else {
-            statusDetails = "ส่งข้อมูล 5 รายการพื้นฐานเข้า Google Form สำเร็จ (หมายเหตุ: ใน Google Form ยังไม่ได้เพิ่มคำถาม 'ชื่อเอกสาร / พัสดุ' ทำให้ Google Form ยังไม่ลงข้อมูลในคอลัมน์ชื่อเอกสารของ Sheet จนกว่าจะกดเพิ่มคำถามใน Google Form)";
+            statusDetails = `ส่งข้อมูลเข้า Google Form และ Google Sheet สำเร็จเรียบร้อยแล้ว${trackingMsg}`;
           }
         } else {
           statusDetails = `Google Form response status ${formResponse.status}`;
@@ -430,9 +538,6 @@ async function startServer() {
       }
 
       // 3. Save to persistent storage so the app always preserves itemTitle and trackingCode
-      const actionType = payload.actionType || "รับ";
-      const trackingCode = payload.trackingCode || (actionType === "ส่ง" ? generateServerParcelTrackingCode(payload.timestamp) : undefined);
-
       const savedRecord: ParcelSubmissionRecord = {
         id: `parcel-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         timestamp: payload.timestamp || new Date().toLocaleString("th-TH"),
@@ -466,6 +571,7 @@ async function startServer() {
           webhookData.append("ชื่อผู้รับตามหน้าซอง", payload.recipientName || "");
           webhookData.append("แผนกผู้รับ", payload.recipientDepartment || "");
           webhookData.append("ชื่อเอกสาร/พัสดุ", payload.itemTitle || "");
+          webhookData.append("รหัสติดตาม", trackingCode || "");
           webhookData.append("ชื่อผู้ทำรายการ", payload.operatorName || "");
           webhookData.append("แผนกผู้ทำรายการ", payload.operatorDepartment || "");
 
@@ -482,7 +588,9 @@ async function startServer() {
       return res.json({
         success: true,
         googleSheetSynced,
-        detectedItemTitleEntry: detectedItemTitleEntry || null,
+        detectedItemTitleEntry: formEntries.itemTitleEntry,
+        detectedTrackingEntry: formEntries.trackingCodeEntry,
+        trackingCodeSyncedToSheet: !!(formEntries.trackingCodeEntry && trackingCode),
         details: statusDetails,
         record: savedRecord,
         payload,

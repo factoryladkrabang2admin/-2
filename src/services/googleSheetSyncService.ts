@@ -3866,6 +3866,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
   let itemTitleIdx = headerRow.findIndex((h) => h.includes('ชื่อเอกสาร') || h.includes('พัสดุ') || h.includes('คอลัมน์ 6') || h.includes('รายการ'));
   let operatorNameIdx = headerRow.findIndex((h) => h.includes('ผู้ทำรายการ') && !h.includes('แผนก'));
   let operatorDeptIdx = headerRow.findIndex((h) => h.includes('แผนกผู้ทำรายการ'));
+  let trackingCodeIdx = headerRow.findIndex((h) => h.includes('รหัสติดตาม') || h.includes('tracking') || h.includes('รหัส'));
 
   // Default index positions fallback
   if (timestampIdx === -1) timestampIdx = 0;
@@ -3875,8 +3876,9 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
   if (recipientNameIdx === -1) recipientNameIdx = 4;
   if (recipientDeptIdx === -1) recipientDeptIdx = 5;
   if (itemTitleIdx === -1 && rows[0].length > 6) itemTitleIdx = 6;
-  if (operatorNameIdx === -1 && rows[0].length > 7) operatorNameIdx = 7;
-  if (operatorDeptIdx === -1 && rows[0].length > 8) operatorDeptIdx = 8;
+  if (trackingCodeIdx === -1 && rows[0].length > 7) trackingCodeIdx = 7;
+  if (operatorNameIdx === -1 && rows[0].length > 8) operatorNameIdx = 8;
+  if (operatorDeptIdx === -1 && rows[0].length > 9) operatorDeptIdx = 9;
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
@@ -3891,6 +3893,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     const itemTitle = itemTitleIdx >= 0 ? (row[itemTitleIdx] || '').trim() : '';
     const operatorName = operatorNameIdx >= 0 ? (row[operatorNameIdx] || '').trim() : '';
     const operatorDepartment = operatorDeptIdx >= 0 ? (row[operatorDeptIdx] || '').trim() : '';
+    const rowTrackingCode = trackingCodeIdx >= 0 ? (row[trackingCodeIdx] || '').trim() : '';
 
     if (!timestamp && !senderName && !recipientName && !itemTitle && !actionTypeRaw) continue;
 
@@ -3916,7 +3919,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     }
 
     let finalItemTitle = itemTitle;
-    let finalTrackingCode: string | undefined = undefined;
+    let finalTrackingCode: string | undefined = rowTrackingCode || undefined;
     try {
       const localSubs = getLocalParcelRecords();
       const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
@@ -3930,7 +3933,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
         if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
           finalItemTitle = match.itemTitle;
         }
-        if (match.trackingCode) {
+        if (!finalTrackingCode && match.trackingCode) {
           finalTrackingCode = match.trackingCode;
         }
       }
@@ -4121,6 +4124,8 @@ export interface ParcelSubmitResult {
   googleSheetSynced: boolean;
   itemTitleSyncedToSheet?: boolean;
   detectedEntryId?: string | null;
+  trackingCodeSyncedToSheet?: boolean;
+  detectedTrackingEntry?: string | null;
   details?: string;
   error?: string;
 }
@@ -4129,6 +4134,8 @@ export interface ParcelFormStatusResult {
   formId: string;
   hasItemTitleQuestion: boolean;
   detectedEntryId: string | null;
+  hasTrackingCodeQuestion?: boolean;
+  detectedTrackingEntryId?: string | null;
   formEditUrl: string;
   formViewUrl: string;
   sheetUrl: string;
@@ -4170,10 +4177,10 @@ export async function submitParcelDeliveryRecord(
   const dateStr = timestamp.split(/[\s,]+/)[0] || `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
   const webhookUrl = getParcelWebhookUrl();
 
-  // Generate tracking code for 'ส่ง' transactions matching laundry tracking running numbering
+  // Generate tracking code for 'ส่ง' transactions, or preserve passed tracking code
   const trackingCode = payload.actionType === 'ส่ง'
     ? (payload.trackingCode?.trim() || generateParcelTrackingCode(timestamp))
-    : undefined;
+    : (payload.trackingCode?.trim() || undefined);
 
   const newRecord: ParcelDeliveryRecord = {
     id: `local-parcel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -4195,7 +4202,9 @@ export async function submitParcelDeliveryRecord(
 
   let googleSheetSynced = false;
   let itemTitleSyncedToSheet = false;
+  let trackingCodeSyncedToSheet = false;
   let detectedEntryId: string | null = null;
+  let detectedTrackingEntry: string | null = null;
   let details = '';
 
   // Submit via Server Proxy Endpoint (/api/parcel-submit)
@@ -4217,15 +4226,24 @@ export async function submitParcelDeliveryRecord(
       const data = await res.json();
       googleSheetSynced = !!data.googleSheetSynced;
       itemTitleSyncedToSheet = !!data.detectedItemTitleEntry;
+      trackingCodeSyncedToSheet = !!data.trackingCodeSyncedToSheet;
       detectedEntryId = data.detectedItemTitleEntry || null;
+      detectedTrackingEntry = data.detectedTrackingEntry || null;
       details = data.details || '';
       if (data.record?.trackingCode) {
         newRecord.trackingCode = data.record.trackingCode;
       }
       saveLocalParcelRecord(newRecord);
     } else {
-      details = `Server returned status ${res.status}`;
-      saveLocalParcelRecord(newRecord);
+      const errData = await res.json().catch(() => ({}));
+      details = errData.error || `Server returned status ${res.status}`;
+      return {
+        success: false,
+        record: newRecord,
+        googleSheetSynced: false,
+        error: errData.error || `เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ (${res.status})`,
+        details,
+      };
     }
   } catch (err: any) {
     console.warn('Server proxy submit warning:', err);
@@ -4237,7 +4255,9 @@ export async function submitParcelDeliveryRecord(
     record: newRecord,
     googleSheetSynced,
     itemTitleSyncedToSheet,
+    trackingCodeSyncedToSheet,
     detectedEntryId,
+    detectedTrackingEntry,
     details,
   };
 }
