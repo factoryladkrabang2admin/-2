@@ -137,43 +137,43 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Top Controls Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-pink-100 dark:border-slate-800 shadow-xs">
+      {/* Top Controls Bar - Mobile & Tablet friendly */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-pink-100 dark:border-slate-800 shadow-xs">
         {/* Month Picker & Arrows */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-1 sm:gap-2">
           <button
             onClick={handlePrevMonth}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
             title="เดือนก่อนหน้า"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
-          <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white px-2 min-w-[160px] text-center">
+          <h3 className="text-sm sm:text-base md:text-lg font-black text-slate-900 dark:text-white px-1 sm:px-2 min-w-[130px] sm:min-w-[160px] text-center truncate">
             {monthLabel}
           </h3>
 
           <button
             onClick={handleNextMonth}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
             title="เดือนถัดไป"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           <button
             onClick={handleToday}
-            className="px-3 py-1.5 rounded-xl border border-pink-200 dark:border-pink-900/50 bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 text-xs font-bold hover:bg-pink-100 transition-colors cursor-pointer"
+            className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-pink-200 dark:border-pink-900/50 bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 text-xs font-bold hover:bg-pink-100 transition-colors cursor-pointer ml-auto sm:ml-0"
           >
             วันนี้
           </button>
         </div>
 
-        {/* Filter Buttons */}
-        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+        {/* Filter Buttons - Fitted compactly for mobile and tablet portrait */}
+        <div className="flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full sm:w-auto">
           <button
             onClick={() => setTypeFilter('all')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer text-center ${
               typeFilter === 'all'
                 ? 'bg-white dark:bg-slate-700 text-pink-600 dark:text-pink-300 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -183,7 +183,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
           </button>
           <button
             onClick={() => setTypeFilter('ส่ง')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer text-center ${
               typeFilter === 'ส่ง'
                 ? 'bg-rose-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -193,7 +193,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
           </button>
           <button
             onClick={() => setTypeFilter('รับ')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer text-center ${
               typeFilter === 'รับ'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -205,13 +205,13 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-pink-100 dark:border-slate-800 p-4 sm:p-5 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-pink-100 dark:border-slate-800 p-1.5 sm:p-3 lg:p-5 shadow-xs overflow-hidden">
         {/* Week Day Headers */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 mb-1 sm:mb-2">
           {weekDays.map((d, i) => (
             <div 
               key={d} 
-              className={`text-center py-2 font-bold text-xs ${
+              className={`text-center py-1 sm:py-1.5 md:py-2 font-bold text-[10px] sm:text-xs md:text-sm ${
                 i === 0 ? 'text-rose-500' : i === 6 ? 'text-sky-500' : 'text-slate-500 dark:text-slate-400'
               }`}
             >
@@ -221,10 +221,10 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
         </div>
 
         {/* Days cells */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
           {/* Empty padding days */}
           {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="h-20 sm:h-24 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 opacity-40" />
+            <div key={`empty-${idx}`} className="h-16 sm:h-20 md:h-24 rounded-lg sm:rounded-xl bg-slate-50/50 dark:bg-slate-800/30 opacity-40" />
           ))}
 
           {/* Actual days in month */}
@@ -241,11 +241,18 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
               new Date().getMonth() === currentMonth &&
               new Date().getFullYear() === currentYear;
 
+            // Responsive font sizing based on number of records (fits mobile portrait & tablet portrait seamlessly)
+            const getBadgeClass = (count: number) => {
+              if (count >= 100) return 'text-[6.5px] sm:text-[8px] md:text-[10px] px-0.5 sm:px-1';
+              if (count >= 10) return 'text-[7.5px] sm:text-[9px] md:text-[11px] px-0.5 sm:px-1.5';
+              return 'text-[8.5px] sm:text-[10px] md:text-xs px-0.5 sm:px-1.5';
+            };
+
             return (
               <div
                 key={`day-${dayNum}`}
                 onClick={() => handleDayClick(dayNum)}
-                className={`h-20 sm:h-24 p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                className={`h-16 sm:h-20 md:h-24 p-1 sm:p-1.5 md:p-2 rounded-lg sm:rounded-xl border transition-all cursor-pointer flex flex-col justify-between overflow-hidden ${
                   isSelected
                     ? 'border-pink-500 bg-pink-50/80 dark:bg-pink-950/40 shadow-xs ring-2 ring-pink-400/50'
                     : isToday
@@ -256,68 +263,39 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs sm:text-sm font-bold ${
+                  <span className={`font-bold transition-all ${
                     isToday 
-                      ? 'w-6 h-6 rounded-full bg-pink-600 text-white flex items-center justify-center' 
+                      ? 'w-4.5 h-4.5 sm:w-5 sm:h-5 md:w-6 md:h-6 rounded-full bg-pink-600 text-white flex items-center justify-center text-[9px] sm:text-[10px] md:text-xs shadow-xs' 
                       : isSelected 
-                      ? 'text-pink-600 dark:text-pink-400' 
-                      : 'text-slate-800 dark:text-slate-200'
+                      ? 'text-[10px] sm:text-xs md:text-sm text-pink-600 dark:text-pink-400' 
+                      : 'text-[10px] sm:text-xs md:text-sm text-slate-800 dark:text-slate-200'
                   }`}>
                     {dayNum}
                   </span>
+                </div>
+
+                {/* Display only numeric counts of รับ and ส่ง with responsive scaling for mobile & tablet portrait */}
+                <div className="flex flex-col items-center justify-center flex-1 py-0.5 gap-0.5 sm:gap-1 w-full min-w-0">
                   {hasRecords && (
-                    <span className="text-[10px] sm:text-xs font-bold px-1.5 py-0.2 rounded-full bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300">
-                      {dayRecords.length}
-                    </span>
-                  )}
-                </div>
-
-                {/* Mobile and Tablet mode (< lg:): Display as clean numbers */}
-                <div className="lg:hidden flex flex-col items-center justify-center flex-1 py-0.5">
-                  {hasRecords ? (
-                    <div className="flex flex-col items-center justify-center gap-1 w-full">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        {sentCount > 0 && (
-                          <span 
-                            className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-black bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
-                            title={`ส่ง ${sentCount} รายการ`}
-                          >
-                            <span>📤</span>
-                            <span>{sentCount}</span>
-                          </span>
-                        )}
-                        {receivedCount > 0 && (
-                          <span 
-                            className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                            title={`รับ ${receivedCount} รายการ`}
-                          >
-                            <span>📥</span>
-                            <span>{receivedCount}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Desktop mode (>= lg:): Detailed items preview */}
-                <div className="hidden lg:block space-y-1 overflow-hidden">
-                  {dayRecords.slice(0, 2).map((rec, index) => (
-                    <div 
-                      key={`${rec.id}-${rec.seq || index}`}
-                      className={`text-[9px] sm:text-[10px] truncate px-1 rounded-sm font-medium ${
-                        rec.actionType === 'ส่ง' 
-                          ? 'bg-rose-100/90 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' 
-                          : 'bg-emerald-100/90 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
-                      }`}
-                      title={`${rec.actionType}: ${rec.itemTitle}`}
-                    >
-                      {rec.actionType === 'ส่ง' ? '📤' : '📥'} {rec.itemTitle}
-                    </div>
-                  ))}
-                  {dayRecords.length > 2 && (
-                    <div className="text-[9px] text-slate-500 font-medium text-center">
-                      +{dayRecords.length - 2} รายการ
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-0.5 sm:gap-1 w-full min-w-0">
+                      {sentCount > 0 && (
+                        <span 
+                          className={`inline-flex items-center justify-center gap-0.5 py-0.5 rounded sm:rounded-md font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 w-full md:w-auto leading-none min-w-0 ${getBadgeClass(sentCount)}`}
+                          title={`ส่ง ${sentCount} รายการ`}
+                        >
+                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">ส่ง</span>
+                          <span className="font-mono font-black">{sentCount}</span>
+                        </span>
+                      )}
+                      {receivedCount > 0 && (
+                        <span 
+                          className={`inline-flex items-center justify-center gap-0.5 py-0.5 rounded sm:rounded-md font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-full md:w-auto leading-none min-w-0 ${getBadgeClass(receivedCount)}`}
+                          title={`รับ ${receivedCount} รายการ`}
+                        >
+                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">รับ</span>
+                          <span className="font-mono font-black">{receivedCount}</span>
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

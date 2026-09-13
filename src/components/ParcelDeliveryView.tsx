@@ -27,7 +27,6 @@ import {
   Mail,
   RotateCcw,
   ExternalLink,
-  QrCode,
   Copy,
   Check,
   Download
@@ -49,9 +48,7 @@ import { ParcelDetailModal } from './ParcelDetailModal';
 import { ParcelFilterModal, ParcelFilterState } from './ParcelFilterModal';
 import { ParcelAnalyticsModal } from './ParcelAnalyticsModal';
 import { ParcelCalendarView } from './ParcelCalendarView';
-import { ModernParcelQrModal } from './ModernParcelQrModal';
 import { CreateParcelRecordModal } from './CreateParcelRecordModal';
-import { ParcelScanReceiveModal } from './ParcelScanReceiveModal';
 
 interface ParcelDeliveryViewProps {
   currentUser?: AdminUserAccount | null;
@@ -90,16 +87,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [selectedQrParcel, setSelectedQrParcel] = useState<ParcelDeliveryRecord | null>(null);
-  const [showScanReceiveModal, setShowScanReceiveModal] = useState(false);
-  const [selectedScanParcel, setSelectedScanParcel] = useState<ParcelDeliveryRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-  // Current Window URL for QR Code & Sharing
-  const parcelWindowUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?tab=document_delivery`
-    : '';
 
   // Advanced Filters
   const [filters, setFilters] = useState<ParcelFilterState>({
@@ -536,26 +524,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     รับ - ส่งเอกสาร / พัสดุ
                   </span>
                 </button>
-
-                {/* ไอคอน QR Code รับเอกสาร / พัสดุ (เปิดฟังก์ชันกล้องพร้อมสแกนลงรับ) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedScanParcel(null);
-                    setShowScanReceiveModal(true);
-                  }}
-                  className="p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100 bg-white/90 dark:bg-slate-800/90 hover:bg-pink-100/70 dark:hover:bg-slate-700 border border-pink-200/80 dark:border-slate-700 shadow-xs active:scale-95 group relative flex items-center justify-center gap-1.5"
-                  title={language === 'th' ? 'ไอคอน QR Code รับเอกสาร / พัสดุ (เปิดกล้องสแกนรับเข้า)' : 'Scan Receive Parcel QR Code (Camera Scanner)'}
-                  aria-label={language === 'th' ? 'ไอคอน QR Code รับเอกสาร / พัสดุ' : 'Scan Receive Parcel QR Code'}
-                >
-                  <div className="relative flex items-center justify-center">
-                    <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-pink-600 dark:text-pink-400 transition-transform group-hover:scale-110" />
-                    <span className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 border border-white dark:border-slate-800 animate-pulse" />
-                  </div>
-                  <span className="hidden xl:inline text-xs font-bold text-pink-700 dark:text-pink-300 whitespace-nowrap">
-                    สแกนรับพัสดุ
-                  </span>
-                </button>
               </div>
             </div>
           </div>
@@ -747,21 +715,25 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
           {/* Search Box */}
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก..."
+              placeholder="ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก, รหัสติดตาม..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-9 py-2 bg-white/90 dark:bg-slate-800/90 border border-pink-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+              className="w-full pl-9 pr-8 py-2 bg-white/90 dark:bg-slate-800/90 border border-pink-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-pink-500"
             />
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  title="ล้างคำค้นหา"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -966,19 +938,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       {/* Tracking Code (หลังคอลัมน์ ผู้รับตามหน้าซอง) */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         {record.trackingCode ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedQrParcel(record);
-                              setShowQrModal(true);
-                            }}
-                            className="inline-flex items-center gap-1.5 font-mono text-xs font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
-                            title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
-                          >
-                            <QrCode className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
-                            <span>{record.trackingCode}</span>
-                          </button>
+                          <span className="inline-flex items-center font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                            {record.trackingCode}
+                          </span>
                         ) : (
                           <span className="text-slate-400 text-xs font-mono">-</span>
                         )}
@@ -1064,29 +1026,17 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
                         {isSent ? 'รายการส่ง' : 'รายการรับ'}
                       </span>
+
+                      {record.trackingCode && (
+                        <span className="font-mono text-xs font-bold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-950/60 px-2 py-0.5 rounded-lg border border-pink-200 dark:border-pink-800/60 shadow-2xs">
+                          {record.trackingCode}
+                        </span>
+                      )}
                     </div>
 
                     <h4 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
                       {record.itemTitle}
                     </h4>
-
-                    {isAdmin && record.trackingCode && (
-                      <div className="mt-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedQrParcel(record);
-                            setShowQrModal(true);
-                          }}
-                          className="inline-flex items-center gap-1 font-mono text-[11px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
-                          title="คลิกเพื่อเปิด QR Code ติดตามสถานะ"
-                        >
-                          <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                          <span>{record.trackingCode}</span>
-                        </button>
-                      </div>
-                    )}
 
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
                       <Clock className="w-3.5 h-3.5" />
@@ -1200,28 +1150,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                     <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
                       <span>แผนก: {record.recipientDepartment}</span>
-                      <span>ผู้บันทึก: {record.operatorName}</span>
                     </div>
-
-                    {isAdmin && record.trackingCode && (
-                      <div className="flex items-center justify-between pt-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedQrParcel(record);
-                            setShowQrModal(true);
-                          }}
-                          className="inline-flex items-center gap-1 font-mono text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 transition-colors cursor-pointer"
-                        >
-                          <QrCode className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                          <span>{record.trackingCode}</span>
-                        </button>
-                        <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline">
-                          เปิด QR ติดตาม
-                        </span>
-                      </div>
-                    )}
                   </div>
                 ))}
             </div>
@@ -1271,7 +1200,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                     <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
                       <span>แผนก: {record.recipientDepartment}</span>
-                      <span>ผู้บันทึก: {record.operatorName}</span>
                     </div>
                   </div>
                 ))}
@@ -1294,10 +1222,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         onClose={handleCloseDetailModal}
-        onReceiveParcel={(parcel) => {
-          setSelectedScanParcel(parcel);
-          setShowScanReceiveModal(true);
-        }}
       />
 
       {/* Filter Modal */}
@@ -1314,38 +1238,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
         records={records}
-      />
-
-      {/* Modern Parcel Delivery QR Code Modal with Cute Cartoon Mascot in Center */}
-      <ModernParcelQrModal
-        isOpen={showQrModal}
-        onClose={() => {
-          setShowQrModal(false);
-          setSelectedQrParcel(null);
-        }}
-        parcel={selectedQrParcel}
-        currentUser={currentUser}
-        isAuthenticated={isAuthenticated}
-        url={parcelWindowUrl}
-      />
-
-      {/* Camera QR Code Scanner & Instant Google Sheet Receive Modal */}
-      <ParcelScanReceiveModal
-        isOpen={showScanReceiveModal}
-        onClose={() => {
-          setShowScanReceiveModal(false);
-          setSelectedScanParcel(null);
-        }}
-        existingRecords={records}
-        currentUser={currentUser}
-        initialParcel={selectedScanParcel}
-        onReceiveSuccess={() => {
-          // Immediately reload from Google Sheet, and reload again after short delay for Google Sheet sync
-          loadData(true, false);
-          setTimeout(() => {
-            loadData(false, true);
-          }, 1500);
-        }}
       />
 
       {/* Create Record Modal (Both Receive & Send, strictly matching Google Sheet columns) */}

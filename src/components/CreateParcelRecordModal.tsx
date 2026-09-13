@@ -18,11 +18,9 @@ import {
   Info,
   AlertTriangle,
   RefreshCw,
-  QrCode,
   Sparkles,
-  Download,
+  Search,
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { ParcelDeliveryRecord } from '../types';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import {
@@ -34,7 +32,6 @@ import {
 } from '../services/googleSheetSyncService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { generateParcelTrackingCode } from '../utils/parcelTrackingUtils';
-import { ModernParcelQrModal } from './ModernParcelQrModal';
 
 interface CreateParcelRecordModalProps {
   isOpen: boolean;
@@ -110,9 +107,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [copiedData, setCopiedData] = useState(false);
   const [copiedTrackingCode, setCopiedTrackingCode] = useState(false);
-  const [copiedTrackingLink, setCopiedTrackingLink] = useState(false);
-  const [showQrCardModal, setShowQrCardModal] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  // Search tracking code state when actionType is 'รับ'
+  const [searchTrackingCode, setSearchTrackingCode] = useState<string>('');
+  const [matchedParcel, setMatchedParcel] = useState<ParcelDeliveryRecord | null>(null);
 
   // Projected tracking code for live preview when sending
   const projectedTrackingCode = actionType === 'ส่ง' 
@@ -169,6 +168,8 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       setRecipientDepartment('');
       setItemTitle('');
       setLastSubmitResult(null);
+      setSearchTrackingCode('');
+      setMatchedParcel(null);
 
       const userName = currentUser?.name || currentUser?.username || 'เจม';
       setOperatorName(userName);
@@ -202,6 +203,47 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   const handleSwitchActionType = (type: 'รับ' | 'ส่ง') => {
     if (isSuccess) setIsSuccess(false);
     setActionType(type);
+    if (type === 'ส่ง') {
+      setSearchTrackingCode('');
+      setMatchedParcel(null);
+    }
+  };
+
+  // Handler for searching tracking code when actionType is 'รับ'
+  // เมื่อใส่รหัสแล้ว ให้ดึงข้อมูลที่ส่งใส่ในช่องที่เหลือให้ถูกต้อง
+  const handleTrackingCodeSearch = (code: string) => {
+    setSearchTrackingCode(code);
+    if (isSuccess) setIsSuccess(false);
+
+    const clean = code.trim().toLowerCase().replace(/[\s\-_]/g, '');
+    if (!clean) {
+      setMatchedParcel(null);
+      return;
+    }
+
+    // Find matching parcel with tracking code
+    const match = existingRecords.find((r) => {
+      if (!r.trackingCode) return false;
+      const rClean = r.trackingCode.toLowerCase().replace(/[\s\-_]/g, '');
+      return rClean === clean || rClean.includes(clean) || clean.includes(rClean);
+    });
+
+    if (match) {
+      setMatchedParcel(match);
+      // ดึงข้อมูลที่ส่งใส่ในช่องที่เหลือให้ถูกต้อง
+      if (match.itemTitle) setItemTitle(match.itemTitle);
+      if (match.senderName) setSenderName(match.senderName);
+      if (match.senderDepartment) setSenderDepartment(match.senderDepartment);
+      if (match.recipientName) setRecipientName(match.recipientName);
+      if (match.recipientDepartment) setRecipientDepartment(match.recipientDepartment);
+    } else {
+      setMatchedParcel(null);
+    }
+  };
+
+  const handleClearTrackingSearch = () => {
+    setSearchTrackingCode('');
+    setMatchedParcel(null);
   };
 
   // Handle Form Submission via Google Form POST
@@ -244,7 +286,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
       const effectiveTrackingCode = actionType === 'ส่ง'
         ? generateParcelTrackingCode(currentTs, existingRecords)
-        : undefined;
+        : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : undefined));
 
       const res = await submitParcelDeliveryRecord({
         timestamp: currentTs,
@@ -285,10 +327,10 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     setErrorMessage(null);
     setLastSavedRecord(null);
     setLastSubmitResult(null);
-    setShowQrCardModal(false);
     setCopiedTrackingCode(false);
-    setCopiedTrackingLink(false);
     setTimestamp(formatCurrentThaiParcelTimestamp(new Date()));
+    setSearchTrackingCode('');
+    setMatchedParcel(null);
     setSenderName('');
     setSenderDepartment('');
     setRecipientName('');
@@ -302,20 +344,6 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       await navigator.clipboard.writeText(lastSavedRecord.trackingCode);
       setCopiedTrackingCode(true);
       setTimeout(() => setCopiedTrackingCode(false), 2500);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleCopyTrackingLink = async () => {
-    if (!lastSavedRecord?.trackingCode) return;
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const path = typeof window !== 'undefined' ? window.location.pathname : '';
-    const link = `${origin}${path}?tab=document_delivery&track=${encodeURIComponent(lastSavedRecord.trackingCode)}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopiedTrackingLink(true);
-      setTimeout(() => setCopiedTrackingLink(false), 2500);
     } catch {
       // ignore
     }
@@ -428,108 +456,25 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 </div>
               </div>
 
-              {/* QR Code Tracking Card for 'ส่ง' (Outgoing) Deliveries - Restricted to Admins & Page Admins */}
-              {isAdmin && lastSavedRecord.actionType === 'ส่ง' && lastSavedRecord.trackingCode && (
-                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-tr from-pink-50 via-rose-50 to-amber-50 dark:from-pink-950/40 dark:via-rose-950/20 dark:to-slate-900 border-2 border-pink-400 dark:border-pink-600 shadow-md space-y-3.5">
+              {/* Tracking Code Note for 'ส่ง' (Outgoing) Deliveries */}
+              {lastSavedRecord.actionType === 'ส่ง' && lastSavedRecord.trackingCode && (
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-xs">
-                        <QrCode className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-black text-sm text-pink-950 dark:text-pink-100">
-                            QR Code ติดตามสถานะงานส่ง
-                          </h4>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-600 text-white shadow-2xs">
-                            สร้างสำเร็จ
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-pink-700 dark:text-pink-300">
-                          {language === 'th' ? 'รูปแบบรหัสติดตามสถานะ (LKB2 - YYMMDDXX)' : 'Tracking Code Format (LKB2 - YYMMDDXX)'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowQrCardModal(true)}
-                      className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>เปิดบัตร QR ขยายใหญ่</span>
-                    </button>
-                  </div>
-
-                  {/* Tracking Code Chip Box */}
-                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-pink-200 dark:border-pink-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">รหัสติดตาม:</span>
-                      <span className="font-mono font-black text-base text-pink-700 dark:text-pink-400 tracking-wider">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">รหัสติดตามสถานะ:</span>
+                      <span className="font-mono font-black text-sm text-pink-700 dark:text-pink-400 tracking-wider">
                         {lastSavedRecord.trackingCode}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleCopyTrackingCode}
-                        className="px-2.5 py-1 rounded-lg border border-pink-200 dark:border-pink-800 bg-pink-50/80 dark:bg-pink-950/50 hover:bg-pink-100 text-pink-700 dark:text-pink-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        {copiedTrackingCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedTrackingCode ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleCopyTrackingLink}
-                        className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        {copiedTrackingLink ? <Check className="w-3 h-3 text-emerald-600" /> : <ExternalLink className="w-3 h-3" />}
-                        <span>{copiedTrackingLink ? 'คัดลอกลิงก์แล้ว' : 'คัดลอกลิงก์ติดตาม'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* QR SVG Display Preview */}
-                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/80 dark:bg-slate-800/80 p-3.5 rounded-xl border border-pink-200/80 dark:border-pink-900/40">
-                    <div 
-                      onClick={() => setShowQrCardModal(true)}
-                      className="p-2.5 bg-white rounded-xl shadow-xs border border-pink-200 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-pink-500 transition-all shrink-0 group text-center"
-                      title="คลิกเพื่อขยายและดาวน์โหลดภาพ"
+                    <button
+                      type="button"
+                      onClick={handleCopyTrackingCode}
+                      className="px-2.5 py-1 rounded-lg border border-pink-200 dark:border-pink-800 bg-white dark:bg-slate-800 hover:bg-pink-50 text-pink-700 dark:text-pink-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                     >
-                      <QRCodeSVG
-                        value={`${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}?tab=document_delivery&track=${encodeURIComponent(lastSavedRecord.trackingCode)}`}
-                        size={110}
-                        level="M"
-                        fgColor="#881337"
-                        bgColor="#ffffff"
-                      />
-                      <div className="text-[9px] text-pink-600 dark:text-pink-400 font-bold text-center mt-1 group-hover:underline">
-                        คลิกเพื่อขยาย
-                      </div>
-                    </div>
-
-                    <div className="text-xs space-y-1.5 flex-1 min-w-0">
-                      <div className="font-bold text-slate-800 dark:text-slate-200">
-                        ผู้รับหรือผู้จัดส่งสามารถใช้โทรศัพท์มือถือสแกนเพื่อ:
-                      </div>
-                      <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 text-[11px] space-y-0.5">
-                        <li>ตรวจสอบเส้นทาง: <span className="font-semibold text-slate-700 dark:text-slate-300">{lastSavedRecord.senderName} ({lastSavedRecord.senderDepartment}) → {lastSavedRecord.recipientName} ({lastSavedRecord.recipientDepartment})</span></li>
-                        <li>ดูรายละเอียดเอกสาร / พัสดุ: <span className="font-semibold text-pink-600 dark:text-pink-400">{lastSavedRecord.itemTitle}</span></li>
-                        <li>ยืนยันสถานะการรับ-ส่งเอกสารได้ทันที</li>
-                      </ul>
-                      <div className="pt-1 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowQrCardModal(true)}
-                          className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>บันทึกภาพบัตร QR Code (PNG)</span>
-                        </button>
-                      </div>
-                    </div>
+                      {copiedTrackingCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedTrackingCode ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -667,25 +612,82 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               </div>
 
               {/* Live Tracking Code Preview for Send */}
-              {actionType === 'ส่ง' && (
-                <div className="mt-3 p-2.5 rounded-xl bg-gradient-to-r from-pink-500/10 via-rose-500/10 to-amber-500/10 border border-pink-300 dark:border-pink-800/80 flex items-center justify-between gap-2 animate-in fade-in duration-150">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                      <QrCode className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
-                        <span>ระบบจะสร้าง QR Code ติดตามสถานะอัตโนมัติ</span>
-                      </div>
-                      <div className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
-                        {language === 'th' ? 'รหัสติดตามสถานะ:' : 'Tracking Code:'} <span className="font-mono font-black text-rose-700 dark:text-rose-300 text-xs">{projectedTrackingCode}</span>
-                      </div>
+              {actionType === 'ส่ง' && projectedTrackingCode && (
+                <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
+                      {language === 'th' ? 'รหัสติดตามสถานะ:' : 'Tracking Code:'} <span className="font-mono font-bold text-pink-700 dark:text-pink-300 text-xs">{projectedTrackingCode}</span>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 shrink-0">
-                    Auto QR
-                  </span>
+                </div>
+              )}
+
+              {/* ช่อง ค้นหา รหัสติดตาม ใต้ปุ่มรับ */}
+              {actionType === 'รับ' && (
+                <div className="mt-3 p-3.5 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <label 
+                      htmlFor="input-search-tracking-code" 
+                      className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5"
+                    >
+                      <Search className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>ค้นหา รหัสติดตาม (ดึงข้อมูลที่ส่งอัตโนมัติ)</span>
+                    </label>
+                    {searchTrackingCode && (
+                      <button
+                        type="button"
+                        onClick={handleClearTrackingSearch}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100 cursor-pointer flex items-center gap-0.5"
+                      >
+                        <X className="w-3 h-3" /> ล้าง
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      id="input-search-tracking-code"
+                      value={searchTrackingCode}
+                      onChange={(e) => handleTrackingCodeSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.preventDefault();
+                      }}
+                      placeholder="พิมพ์หรือวางรหัสติดตาม เช่น LKB2 - 26091201"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border-2 border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-slate-100 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                    />
+                    {searchTrackingCode && (
+                      <button
+                        type="button"
+                        onClick={handleClearTrackingSearch}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        title="ล้างข้อมูล"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Match Result Banner */}
+                  {matchedParcel && (
+                    <div className="p-2.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 text-xs text-emerald-900 dark:text-emerald-100 space-y-1 animate-in fade-in">
+                      <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>ดึงข้อมูลที่ส่งเรียบร้อยแล้ว: {matchedParcel.itemTitle}</span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 dark:text-emerald-300 pl-5">
+                        ผู้ส่ง: {matchedParcel.senderName} ({matchedParcel.senderDepartment}) ➔ ผู้รับ: {matchedParcel.recipientName} ({matchedParcel.recipientDepartment})
+                      </div>
+                    </div>
+                  )}
+
+                  {searchTrackingCode.trim() && !matchedParcel && (
+                    <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>ไม่พบรหัสติดตาม "{searchTrackingCode}" ในรายการที่ส่ง สามารถกรอกข้อมูลเองด้านล่างได้</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -847,24 +849,17 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   <span className="text-rose-500 font-bold">*</span>
                 </label>
 
-                {formStatus && (
+                {formStatus && !formStatus.hasItemTitleQuestion && (
                   <div>
-                    {formStatus.hasItemTitleQuestion ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                        <CheckCircle2 className="w-3 h-3" />
-                        เชื่อมต่อ Sheet แล้ว
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleRefreshFormStatus}
-                        className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
-                        title="คลิกเพื่อตรวจเช็ค Google Form อีกครั้ง"
-                      >
-                        <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                        ตรวจสถานะ Form
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={handleRefreshFormStatus}
+                      className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
+                      title="คลิกเพื่อตรวจเช็ค Google Form อีกครั้ง"
+                    >
+                      <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                      ตรวจสถานะ Form
+                    </button>
                   </div>
                 )}
               </div>
@@ -1013,17 +1008,6 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
           </div>
         </div>
       </div>
-
-      {/* Modern Parcel QR Modal for Full Tracking Card & PNG Download - Restricted to Admins & Page Admins */}
-      {isAdmin && lastSavedRecord && (
-        <ModernParcelQrModal
-          isOpen={showQrCardModal}
-          onClose={() => setShowQrCardModal(false)}
-          parcel={lastSavedRecord}
-          currentUser={currentUser}
-          isAuthenticated={isAuthenticated}
-        />
-      )}
     </div>
   );
 };
