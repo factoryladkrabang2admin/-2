@@ -547,7 +547,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                   <Sparkles className="w-4 h-4 text-amber-200 animate-pulse shrink-0" />
                   <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
-                    รับ - ส่งเอกสาร / พัสดุ
+                    เพิ่มรายการรับ-ส่ง เอกสาร / พัสดุ
                   </span>
                 </button>
               </div>
@@ -1168,10 +1168,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                           handleQuickReceive(record);
                         }}
                         className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                        title="กดรับพัสดุนี้"
+                        title="กดรับพัสดุนี้เอกสาร / พัสดุ"
                       >
                         <Inbox className="w-3.5 h-3.5" />
-                        <span>กดรับพัสดุนี้</span>
+                        <span>กดรับพัสดุนี้เอกสาร / พัสดุ</span>
                       </button>
                     )}
                     <span className="text-pink-600 dark:text-pink-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">

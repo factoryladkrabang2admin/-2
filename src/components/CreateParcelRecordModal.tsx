@@ -194,12 +194,13 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       setLastSubmitResult(null);
 
       if (initialRecordToReceive) {
-        // Pre-fill for "กดรับเอกสารหรือพัสดุ"
+        // Pre-fill for "กดรับพัสดุนี้เอกสาร / พัสดุ"
+        // ช่อง ชื่อผู้รับตามหน้าซอง, แผนกผู้รับ ให้เป็นช่องว่างเปล่า บังคับให้กรอกข้อมูลให้เรียบร้อย ถึงก่อนกดบันทึก
         setActionType('รับ');
         setSenderName(initialRecordToReceive.senderName || '');
         setSenderDepartment(initialRecordToReceive.senderDepartment || '');
-        setRecipientName(initialRecordToReceive.recipientName || '');
-        setRecipientDepartment(initialRecordToReceive.recipientDepartment || '');
+        setRecipientName('');
+        setRecipientDepartment('');
         setItemTitle(initialRecordToReceive.itemTitle || '');
         if (initialRecordToReceive.trackingCode) {
           setSearchTrackingCode(initialRecordToReceive.trackingCode);
@@ -277,12 +278,12 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
     if (match) {
       setMatchedParcel(match);
-      // ดึงข้อมูลที่ส่งใส่ในช่องที่เหลือให้ถูกต้อง
+      // ดึงข้อมูลที่ส่งใส่ในช่องที่เหลือให้ถูกต้อง (ยกเว้นผู้รับและแผนกผู้รับให้เป็นช่องว่างเพื่อให้กรอกใหม่ตามข้อกำหนด)
       if (match.itemTitle) setItemTitle(match.itemTitle);
       if (match.senderName) setSenderName(match.senderName);
       if (match.senderDepartment) setSenderDepartment(match.senderDepartment);
-      if (match.recipientName) setRecipientName(match.recipientName);
-      if (match.recipientDepartment) setRecipientDepartment(match.recipientDepartment);
+      setRecipientName('');
+      setRecipientDepartment('');
     } else {
       setMatchedParcel(null);
     }
@@ -1117,6 +1118,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{duplicateStatus.message || (language === 'th' ? 'รายการนี้ถูกรับไปแล้ว (ห้ามทำรายการซ้ำ)' : 'Already received')}</span>
               </span>
+            ) : !isSuccess && (!isRecipientNameValid || !isRecipientDeptValid) ? (
+              <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{language === 'th' ? 'กรุณากรอกชื่อผู้รับตามหน้าซองและแผนกผู้รับให้เรียบร้อย' : 'Please fill in recipient name & department'}</span>
+              </span>
             ) : !isSuccess && !isFormComplete ? (
               <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -1150,12 +1156,19 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   handleSubmit();
                 }
               }}
-              disabled={isSubmitting || (duplicateStatus.isAlreadyReceived && !isSuccess)}
+              disabled={isSubmitting || (!isSuccess && (!isRecipientNameValid || !isRecipientDeptValid || !isSenderNameValid || !isSenderDeptValid || !isItemTitleValid || duplicateStatus.isAlreadyReceived))}
+              title={
+                !isSuccess && (!isRecipientNameValid || !isRecipientDeptValid)
+                  ? 'กรุณากรอกชื่อผู้รับตามหน้าซองและแผนกผู้รับให้เรียบร้อยก่อนบันทึก'
+                  : undefined
+              }
               className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 isSuccess
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 border border-emerald-500/50'
                   : duplicateStatus.isAlreadyReceived
                   ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                  : (!isRecipientNameValid || !isRecipientDeptValid || !isFormComplete)
+                  ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed shadow-none'
                   : 'bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 text-white shadow-md shadow-pink-500/20 hover:shadow-lg'
               }`}
             >
