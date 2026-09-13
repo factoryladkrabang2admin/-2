@@ -127,7 +127,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
   // Effective tracking code preview when receiving ('รับ')
   const projectedReceiveTrackingCode = actionType === 'รับ'
-    ? (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(timestamp || new Date(), existingRecords)))
+    ? (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : ''))
     : '';
 
   // ตรวจสอบการทำรายการซ้ำแบบเรียลไทม์ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
@@ -329,7 +329,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
     const effectiveTrackingCode = actionType === 'ส่ง'
       ? generateParcelTrackingCode(currentTs, existingRecords)
-      : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : generateParcelTrackingCode(currentTs, existingRecords)));
+      : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : undefined));
 
     // ตรวจสอบการทำรายการซ้ำ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
     const duplicateCheck = checkParcelAlreadyReceived({

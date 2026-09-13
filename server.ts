@@ -49,7 +49,7 @@ function generateServerParcelTrackingCode(timestamp?: string): string {
   const targetTag = `LKB2${dateTag}`.toUpperCase();
   let maxSeq = 0;
   for (const s of inMemorySubmissions) {
-    if (!s.trackingCode) continue;
+    if (!s.trackingCode || (s.actionType && s.actionType !== "ส่ง")) continue;
     const norm = s.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
     if (norm.startsWith(targetTag)) {
       const seqStr = norm.slice(targetTag.length);

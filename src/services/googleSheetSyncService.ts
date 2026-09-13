@@ -4179,7 +4179,7 @@ export async function submitParcelDeliveryRecord(
 
   // Generate tracking code for 'ส่ง' transactions, or preserve passed tracking code
   const trackingCode = payload.actionType === 'ส่ง'
-    ? (payload.trackingCode?.trim() || generateParcelTrackingCode(timestamp))
+    ? (payload.trackingCode?.trim() || generateParcelTrackingCode(timestamp, getLocalParcelRecords()))
     : (payload.trackingCode?.trim() || undefined);
 
   const newRecord: ParcelDeliveryRecord = {

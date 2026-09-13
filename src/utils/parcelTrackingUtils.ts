@@ -81,18 +81,25 @@ export function generateParcelTrackingCode(
 
   let maxSeq = 0;
 
-  // 1. Check passed-in existing records
+  const inspectRecord = (rec: { trackingCode?: string; actionType?: string }) => {
+    if (!rec.trackingCode) return;
+    // Only 'ส่ง' (Send) records establish the consecutive outgoing tracking code sequence
+    if (rec.actionType && rec.actionType !== 'ส่ง') return;
+
+    const normalized = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
+    if (normalized.startsWith(targetTag)) {
+      const seqStr = normalized.slice(targetTag.length);
+      const parsed = parseInt(seqStr, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+  };
+
+  // 1. Check passed-in existing records (Google Sheet & local state)
   if (existingRecords && existingRecords.length > 0) {
     for (const rec of existingRecords) {
-      if (!rec.trackingCode) continue;
-      const normalized = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
-      if (normalized.startsWith(targetTag)) {
-        const seqStr = normalized.slice(targetTag.length);
-        const parsed = parseInt(seqStr, 10);
-        if (!isNaN(parsed) && parsed > maxSeq) {
-          maxSeq = parsed;
-        }
-      }
+      inspectRecord(rec);
     }
   }
 
@@ -100,20 +107,13 @@ export function generateParcelTrackingCode(
   try {
     const localRecords = getLocalParcelRecords();
     for (const rec of localRecords) {
-      if (!rec.trackingCode) continue;
-      const normalized = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
-      if (normalized.startsWith(targetTag)) {
-        const seqStr = normalized.slice(targetTag.length);
-        const parsed = parseInt(seqStr, 10);
-        if (!isNaN(parsed) && parsed > maxSeq) {
-          maxSeq = parsed;
-        }
-      }
+      inspectRecord(rec);
     }
   } catch {
     // ignore
   }
 
+  // Running number increments strictly by 1 (เป็นทีละเลข)
   const nextSeq = String(maxSeq + 1 + offsetIndex).padStart(2, '0');
   return `${prefix}${nextSeq}`;
 }
@@ -129,60 +129,35 @@ export function getParcelTrackingUrl(trackingCode: string): string {
 }
 
 /**
- * Assigns tracking codes to parcel records ("ส่ง" and "รับ") if missing, ordered chronologically
- * so every transaction in the system has a consistent, trackable tracking code.
+ * Assigns tracking codes to parcel records:
+ * - Keeps original authoritative tracking codes from Google Sheet / submissions.
+ * - Links 'รับ' (Receive) records to their corresponding 'ส่ง' (Send) tracking codes.
+ * - DOES NOT invent synthetic sequence numbers that leapfrog or skip numbers in the running sequence.
  */
 export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
   if (!records || records.length === 0) return [];
 
-  // Group records by dateTag to assign sequence numbers if missing
-  const dateSeqMap = new Map<string, number>();
-
-  // First pass: find existing max sequence per date across all records with tracking codes
-  records.forEach((r) => {
-    if (r.trackingCode) {
-      const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
-      const targetTag = `LKB2${dateTag}`.toUpperCase();
-      const normalized = r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
-      if (normalized.startsWith(targetTag)) {
-        const parsed = parseInt(normalized.slice(targetTag.length), 10);
-        if (!isNaN(parsed)) {
-          const current = dateSeqMap.get(dateTag) || 0;
-          if (parsed > current) {
-            dateSeqMap.set(dateTag, parsed);
-          }
-        }
-      }
-    }
-  });
-
-  // Sort by sequence or timestamp
+  // Sort by sequence or timestamp (earliest first)
   const sortedBySeq = [...records].sort((a, b) => (a.seq || 0) - (b.seq || 0));
 
   const codeAssignmentMap = new Map<string, string>();
   // Map of known send items by normalized title/sender to match with receive items
   const sendItemMap = new Map<string, string>();
 
+  // 1. Register all authentic tracking codes from 'ส่ง' records
   sortedBySeq.forEach((r) => {
     if (r.actionType === 'ส่ง') {
-      let code = r.trackingCode;
-      if (!code) {
-        const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
-        const currentSeq = (dateSeqMap.get(dateTag) || 0) + 1;
-        dateSeqMap.set(dateTag, currentSeq);
-        code = `LKB2 - ${dateTag}${String(currentSeq).padStart(2, '0')}`;
-      }
-      codeAssignmentMap.set(r.id, code);
-
-      // Index for matching with 'รับ'
-      if (r.itemTitle) {
-        const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
-        sendItemMap.set(key, code);
+      if (r.trackingCode) {
+        codeAssignmentMap.set(r.id, r.trackingCode);
+        if (r.itemTitle) {
+          const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
+          sendItemMap.set(key, r.trackingCode);
+        }
       }
     }
   });
 
-  // Assign for 'รับ' records
+  // 2. Link 'รับ' records to matching 'ส่ง' tracking codes
   sortedBySeq.forEach((r) => {
     if (r.actionType === 'รับ') {
       if (r.trackingCode) {
@@ -197,14 +172,9 @@ export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): P
 
         if (matchedCode) {
           codeAssignmentMap.set(r.id, matchedCode);
-        } else {
-          // Generate tracking code for this received record
-          const { dateTag } = extractParcelDateTag(r.timestamp || r.dateStr);
-          const currentSeq = (dateSeqMap.get(dateTag) || 0) + 1;
-          dateSeqMap.set(dateTag, currentSeq);
-          const generatedCode = `LKB2 - ${dateTag}${String(currentSeq).padStart(2, '0')}`;
-          codeAssignmentMap.set(r.id, generatedCode);
         }
+        // NOTE: Unlinked receive items must NOT generate a new sequence number here,
+        // which previously caused the outgoing sequence to skip numbers.
       }
     }
   });
