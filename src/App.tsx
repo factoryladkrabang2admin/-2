@@ -7,6 +7,7 @@ import {
   DEFAULT_GUEST_USER,
   AdminUserAccount,
   isUserAdminOrSupervisor,
+  canCreateLaundryOrder,
   saveUpdatedUserCredentials
 } from './data/mockData';
 import { INITIAL_LAUNDRY_ORDERS } from './data/mockLaundryData';
@@ -190,6 +191,7 @@ export default function App() {
 
   // Handler to open CreateLaundryModal in "ซักเสร็จแล้ว" completion mode (same workflow as Parcel Delivery)
   const handleOpenCompleteOrder = (order: LaundryOrder) => {
+    if (!canCreateLaundryOrder(currentUser, isAuthenticated)) return;
     setSelectedLaundryOrder(null);
     setOrderToComplete(order);
     setCreateLaundryModalOpen(true);
@@ -857,6 +859,7 @@ export default function App() {
               isAuthenticated={isAuthenticated}
               initialSubTab="rags_gloves"
               onOpenCreateOrder={() => {
+                if (!canCreateLaundryOrder(currentUser, isAuthenticated)) return;
                 setOrderToComplete(null);
                 setCreateLaundryModalOpen(true);
               }}
@@ -1013,6 +1016,7 @@ export default function App() {
               isAuthenticated={isAuthenticated}
               initialSubTab={laundrySubTab}
               onOpenCreateOrder={() => {
+                if (!canCreateLaundryOrder(currentUser, isAuthenticated)) return;
                 setOrderToComplete(null);
                 setCreateLaundryModalOpen(true);
               }}
@@ -1047,6 +1051,8 @@ export default function App() {
         existingOrders={laundryOrders}
         onSyncGoogleSheet={() => syncGoogleSheet(true)}
         initialOrderToComplete={orderToComplete}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
       />
 
       <LaundryDetailModal
@@ -1057,6 +1063,7 @@ export default function App() {
         onDeleteOrder={handleDeleteLaundryOrder}
         onCompleteOrder={handleOpenCompleteOrder}
         currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
       />
 
       {standaloneTrackingOrder && (

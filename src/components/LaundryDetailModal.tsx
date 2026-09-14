@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LaundryOrder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
+import { AdminUserAccount, isUserAdminOrSupervisor, canCreateLaundryOrder } from '../data/mockData';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
 import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import {
@@ -26,7 +26,8 @@ interface LaundryDetailModalProps {
   onUpdateOrder?: (updated: LaundryOrder) => void;
   onDeleteOrder?: (orderId: string) => void;
   onCompleteOrder?: (order: LaundryOrder) => void;
-  currentUser?: AdminUserAccount;
+  currentUser?: AdminUserAccount | null;
+  isAuthenticated?: boolean;
 }
 
 const STAGES_CONFIG = [
@@ -54,10 +55,14 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
   onDeleteOrder,
   onCompleteOrder,
   currentUser,
+  isAuthenticated = true,
 }) => {
   const { language } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // สิทธิ์การเปลี่ยนสถานะเป็นซักเสร็จแล้ว: จำกัดเฉพาะผู้ดูแล, แอดมินเพจ และพนักงาน ตำแหน่ง ธุรการ เท่านั้น
+  const canCompleteOrder = canCreateLaundryOrder(currentUser, isAuthenticated);
 
   if (!isOpen || !order) return null;
 
@@ -125,21 +130,6 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {currentStage === 'washing' && onCompleteOrder && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onCompleteOrder(order);
-                }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs active:scale-95"
-                title={language === 'th' ? 'กดเปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed'}
-              >
-                <CheckCircle2 className="w-4 h-4 text-white" />
-                <span className="hidden sm:inline">{language === 'th' ? 'ซักเสร็จแล้ว' : 'Mark Done'}</span>
-              </button>
-            )}
-
             <button
               onClick={onClose}
               className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
@@ -274,20 +264,6 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
                       </>
                     )}
                   </button>
-
-                  {currentStage === 'washing' && onCompleteOrder && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onCompleteOrder(order);
-                      }}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-white" />
-                      <span>{language === 'th' ? 'เปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed'}</span>
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -355,7 +331,7 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
-            {currentStage === 'washing' && onCompleteOrder && (
+            {canCompleteOrder && currentStage === 'washing' && onCompleteOrder && (
               <button
                 type="button"
                 onClick={() => {

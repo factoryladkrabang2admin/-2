@@ -216,20 +216,23 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
 
 export function canCreateLaundryOrder(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
   if (!isAuthenticated || !user) return false;
-  // ผู้ดูแล, แอดมินเพจ (Admin / Supervisor / Super Admin / Page Admin)
+  // 1. ผู้ดูแล, แอดมินเพจ (Super Administrator / Administrator / Page Admin / Supervisor)
   if (isUserAdminOrSupervisor(user, isAuthenticated)) return true;
 
   const role = (user.role || '').toLowerCase().trim();
   const name = (user.name || '').toLowerCase().trim();
   const username = (user.username || '').toLowerCase().replace(/^@/, '').trim();
+  const department = ((user as any).department || '').toLowerCase().trim();
 
-  // พนักงาน ตำแหน่ง ธุรการ (Admin officer / General admin / ธุรการลาดกระบัง)
+  // 2. พนักงาน ตำแหน่ง ธุรการ (Admin officer / General admin / ธุรการลาดกระบัง)
   if (
     role.includes('ธุรการ') ||
     role.includes('admin officer') ||
     role.includes('clerk') ||
+    role.includes('administrative') ||
     name.includes('ธุรการ') ||
-    username.includes('admin')
+    username.includes('admin') ||
+    department.includes('ธุรการ')
   ) {
     return true;
   }
@@ -237,8 +240,8 @@ export function canCreateLaundryOrder(user?: AdminUserAccount | null, isAuthenti
   // Check known employee department for user if they have employeeId
   const empId = getUserEmployeeId(user);
   if (empId) {
-    const matchedStaff = INITIAL_OT_STAFF_EMPLOYEES.find(s => s.employeeId === empId);
-    if (matchedStaff && matchedStaff.department.includes('ธุรการ')) {
+    const matchedInitial = INITIAL_OT_STAFF_EMPLOYEES.find(s => s.employeeId.toUpperCase() === empId.toUpperCase());
+    if (matchedInitial && matchedInitial.department.includes('ธุรการ')) {
       return true;
     }
   }

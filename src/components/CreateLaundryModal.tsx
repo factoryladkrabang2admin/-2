@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { LaundryOrder, LaundryItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { AdminUserAccount, canCreateLaundryOrder } from '../data/mockData';
 import { 
   X, 
   Plus, 
@@ -17,7 +18,8 @@ import {
   Loader2, 
   RefreshCw,
   FileSpreadsheet,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 import { 
   submitLaundryOrder, 
@@ -34,6 +36,8 @@ interface CreateLaundryModalProps {
   existingOrders?: LaundryOrder[];
   onSyncGoogleSheet?: () => void;
   initialOrderToComplete?: LaundryOrder | null;
+  currentUser?: AdminUserAccount | null;
+  isAuthenticated?: boolean;
 }
 
 export function generateTrackingCode(dateStr: string, existingOrders: LaundryOrder[] = [], offsetIndex: number = 0): string {
@@ -134,25 +138,37 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
   existingOrders = [],
   onSyncGoogleSheet,
   initialOrderToComplete = null,
+  currentUser,
+  isAuthenticated = true,
 }) => {
   const { language } = useLanguage();
 
-  // Status choice from Google Form: "อยู่ระหว่างการซัก" vs "ซักเสร็จแล้ว"
-  const [actionType, setActionType] = useState<'อยู่ระหว่างการซัก' | 'ซักเสร็จแล้ว'>('อยู่ระหว่างการซัก');
+  // ตรวจสอบสิทธิ์การสร้างรายการซักผ้า (เฉพาะ ผู้ดูแล, แอดมินเพจ และพนักงาน ตำแหน่ง ธุรการ)
+  const canCreate = useMemo(() => {
+    if (currentUser === undefined) return true;
+    return canCreateLaundryOrder(currentUser, isAuthenticated);
+  }, [currentUser, isAuthenticated]);
 
-  const [orderDate, setOrderDate] = useState<string>(() => {
+  // Helper to format today's date YYYY-MM-DD
+  const getTodayDateStr = (): string => {
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
-  });
+  };
 
-  const [trackingCode, setTrackingCode] = useState<string>(() => generateTrackingCode(orderDate, existingOrders));
-  const [deliveryTime, setDeliveryTime] = useState<string>('12.35');
-  const [selectedDept, setSelectedDept] = useState<string>('2/1');
+  // Status choice from Google Form: "อยู่ระหว่างการซัก" vs "ซักเสร็จแล้ว"
+  const [actionType, setActionType] = useState<'อยู่ระหว่างการซัก' | 'ซักเสร็จแล้ว'>('อยู่ระหว่างการซัก');
+
+  const [orderDate, setOrderDate] = useState<string>(getTodayDateStr);
+  const [trackingCode, setTrackingCode] = useState<string>(() => generateTrackingCode(getTodayDateStr(), existingOrders));
+  const [deliveryTime, setDeliveryTime] = useState<string>(''); // Default unselected
+  const [selectedDept, setSelectedDept] = useState<string>(''); // Default unselected
   const [customDept, setCustomDept] = useState('');
-  const [customerName, setCustomerName] = useState('สุริยา');
+  const [customerName, setCustomerName] = useState(''); // Default empty for user input
+  const [justSavedSuccess, setJustSavedSuccess] = useState(false);
+  const [justCompletedSuccess, setJustCompletedSuccess] = useState(false);
 
   // Multi-item garment list
   const [items, setItems] = useState<LaundryItemDetail[]>([
@@ -187,7 +203,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     setOrderDate(d);
 
     // 2. Operator Name
-    const op = order.customerName || order.assignedStaff || 'สุริยา';
+    const op = order.customerName || order.assignedStaff || '';
     setCustomerName(op);
 
     // 3. Department
@@ -226,13 +242,35 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
   // Auto update or populate order when modal opens
   useEffect(() => {
     if (isOpen) {
+      setJustSavedSuccess(false);
+      setJustCompletedSuccess(false);
       if (initialOrderToComplete) {
         setActionType('ซักเสร็จแล้ว');
         autoPopulateFromOrder(initialOrderToComplete);
       } else {
         if (actionType === 'อยู่ระหว่างการซัก') {
-          setTrackingCode(generateTrackingCode(orderDate, existingOrders));
+          const todayStr = getTodayDateStr();
+          setOrderDate(todayStr);
+          setTrackingCode(generateTrackingCode(todayStr, existingOrders));
           setMatchedOrder(null);
+          setCustomerName('');
+          setSelectedDept('');
+          setCustomDept('');
+          setDeliveryTime('');
+          setItems([
+            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+          ]);
+        } else {
+          // ถ้าไม่ได้เปิดจากรายการกำลังซัก ให้เป็นช่องว่างรอกรอก
+          setTrackingCode('');
+          setMatchedOrder(null);
+          setCustomerName('');
+          setSelectedDept('');
+          setCustomDept('');
+          setDeliveryTime('');
+          setItems([
+            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+          ]);
         }
       }
       setSubmitSuccess(null);
@@ -275,14 +313,25 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
   const handleActionTypeChange = (newType: 'อยู่ระหว่างการซัก' | 'ซักเสร็จแล้ว') => {
     setActionType(newType);
+    setJustSavedSuccess(false);
+    setJustCompletedSuccess(false);
+    setSubmitFeedback('');
     if (newType === 'อยู่ระหว่างการซัก') {
       setMatchedOrder(null);
-      setTrackingCode(generateTrackingCode(orderDate, existingOrders));
+      setTrackingCode(generateTrackingCode(orderDate || getTodayDateStr(), existingOrders));
     } else {
       // Switched to 'ซักเสร็จแล้ว'
-      // If we already have washing orders and user hasn't selected one, let user pick
-      if (washingOrders.length > 0 && !matchedOrder) {
-        // Keep or user can select from the dropdown
+      // ถ้าไม่ได้กดจากรายการอยู่ระหว่างซักผ้า ให้เป็นช่องว่างรอกรอก
+      if (!initialOrderToComplete) {
+        setTrackingCode('');
+        setMatchedOrder(null);
+        setCustomerName('');
+        setSelectedDept('');
+        setCustomDept('');
+        setDeliveryTime('');
+        setItems([
+          { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+        ]);
       }
     }
   };
@@ -330,7 +379,32 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim()) return;
+    if (!customerName.trim()) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณากรอกชื่อผู้ดำเนินการ' : 'Please enter operator name');
+      return;
+    }
+    if (!selectedDept) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณาเลือกแผนก' : 'Please select department');
+      return;
+    }
+    if (selectedDept === 'other' && !customDept.trim()) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณาระบุชื่อแผนก' : 'Please specify department');
+      return;
+    }
+    if (!deliveryTime) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณาเลือกเวลาที่จัดส่ง' : 'Please select delivery time');
+      return;
+    }
+
+    if (actionType === 'ซักเสร็จแล้ว' && !trackingCode.trim()) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณากรอกรหัสติดตามผ้าที่ซักเสร็จแล้ว' : 'Please enter tracking code');
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitFeedback('');
@@ -410,7 +484,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           stage: actionType === 'ซักเสร็จแล้ว' ? 'ready' : 'washing',
           label: actionType === 'ซักเสร็จแล้ว' ? 'บันทึกสถานะซักเสร็จแล้ว' : 'บันทึกรับผ้า (กำลังซัก)',
           timestamp: realReceivedAt,
-          note: `บันทึกผ่าน Google Form & บันทึกลง Google Sheet เรียบร้อยแล้ว (รหัส: ${finalTrackingCode}) แผนก ${finalDept} โดย ${customerName.trim()}`,
+          note: `บันทึกเรียบร้อยแล้ว (รหัส: ${finalTrackingCode}) แผนก ${finalDept} โดย ${customerName.trim()}`,
           operator: customerName.trim(),
         },
       ],
@@ -423,22 +497,54 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       onSyncGoogleSheet();
     }
 
-    if (submitResult.success) {
+    if (actionType === 'อยู่ระหว่างการซัก') {
+      // Requirements 2 & 8:
+      // เมื่อทำรายการอยู่ระหว่างซัก เมื่อกดปุ่มบันทึกข้อมูล แล้ว ให้เป็นเปลี่ยนสีเขียว ไม่ต้องปิดหน้าต่างลง แต่ให้ระบบรีเซ็ทหน้าเปล่าเพิ่มทำรายการใหม่
+      setJustSavedSuccess(true);
       setSubmitSuccess(true);
-      setSubmitFeedback(submitResult.message || 'บันทึกลงใน Google Form และ Google Sheet สำเร็จเรียบร้อยแล้ว');
+      setSubmitFeedback(
+        language === 'th'
+          ? `✓ บันทึกข้อมูลรหัส ${finalTrackingCode} สำเร็จเรียบร้อยแล้ว ระบบรีเซ็ตฟอร์มพร้อมบันทึกรายการใหม่`
+          : `✓ Order ${finalTrackingCode} saved! Form reset for next entry.`
+      );
+
+      // Reset form to blank state for new entry
+      setMatchedOrder(null);
+      const todayStr = getTodayDateStr();
+      setOrderDate(todayStr);
+      setCustomerName('');
+      setSelectedDept('');
+      setCustomDept('');
+      setDeliveryTime('');
+      setItems([
+        { id: `item-${Date.now()}`, name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+      ]);
+      const updatedOrders = [...existingOrders, newOrder];
+      setTrackingCode(generateTrackingCode(todayStr, updatedOrders));
+
+      // Revert green button state after 3 seconds
       setTimeout(() => {
-        onClose();
-      }, 1200);
+        setJustSavedSuccess(false);
+      }, 3000);
     } else {
-      setSubmitSuccess(false);
-      setSubmitFeedback(submitResult.message || 'บันทึกในระบบเรียบร้อย แต่ Google Form ขัดข้อง');
+      // Requirements:
+      // หน้าต่างปุ่มเพิ่มรายการซักผ้า ปุ่มซักเสร็จแล้ว เมื่อกดปุ่มบันทึกข้อมูล แล้ว ให้เป็นเปลี่ยนสีเขียว และเปลี่ยนคำเป็น ดำเนินการเสร็จสิ้น
+      setJustCompletedSuccess(true);
+      setSubmitSuccess(true);
+      setSubmitFeedback(
+        language === 'th'
+          ? `✓ บันทึกข้อมูลดำเนินการเสร็จสิ้นเรียบร้อยแล้ว (${finalTrackingCode})`
+          : `✓ Order ${finalTrackingCode} completed successfully!`
+      );
       setTimeout(() => {
         onClose();
-      }, 1500);
+        setJustCompletedSuccess(false);
+      }, 1800);
     }
   };
 
   if (!isOpen) return null;
+  if (!initialOrderToComplete && !canCreate) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -457,34 +563,18 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                     ? (language === 'th' ? 'เปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed & Ready')
                     : (language === 'th' ? 'เพิ่มรายการซัก-อบผ้า' : 'Add Laundry Record')}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Google Form & Sheet Synced
-                </span>
               </div>
               <p className="text-[11px] text-[#adc7f7]">
                 {initialOrderToComplete
                   ? `${language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:'} ${initialOrderToComplete.trackingCode} | ${language === 'th' ? 'แผนก:' : 'Dept:'} ${initialOrderToComplete.customerRoomOrDept}`
                   : (language === 'th'
-                    ? 'ระบบบันทึกผ่าน Google Form และซิงค์ลงใน Google Sheet อัตโนมัติ'
-                    : 'Submitted via Google Form and automatically synced to Google Sheet')}
+                    ? 'บันทึกข้อมูลการซัก-อบผ้าโรงงาน'
+                    : 'Factory laundry and uniform washing record')}
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-1.5">
-            {/* Direct Link to Google Form Prefill */}
-            <a
-              href={prefillUrl || GOOGLE_LAUNDRY_FORM_PREFILL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-2.5 py-1.5 text-xs text-sky-200 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-1.5 border border-white/15 cursor-pointer"
-              title={language === 'th' ? 'เปิดแบบฟอร์ม Google Form โดยตรง' : 'Open Google Form directly'}
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-sky-300" />
-              <span className="hidden sm:inline">Google Form</span>
-            </a>
-
             <button
               type="button"
               onClick={onClose}
@@ -511,7 +601,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           {/* Section 0: สถานะการซัก (เลือกข้อมูล: อยู่ระหว่างการซัก / ซักเสร็จแล้ว) */}
           <div className="p-3 bg-sky-50/60 border border-sky-200/80 rounded-xl">
             <label className="block text-xs font-bold text-sky-950 mb-2">
-              {language === 'th' ? '1. เลือกข้อมูลสถานะ (Google Form) *' : '1. Status Selection (Google Form) *'}
+              {language === 'th' ? '1. เลือกข้อมูลสถานะ *' : '1. Status Selection *'}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -571,35 +661,6 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                 )}
               </div>
 
-              {/* Quick Dropdown: เลือกจากรายการที่กำลังซักอยู่ */}
-              {washingOrders.length > 0 && (
-                <div>
-                  <label className="block text-[11px] font-bold text-emerald-900 mb-1">
-                    {language === 'th' ? 'หรือเลือกรหัสจากรายการที่กำลังซักอยู่ (คลิกเพื่อดึงข้อมูลทันที):' : 'Or select from in-progress washing orders:'}
-                  </label>
-                  <select
-                    value={matchedOrder?.trackingCode || (washingOrders.some(w => w.trackingCode === trackingCode) ? trackingCode : '')}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val) {
-                        handleTrackingCodeChange(val);
-                      }
-                    }}
-                    className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl font-medium text-emerald-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-400 cursor-pointer shadow-2xs"
-                  >
-                    <option value="">-- คลิกเพื่อเลือกรหัสติดตาม ({washingOrders.length} รายการที่กำลังซัก) --</option>
-                    {washingOrders.map((wo) => {
-                      const garmentSummary = wo.items?.map(i => `${i.name} ${i.quantity}ชิ้น`).join(', ') || 'ผ้า';
-                      return (
-                        <option key={wo.id} value={wo.trackingCode}>
-                          {wo.trackingCode} • แผนก {wo.customerRoomOrDept || '-'} • {garmentSummary} • {wo.customerName || wo.assignedStaff || ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              )}
-
               {/* Input Box: กรอกรหัสติดตาม หรือพิมพ์รหัส */}
               <div>
                 <label className="block text-[11px] font-bold text-emerald-900 mb-1">
@@ -635,8 +696,8 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                     onClick={() => handleTrackingCodeChange(trackingCode)}
                     className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 transition-colors shadow-xs cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{language === 'th' ? 'ค้นหา & ดึงข้อมูล' : 'Auto-Fetch'}</span>
+                    <Search className="w-3.5 h-3.5" />
+                    <span>{language === 'th' ? 'ค้นหา' : 'Search'}</span>
                   </button>
                 </div>
               </div>
@@ -680,7 +741,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           <div>
             <h3 className="text-xs font-bold text-[#002045] uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Building2 className="w-4 h-4 text-[#0061a5]" />
-              {language === 'th' ? '2. ข้อมูลทั่วไปและการจัดส่ง' : '2. General & Delivery Info'}
+              {language === 'th' ? '2. ข้อมูลทั่วไป' : '2. General Information'}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -709,7 +770,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                   required
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder={language === 'th' ? 'เช่น สุริยา' : 'e.g. Suriya'}
+                  placeholder={language === 'th' ? 'กรอกชื่อผู้ดำเนินการ...' : 'Enter operator name...'}
                   className="w-full px-3 py-2 text-xs bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg focus:bg-white focus:outline-hidden focus:border-[#0061a5] font-semibold text-[#002045]"
                 />
               </div>
@@ -720,10 +781,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                   {language === 'th' ? 'แผนก *' : 'Department *'}
                 </label>
                 <select
+                  required
                   value={selectedDept}
                   onChange={(e) => setSelectedDept(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg focus:bg-white focus:outline-hidden focus:border-[#0061a5] font-semibold text-[#002045] cursor-pointer"
                 >
+                  <option value="" disabled>
+                    {language === 'th' ? '-- กรุณาเลือกแผนก --' : '-- Select Department --'}
+                  </option>
                   <optgroup label={language === 'th' ? '--- แผนกการผลิต / อาคาร ---' : '--- Production & Building ---'}>
                     <option value="2/1">2/1</option>
                     <option value="2/2">2/2</option>
@@ -769,10 +834,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                   {language === 'th' ? 'เวลาที่จัดส่ง *' : 'Delivery Time *'}
                 </label>
                 <select
+                  required
                   value={deliveryTime}
                   onChange={(e) => setDeliveryTime(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg focus:bg-white focus:outline-hidden focus:border-[#0061a5] font-semibold text-[#002045] cursor-pointer"
                 >
+                  <option value="" disabled>
+                    {language === 'th' ? '-- กรุณาเลือกเวลาที่จัดส่ง --' : '-- Select Delivery Time --'}
+                  </option>
                   {LAUNDRY_FORM_OPTIONS.deliveryTimes.map((timeOpt) => (
                     <option key={timeOpt} value={timeOpt}>
                       {timeOpt}
@@ -789,41 +858,59 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                       <label className="text-xs font-semibold text-[#002045] flex items-center gap-1.5">
                         <Tag className="w-3.5 h-3.5 text-[#0061a5]" />
                         {language === 'th' ? 'รหัสติดตาม (อัตโนมัติ) *' : 'Tracking Code *'}
+                        <span className="text-[10px] font-normal text-slate-500 flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5 text-slate-400" />
+                          (ล็อกอัตโนมัติ)
+                        </span>
                       </label>
                       <button
                         type="button"
                         onClick={() => setTrackingCode(generateTrackingCode(orderDate, existingOrders))}
                         className="text-[11px] text-sky-600 hover:text-sky-800 flex items-center gap-1 cursor-pointer"
+                        title={language === 'th' ? 'กดสร้างรหัสใหม่' : 'Regenerate code'}
                       >
                         <RefreshCw className="w-3 h-3" />
                         {language === 'th' ? 'สร้างรหัสใหม่' : 'Regenerate'}
                       </button>
                     </div>
-                    <input
-                      type="text"
-                      required
-                      value={trackingCode}
-                      onChange={(e) => setTrackingCode(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-300 rounded-lg text-slate-800 font-mono font-bold focus:bg-white focus:outline-hidden focus:border-[#0061a5]"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        value={trackingCode}
+                        className="w-full px-3 py-2 pl-8 text-xs bg-slate-100 border border-slate-300 rounded-lg text-slate-700 font-mono font-bold cursor-not-allowed select-all focus:outline-hidden"
+                        title={language === 'th' ? 'รหัสติดตามถูกล็อกอัตโนมัติ ไม่สามารถแก้ไขตัวเลขได้' : 'Locked tracking code'}
+                      />
+                      <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                    </div>
                   </>
                 ) : (
                   <>
-                    <label className="block text-xs font-semibold text-emerald-950 mb-1 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      {language === 'th' ? 'รหัสติดตามผ้าที่ซักเสร็จแล้ว' : 'Tracking Code (Completed)'}
-                    </label>
-                    <div className="w-full px-3 py-2 text-xs bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 font-mono font-bold flex items-center justify-between">
-                      <span>{trackingCode || '(ยังไม่ได้ระบุรหัส)'}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-emerald-950 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                        {language === 'th' ? 'รหัสติดตาม (ผ้าที่ซักเสร็จแล้ว) *' : 'Tracking Code (Completed) *'}
+                      </label>
                       {matchedOrder ? (
-                        <span className="text-[10px] font-sans font-semibold text-emerald-700 bg-emerald-200/80 px-2 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
                           ✓ ดึงข้อมูลจากรายการกำลังซักเรียบร้อย
                         </span>
                       ) : (
-                        <span className="text-[10px] font-sans font-normal text-slate-500">
-                          สามารถพิมพ์หรือเลือกรหัสได้จากกล่องด้านบน
+                        <span className="text-[10px] font-normal text-slate-500">
+                          {language === 'th' ? '(กรอกรหัสติดตามเพื่อดึงข้อมูล)' : '(Enter tracking code)'}
                         </span>
                       )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={trackingCode}
+                        onChange={(e) => handleTrackingCodeChange(e.target.value)}
+                        placeholder={language === 'th' ? 'กรอกรหัสติดตาม เช่น LKB2 - 26091401...' : 'Enter tracking code...'}
+                        className="w-full px-3 py-2 pl-8 text-xs bg-white border border-emerald-400 rounded-lg text-emerald-950 font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <Search className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5 top-2.5 pointer-events-none" />
                     </div>
                   </>
                 )}
@@ -836,7 +923,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             <div className="flex items-center justify-between gap-2 mb-3">
               <h3 className="text-xs font-bold text-[#002045] uppercase tracking-wider flex items-center gap-1.5">
                 <Shirt className="w-4 h-4 text-[#0061a5]" />
-                {language === 'th' ? '3. ประเภทผ้าและจำนวน (Google Form / Sheet)' : '3. Garment Item & Quantity'}
+                {language === 'th' ? '3. ประเภทผ้าและจำนวน' : '3. Garment Item & Quantity'}
               </h3>
               <span className="text-[11px] text-slate-500 font-semibold">
                 {language === 'th' ? 'รวมทั้งสิ้น:' : 'Total:'} <strong className="text-sky-700">{totalPieces}</strong> {language === 'th' ? 'ชิ้น' : 'pcs'}
@@ -850,14 +937,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                 return (
                   <div
                     key={item.id}
-                    className="p-3 bg-white border border-[#cbd5e1] rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs shadow-2xs"
+                    className="p-3 bg-white border border-[#cbd5e1] rounded-xl flex items-center gap-3 text-xs shadow-2xs"
                   >
                     <div className="text-xs font-bold text-[#74777f] px-1 shrink-0">
                       #{index + 1}
                     </div>
 
                     {/* Garment Selector / Input */}
-                    <div className="flex-1 w-full sm:w-auto space-y-1">
+                    <div className="flex-1 min-w-0 space-y-1">
                       <select
                         value={isPreset ? item.name : 'custom'}
                         onChange={(e) => {
@@ -890,7 +977,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                     </div>
 
                     {/* Quantity (จำนวน ตัว/ชิ้น/ผืน) */}
-                    <div className="w-28 shrink-0">
+                    <div className="w-32 shrink-0">
                       <div className="relative">
                         <input
                           type="number"
@@ -901,21 +988,10 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                           className="w-full pl-3 pr-8 py-2 bg-white border border-[#c4c6cf] rounded-lg text-center font-bold text-[#002045] text-xs"
                           placeholder="1"
                         />
-                        <span className="absolute right-2 top-2 text-[10px] text-[#74777f] pointer-events-none">
+                        <span className="absolute right-2.5 top-2 text-[10px] text-[#74777f] pointer-events-none">
                           {language === 'th' ? 'ชิ้น' : 'pcs'}
                         </span>
                       </div>
-                    </div>
-
-                    {/* Care Note */}
-                    <div className="flex-1 w-full sm:w-auto">
-                      <input
-                        type="text"
-                        value={item.careNote || ''}
-                        onChange={(e) => handleUpdateItem(item.id, { careNote: e.target.value })}
-                        placeholder={language === 'th' ? 'หมายเหตุเพิ่มเติม (ถ้ามี)' : 'Note (optional)'}
-                        className="w-full px-2.5 py-2 bg-white border border-[#c4c6cf] rounded-lg text-[#43474e] text-xs"
-                      />
                     </div>
 
                     {/* Remove button */}
@@ -947,67 +1023,65 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             </div>
           </div>
 
-          {/* Direct Google Form & Sheet Info Banner */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>
-                {language === 'th' 
-                  ? 'ข้อมูลจะถูกส่งเข้า Google Form และบันทึกแถวใหม่ลงใน Google Sheet ทันที' 
-                  : 'Data will be posted to Google Form and appended to Google Sheet'}
-              </span>
-            </div>
-            <a
-              href={GOOGLE_LAUNDRY_SHEET_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1 hover:underline ml-2 shrink-0"
-            >
-              <span>{language === 'th' ? 'ดู Google Sheet' : 'View Sheet'}</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
           {/* Footer Submit Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold text-[#43474e] hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-            >
-              {language === 'th' ? 'ยกเลิก' : 'Cancel'}
-            </button>
-            
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`px-5 py-2.5 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                actionType === 'ซักเสร็จแล้ว'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-[#0061a5] hover:bg-[#004d84]'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 text-white animate-spin" />
-                  <span>{language === 'th' ? 'กำลังบันทึกลง Google Form & Sheet...' : 'Submitting to Google Form...'}</span>
-                </>
-              ) : (
-                <>
-                  {actionType === 'ซักเสร็จแล้ว' ? (
-                    <CheckCircle2 className="w-4 h-4 text-white" />
-                  ) : (
-                    <Sparkles className="w-4 h-4 text-[#66affe]" />
-                  )}
-                  <span>
-                    {actionType === 'ซักเสร็จแล้ว'
-                      ? (language === 'th' ? 'บันทึกเปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Save as Washed & Ready')
-                      : (language === 'th' ? 'บันทึกข้อมูล (Google Form & Sheet)' : 'Save to Google Form & Sheet')}
-                  </span>
-                </>
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200">
+            <div>
+              {justSavedSuccess && (
+                <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  {language === 'th' ? 'บันทึกสำเร็จเรียบร้อยแล้ว!' : 'Saved successfully!'}
+                </span>
               )}
-            </button>
+              {justCompletedSuccess && (
+                <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  {language === 'th' ? 'ดำเนินการเสร็จสิ้นเรียบร้อยแล้ว!' : 'Completed successfully!'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-semibold text-[#43474e] hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+              >
+                {language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+              </button>
+              
+              <button
+                type="submit"
+                disabled={isSubmitting || justCompletedSuccess}
+                className={`px-5 py-2.5 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-85 disabled:cursor-not-allowed ${
+                  justSavedSuccess || justCompletedSuccess
+                    ? 'bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-300'
+                    : 'bg-[#0061a5] hover:bg-[#004d84]'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    <span>{language === 'th' ? 'กำลังบันทึก...' : 'Submitting...'}</span>
+                  </>
+                ) : justCompletedSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                    <span>{language === 'th' ? 'ดำเนินการเสร็จสิ้น' : 'Completed'}</span>
+                  </>
+                ) : justSavedSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                    <span>{language === 'th' ? 'บันทึกข้อมูลเรียบร้อยแล้ว' : 'Saved Successfully!'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-white/90" />
+                    <span>{language === 'th' ? 'บันทึกข้อมูล' : 'Save Order'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
