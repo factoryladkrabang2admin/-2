@@ -214,34 +214,42 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
   return false;
 }
 
+/**
+ * ตรวจสอบสิทธิ์การมองเห็นและทำรายการเพิ่มรายการซักผ้า
+ * ข้อกำหนด: ปุ่มไอคอน เพิ่มรายการซักผ้า จำกัดสิทธิ์ให้มองเห็นและทำรายการได้เฉพาะ:
+ * 1. ผู้ดูแล (Super Administrator / Administrator / ผู้ดูแลระบบ)
+ * 2. แอดมินเพจ (Page Admin / Supervisor)
+ * 3. พนักงานตำแหน่งธุรการเท่านั้น (Administrative staff / ธุรการ)
+ */
 export function canCreateLaundryOrder(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
   if (!isAuthenticated || !user) return false;
+  if (user.username === 'guest') return false;
+
   // 1. ผู้ดูแล, แอดมินเพจ (Super Administrator / Administrator / Page Admin / Supervisor)
   if (isUserAdminOrSupervisor(user, isAuthenticated)) return true;
 
   const role = (user.role || '').toLowerCase().trim();
   const name = (user.name || '').toLowerCase().trim();
-  const username = (user.username || '').toLowerCase().replace(/^@/, '').trim();
   const department = ((user as any).department || '').toLowerCase().trim();
 
-  // 2. พนักงาน ตำแหน่ง ธุรการ (Admin officer / General admin / ธุรการลาดกระบัง)
+  // 2. พนักงานตำแหน่งธุรการ (Admin officer / ธุรการ)
   if (
     role.includes('ธุรการ') ||
     role.includes('admin officer') ||
     role.includes('clerk') ||
     role.includes('administrative') ||
-    name.includes('ธุรการ') ||
-    username.includes('admin') ||
-    department.includes('ธุรการ')
+    department.includes('ธุรการ') ||
+    name.includes('ธุรการ')
   ) {
     return true;
   }
 
-  // Check known employee department for user if they have employeeId
+  // ตรวจสอบแผนกพนักงานจากรหัสพนักงาน (ถ้าเป็นแผนกธุรการ ให้สิทธิ์ เช่น ชมภู 339858, สุริยา 716767, นพเก้า 714314, พงศกร 720592)
   const empId = getUserEmployeeId(user);
   if (empId) {
-    const matchedInitial = INITIAL_OT_STAFF_EMPLOYEES.find(s => s.employeeId.toUpperCase() === empId.toUpperCase());
-    if (matchedInitial && matchedInitial.department.includes('ธุรการ')) {
+    const allStaff = getAllOtStaffList(true);
+    const matchedStaff = allStaff.find(s => s.employeeId.toUpperCase() === empId.toUpperCase());
+    if (matchedStaff && matchedStaff.department && matchedStaff.department.includes('ธุรการ')) {
       return true;
     }
   }
@@ -342,6 +350,64 @@ export function getAllOtStaffList(includeDeleted: boolean = false): StaffEmploye
   const allList = Array.from(staffMap.values());
   if (includeDeleted) return allList;
   return allList.filter(s => !deletedIds.has(s.employeeId.toUpperCase()));
+}
+
+/**
+ * ตัดและแสดงเฉพาะชื่อจริงของผู้ดำเนินการ โดยไม่แสดงนามสกุล
+ * เช่น "ชมภู ยาหยี" -> "ชมภู", "สุริยา เวชพันธ์" -> "สุริยา", "สงกรานต์ สุริยแสง" -> "สงกรานต์"
+ */
+export function getOperatorFirstName(fullNameOrStaff: string): string {
+  if (!fullNameOrStaff) return '';
+  let clean = fullNameOrStaff.trim();
+  
+  // ตัดข้อความในวงเล็บ เช่น (Administrator), (พนักงานทั่วไป), (Staff)
+  clean = clean.replace(/\(.*?\)/g, '').trim();
+
+  // ตัดคำนำหน้าชื่อภาษาไทยกรณีเว้นวรรค เช่น "นาย สมชาย" -> "สมชาย", "น.ส. มานี" -> "มานี"
+  clean = clean.replace(/^(?:นาย|นางสาว|นาง|น\.ส\.|ด\.ช\.|ด\.ญ\.|คุณ)\s+/i, '');
+
+  // ตัดคำนำหน้าชื่อกรณีติดกับชื่อ เช่น "นายสมชาย" -> "สมชาย", "นางสาวชมภู" -> "ชมภู"
+  clean = clean.replace(/^(?:นาย|นางสาว|นาง|น\.ส\.|ด\.ช\.|ด\.ญ\.)/i, '');
+
+  // แยกด้วยช่องว่างแล้วนำเฉพาะคำแรก (ชื่อ โดยไม่เอานามสกุล)
+  const parts = clean.trim().split(/\s+/);
+  return parts[0] || clean;
+}
+
+/**
+ * ตรวจสอบและดึงชื่อผู้ดำเนินการ (เฉพาะชื่อ ไม่เอานามสกุล) จากข้อมูลผู้ใช้ที่ log in เข้าสู่ระบบ
+ * หากพนักงาน log in ด้วยรหัสพนักงานคนไหน ให้แสดงชื่อคนนั้น (ไม่ต้องแสดงนามสกุล)
+ */
+export function resolveOperatorNameFromUser(
+  user?: AdminUserAccount | null,
+  isAuthenticated: boolean = true
+): string {
+  if (!isAuthenticated || !user) return '';
+  if (user.username === 'guest') return '';
+
+  // 1. ตรวจสอบจากรหัสพนักงาน (employeeId)
+  const empId = getUserEmployeeId(user);
+  if (empId) {
+    const allStaff = getAllOtStaffList(true);
+    const matchedStaff = allStaff.find(
+      s => s.employeeId.toUpperCase() === empId.toUpperCase()
+    );
+    if (matchedStaff && matchedStaff.name) {
+      return getOperatorFirstName(matchedStaff.name);
+    }
+  }
+
+  // 2. หากมีชื่อ user.name และไม่ใช่ชื่อ generic ให้ตัดเอานามสกุลออก
+  if (user.name && !user.name.includes('พนักงานทั่วไป (Staff)')) {
+    return getOperatorFirstName(user.name);
+  }
+
+  // 3. Fallback หากไม่มีชื่อ ให้ใช้ username (ตัด @ ออกถ้ามี)
+  if (user.username && user.username !== 'guest') {
+    return user.username.replace(/^@/, '');
+  }
+
+  return '';
 }
 
 export function saveUpdatedUserCredentials(updatedUser: AdminUserAccount): void {

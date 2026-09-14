@@ -789,7 +789,10 @@ export default function App() {
             isAuthenticated ? (
               <DashboardView
                 laundryOrders={laundryOrders}
-                onCreateLaundryOrder={() => setCreateLaundryModalOpen(true)}
+                onCreateLaundryOrder={() => {
+                  if (!canCreateLaundryOrder(currentUser, isAuthenticated)) return;
+                  setCreateLaundryModalOpen(true);
+                }}
                 onNavigateToLaundry={() => {
                   setLaundrySubTab('pipeline');
                   setCurrentTab('laundry');

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { LaundryOrder, LaundryItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { AdminUserAccount, canCreateLaundryOrder } from '../data/mockData';
+import { AdminUserAccount, canCreateLaundryOrder, resolveOperatorNameFromUser } from '../data/mockData';
 import { 
   X, 
   Plus, 
@@ -154,7 +154,6 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
   // ตรวจสอบสิทธิ์การสร้างรายการซักผ้า (เฉพาะ ผู้ดูแล, แอดมินเพจ และพนักงาน ตำแหน่ง ธุรการ)
   const canCreate = useMemo(() => {
-    if (currentUser === undefined) return true;
     return canCreateLaundryOrder(currentUser, isAuthenticated);
   }, [currentUser, isAuthenticated]);
 
@@ -175,7 +174,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
   const [deliveryTime, setDeliveryTime] = useState<string>(''); // Default unselected
   const [selectedDept, setSelectedDept] = useState<string>(''); // Default unselected
   const [customDept, setCustomDept] = useState('');
-  const [customerName, setCustomerName] = useState(''); // Default empty for user input
+  // Operator name auto-resolved from logged-in user (first name only, without surname)
+  const loggedInOperatorName = useMemo(() => {
+    return resolveOperatorNameFromUser(currentUser, isAuthenticated);
+  }, [currentUser, isAuthenticated]);
+
+  const [customerName, setCustomerName] = useState<string>(() => 
+    resolveOperatorNameFromUser(currentUser, isAuthenticated)
+  );
   const [justSavedSuccess, setJustSavedSuccess] = useState(false);
   const [justCompletedSuccess, setJustCompletedSuccess] = useState(false);
 
@@ -213,7 +219,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
     // 2. Operator Name
     const op = order.customerName || order.assignedStaff || '';
-    setCustomerName(op);
+    setCustomerName(op || loggedInOperatorName);
 
     // 3. Department
     const dept = (order.customerRoomOrDept || '').trim();
@@ -262,7 +268,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           setOrderDate(todayStr);
           setTrackingCode(generateTrackingCode(todayStr, existingOrders));
           setMatchedOrder(null);
-          setCustomerName('');
+          setCustomerName(loggedInOperatorName);
           setSelectedDept('');
           setCustomDept('');
           setDeliveryTime('');
@@ -270,10 +276,10 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
           ]);
         } else {
-          // ถ้าไม่ได้เปิดจากรายการกำลังซัก ให้เป็นช่องว่างรอกรอก
+          // ถ้าไม่ได้เปิดจากรายการกำลังซัก ให้ใช้ชื่อผู้ดำเนินการที่ log in
           setTrackingCode('');
           setMatchedOrder(null);
-          setCustomerName('');
+          setCustomerName(loggedInOperatorName);
           setSelectedDept('');
           setCustomDept('');
           setDeliveryTime('');
@@ -285,7 +291,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       setSubmitSuccess(null);
       setSubmitFeedback('');
     }
-  }, [isOpen, initialOrderToComplete]);
+  }, [isOpen, initialOrderToComplete, loggedInOperatorName]);
 
   const handleDateChange = (newDate: string) => {
     setOrderDate(newDate);
@@ -330,11 +336,11 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       setTrackingCode(generateTrackingCode(orderDate || getTodayDateStr(), existingOrders));
     } else {
       // Switched to 'ซักเสร็จแล้ว'
-      // ถ้าไม่ได้กดจากรายการอยู่ระหว่างซักผ้า ให้เป็นช่องว่างรอกรอก
+      // ถ้าไม่ได้กดจากรายการอยู่ระหว่างซักผ้า ให้ใช้ชื่อผู้ดำเนินการที่ log in
       if (!initialOrderToComplete) {
         setTrackingCode('');
         setMatchedOrder(null);
-        setCustomerName('');
+        setCustomerName(loggedInOperatorName);
         setSelectedDept('');
         setCustomDept('');
         setDeliveryTime('');
@@ -538,7 +544,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       setMatchedOrder(null);
       const todayStr = getTodayDateStr();
       setOrderDate(todayStr);
-      setCustomerName('');
+      setCustomerName(loggedInOperatorName);
       setSelectedDept('');
       setCustomDept('');
       setDeliveryTime('');
@@ -788,8 +794,15 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
               {/* Submitter / Operator Name (ชื่อผู้ดำเนินการ) */}
               <div>
-                <label className="block text-xs font-semibold text-[#002045] mb-1">
-                  {language === 'th' ? 'ชื่อผู้ดำเนินการ *' : 'Operator Name *'}
+                <label className="block text-xs font-semibold text-[#002045] mb-1 flex items-center justify-between">
+                  <span>{language === 'th' ? 'ชื่อผู้ดำเนินการ *' : 'Operator Name *'}</span>
+                  {loggedInOperatorName && (
+                    <span className="text-[10px] font-normal text-[#0061a5] bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
+                      {language === 'th' 
+                        ? `(จากรหัส ${currentUser?.employeeId || currentUser?.username})` 
+                        : `(ID: ${currentUser?.employeeId || currentUser?.username})`}
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
