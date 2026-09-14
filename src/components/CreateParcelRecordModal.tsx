@@ -37,6 +37,14 @@ import {
   markTrackingCodeAsReceivedLocally,
   checkParcelAlreadyReceived,
 } from '../utils/parcelTrackingUtils';
+import { SuggestiveInput } from './SuggestiveInput';
+import {
+  getRememberedSenders,
+  getRememberedSenderDepartments,
+  getRememberedRecipients,
+  getRememberedRecipientDepartments,
+  saveRememberedContacts,
+} from '../services/parcelContactMemoryService';
 
 interface CreateParcelRecordModalProps {
   isOpen: boolean;
@@ -229,6 +237,23 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     }
   }, [isOpen, currentUser, initialRecordToReceive]);
 
+  // Remembered contacts and departments for auto-completion (called unconditionally before any early return)
+  const senderSuggestions = useMemo(() => {
+    return getRememberedSenders(existingRecords);
+  }, [existingRecords, isSuccess]);
+
+  const senderDeptSuggestions = useMemo(() => {
+    return getRememberedSenderDepartments(existingRecords);
+  }, [existingRecords, isSuccess]);
+
+  const recipientSuggestions = useMemo(() => {
+    return getRememberedRecipients(existingRecords);
+  }, [existingRecords, isSuccess]);
+
+  const recipientDeptSuggestions = useMemo(() => {
+    return getRememberedRecipientDepartments(existingRecords);
+  }, [existingRecords, isSuccess]);
+
   if (!isOpen) return null;
 
   // Handler to refresh timestamp to current moment
@@ -378,6 +403,14 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
           }
         }
 
+        // Automatically remember sender/recipient contact & department in local memory
+        saveRememberedContacts({
+          senderName: senderName.trim(),
+          senderDepartment: senderDepartment.trim(),
+          recipientName: recipientName.trim(),
+          recipientDepartment: recipientDepartment.trim(),
+        });
+
         setLastSavedRecord(res.record);
         setLastSubmitResult(res);
         setIsSuccess(true);
@@ -434,10 +467,6 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       // ignore
     }
   };
-
-  // Recent sender & recipient name suggestions
-  const recentSenders = Array.from(new Set(existingRecords.map((r) => r.senderName).filter(Boolean))).slice(0, 5);
-  const recentRecipients = Array.from(new Set(existingRecords.map((r) => r.recipientName).filter(Boolean))).slice(0, 5);
 
   return (
     <div
@@ -861,150 +890,102 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
             {/* Field 2: ชื่อผู้ส่งตามหน้าซอง */}
             <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-rose-600" />
-                  <span>2. ชื่อผู้ส่งตามหน้าซอง</span>
-                  <span className="text-rose-500 font-bold">*</span>
-                </label>
-              </div>
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-rose-600" />
+                <span>2. ชื่อผู้ส่งตามหน้าซอง</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </label>
 
-              <input
-                type="text"
+              <SuggestiveInput
                 id="input-sender-name"
                 value={senderName}
-                onChange={(e) => {
+                onChange={(val) => {
                   if (isSuccess) setIsSuccess(false);
-                  setSenderName(e.target.value);
+                  setSenderName(val);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.preventDefault();
-                }}
+                suggestions={senderSuggestions}
                 placeholder="เช่น ทดสอบ, เจม, มาร์ค, คุณศศิประภา"
-                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
-                  hasAttemptedSubmit && !isSenderNameValid
-                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
-                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-rose-500'
-                }`}
+                icon={<User className="w-3.5 h-3.5 text-rose-500" />}
+                accentColor="rose"
                 required
+                hasError={hasAttemptedSubmit && !isSenderNameValid}
+                errorMessage={language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง (จำเป็น)' : 'Sender name is required'}
               />
-              {hasAttemptedSubmit && !isSenderNameValid && (
-                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  <span>{language === 'th' ? 'กรุณาระบุชื่อผู้ส่งตามหน้าซอง (จำเป็น)' : 'Sender name is required'}</span>
-                </p>
-              )}
             </div>
 
             {/* Field 3: แผนกผู้ส่ง */}
             <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Building className="w-3.5 h-3.5 text-rose-600" />
-                  <span>3. แผนกผู้ส่ง</span>
-                  <span className="text-rose-500 font-bold">*</span>
-                </label>
-              </div>
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Building className="w-3.5 h-3.5 text-rose-600" />
+                <span>3. แผนกผู้ส่ง</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </label>
 
-              <input
-                type="text"
+              <SuggestiveInput
                 id="input-sender-dept"
                 value={senderDepartment}
-                onChange={(e) => {
+                onChange={(val) => {
                   if (isSuccess) setIsSuccess(false);
-                  setSenderDepartment(e.target.value);
+                  setSenderDepartment(val);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.preventDefault();
-                }}
+                suggestions={senderDeptSuggestions}
                 placeholder="เช่น การเงิน, ธุรการลาดกระบัง 1, ธุรการลาดกระบัง 2"
-                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
-                  hasAttemptedSubmit && !isSenderDeptValid
-                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
-                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-rose-500'
-                }`}
+                icon={<Building className="w-3.5 h-3.5 text-rose-500" />}
+                accentColor="rose"
                 required
+                hasError={hasAttemptedSubmit && !isSenderDeptValid}
+                errorMessage={language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง (จำเป็น)' : 'Sender department is required'}
               />
-              {hasAttemptedSubmit && !isSenderDeptValid && (
-                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  <span>{language === 'th' ? 'กรุณาระบุแผนกผู้ส่ง (จำเป็น)' : 'Sender department is required'}</span>
-                </p>
-              )}
             </div>
 
             {/* Field 4: ชื่อผู้รับตามหน้าซอง */}
             <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>4. ชื่อผู้รับตามหน้าซอง</span>
-                  <span className="text-rose-500 font-bold">*</span>
-                </label>
-              </div>
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-emerald-600" />
+                <span>4. ชื่อผู้รับตามหน้าซอง</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </label>
 
-              <input
-                type="text"
+              <SuggestiveInput
                 id="input-recipient-name"
                 value={recipientName}
-                onChange={(e) => {
+                onChange={(val) => {
                   if (isSuccess) setIsSuccess(false);
-                  setRecipientName(e.target.value);
+                  setRecipientName(val);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.preventDefault();
-                }}
+                suggestions={recipientSuggestions}
                 placeholder="เช่น เจม, มาร์ค, คุณศศิประภา"
-                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
-                  hasAttemptedSubmit && !isRecipientNameValid
-                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
-                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500'
-                }`}
+                icon={<User className="w-3.5 h-3.5 text-emerald-500" />}
+                accentColor="emerald"
                 required
+                hasError={hasAttemptedSubmit && !isRecipientNameValid}
+                errorMessage={language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง (จำเป็น)' : 'Recipient name is required'}
               />
-              {hasAttemptedSubmit && !isRecipientNameValid && (
-                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  <span>{language === 'th' ? 'กรุณาระบุชื่อผู้รับตามหน้าซอง (จำเป็น)' : 'Recipient name is required'}</span>
-                </p>
-              )}
             </div>
 
             {/* Field 5: แผนกผู้รับ */}
             <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Building className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>5. แผนกผู้รับ</span>
-                  <span className="text-rose-500 font-bold">*</span>
-                </label>
-              </div>
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Building className="w-3.5 h-3.5 text-emerald-600" />
+                <span>5. แผนกผู้รับ</span>
+                <span className="text-rose-500 font-bold">*</span>
+              </label>
 
-              <input
-                type="text"
+              <SuggestiveInput
                 id="input-recipient-dept"
                 value={recipientDepartment}
-                onChange={(e) => {
+                onChange={(val) => {
                   if (isSuccess) setIsSuccess(false);
-                  setRecipientDepartment(e.target.value);
+                  setRecipientDepartment(val);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.preventDefault();
-                }}
+                suggestions={recipientDeptSuggestions}
                 placeholder="เช่น ธุรการลาดกระบัง 2, ธุรการลาดกระบัง 1, การเงิน"
-                className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
-                  hasAttemptedSubmit && !isRecipientDeptValid
-                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
-                    : 'border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500'
-                }`}
+                icon={<Building className="w-3.5 h-3.5 text-emerald-500" />}
+                accentColor="emerald"
                 required
+                hasError={hasAttemptedSubmit && !isRecipientDeptValid}
+                errorMessage={language === 'th' ? 'กรุณาระบุแผนกผู้รับ (จำเป็น)' : 'Recipient department is required'}
               />
-              {hasAttemptedSubmit && !isRecipientDeptValid && (
-                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  <span>{language === 'th' ? 'กรุณาระบุแผนกผู้รับ (จำเป็น)' : 'Recipient department is required'}</span>
-                </p>
-              )}
             </div>
 
             {/* Helper Field: ชื่อเอกสาร/พัสดุ */}
