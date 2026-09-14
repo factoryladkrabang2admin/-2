@@ -131,6 +131,15 @@ const COMMON_PRESETS = [
   { name: 'เสื้อแขนยาว', category: 'Clothing' as const, price: 15 },
 ];
 
+interface FormLaundryItem {
+  id: string;
+  name: string;
+  category: LaundryItemDetail['category'];
+  quantity: number | '';
+  unitPrice: number;
+  careNote?: string;
+}
+
 export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
   isOpen,
   onClose,
@@ -170,9 +179,9 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
   const [justSavedSuccess, setJustSavedSuccess] = useState(false);
   const [justCompletedSuccess, setJustCompletedSuccess] = useState(false);
 
-  // Multi-item garment list
-  const [items, setItems] = useState<LaundryItemDetail[]>([
-    { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+  // Multi-item garment list: ค่าเริ่มต้นช่องจำนวนให้เป็นช่องว่าง เพื่อให้ผู้ใช้สามารถกรอกข้อมูลได้สะดวก
+  const [items, setItems] = useState<FormLaundryItem[]>([
+    { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
   ]);
 
   // Active washing orders (currently pending or being processed)
@@ -231,7 +240,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           id: `item-matched-${idx}-${Date.now()}`,
           name: it.name || 'เสื้อกาวน์สีเขียว',
           category: it.category || 'Clothing',
-          quantity: it.quantity || 1,
+          quantity: it.quantity ?? '',
           unitPrice: it.unitPrice || 15,
           careNote: it.careNote || '',
         }))
@@ -258,7 +267,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           setCustomDept('');
           setDeliveryTime('');
           setItems([
-            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
           ]);
         } else {
           // ถ้าไม่ได้เปิดจากรายการกำลังซัก ให้เป็นช่องว่างรอกรอก
@@ -269,7 +278,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           setCustomDept('');
           setDeliveryTime('');
           setItems([
-            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+            { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
           ]);
         }
       }
@@ -330,7 +339,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
         setCustomDept('');
         setDeliveryTime('');
         setItems([
-          { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+          { id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
         ]);
       }
     }
@@ -338,11 +347,11 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
   const handleAddItem = (preset?: typeof COMMON_PRESETS[0]) => {
     const defaultPreset = preset || COMMON_PRESETS[0];
-    const newItem: LaundryItemDetail = {
+    const newItem: FormLaundryItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       name: defaultPreset.name,
       category: defaultPreset.category,
-      quantity: 1,
+      quantity: '',
       unitPrice: defaultPreset.price,
       careNote: '',
     };
@@ -354,17 +363,18 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     setItems(prev => prev.filter((i) => i.id !== id));
   };
 
-  const handleUpdateItem = (id: string, updates: Partial<LaundryItemDetail>) => {
+  const handleUpdateItem = (id: string, updates: Partial<FormLaundryItem>) => {
     setItems(prev => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
   };
 
-  const totalCost = items.reduce((acc, curr) => acc + (curr.quantity * curr.unitPrice), 0);
-  const totalPieces = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCost = items.reduce((acc, curr) => acc + ((Number(curr.quantity) || 0) * curr.unitPrice), 0);
+  const totalPieces = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
   const finalDept = selectedDept === 'other' ? (customDept.trim() || 'แผนกทั่วไป') : selectedDept;
 
   // Generate dynamic prefilled URL for Google Form
   const prefillUrl = useMemo(() => {
+    const firstQty = typeof items[0]?.quantity === 'number' ? items[0].quantity : (parseInt(String(items[0]?.quantity), 10) || 1);
     return buildPrefilledGoogleFormUrl({
       actionType,
       date: orderDate,
@@ -373,7 +383,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       deliveryTime,
       trackingCode,
       garmentType: items[0]?.name || 'เสื้อกาวน์สีเขียว',
-      quantity: items[0]?.quantity || 1,
+      quantity: firstQty,
     });
   }, [actionType, orderDate, customerName, finalDept, deliveryTime, trackingCode, items]);
 
@@ -403,6 +413,13 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     if (actionType === 'ซักเสร็จแล้ว' && !trackingCode.trim()) {
       setSubmitSuccess(false);
       setSubmitFeedback(language === 'th' ? 'กรุณากรอกรหัสติดตามผ้าที่ซักเสร็จแล้ว' : 'Please enter tracking code');
+      return;
+    }
+
+    const hasEmptyQty = items.some(it => it.quantity === '' || it.quantity === undefined || Number(it.quantity) < 1);
+    if (hasEmptyQty) {
+      setSubmitSuccess(false);
+      setSubmitFeedback(language === 'th' ? 'กรุณากรอกจำนวนผ้าให้ครบถ้วน (อย่างน้อย 1 ชิ้น)' : 'Please enter valid garment quantity (at least 1 pc)');
       return;
     }
 
@@ -437,6 +454,15 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     const est = `${targetDateStr}, ${deliveryTime}`;
     const estimatedWeight = parseFloat((totalPieces * 0.4).toFixed(1)) || 2.0;
 
+    const sanitizedItems: LaundryItemDetail[] = items.map((it, idx) => ({
+      id: it.id || `item-${idx}`,
+      name: it.name || 'เสื้อกาวน์สีเขียว',
+      category: it.category || 'Clothing',
+      quantity: typeof it.quantity === 'number' ? it.quantity : (parseInt(String(it.quantity), 10) || 1),
+      unitPrice: it.unitPrice || 15,
+      careNote: it.careNote,
+    }));
+
     // 1. Submit to Google Form and Google Sheet via backend API
     const submitResult = await submitLaundryOrder({
       actionType,
@@ -445,7 +471,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       department: finalDept,
       deliveryTime,
       trackingCode: finalTrackingCode,
-      items: items.map(it => ({
+      items: sanitizedItems.map(it => ({
         garmentType: it.name,
         quantity: it.quantity,
         careNote: it.careNote,
@@ -465,7 +491,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       serviceType: matchedOrder?.serviceType || 'Wash & Fold',
       priority: matchedOrder?.priority || 'normal',
       stage: actionType === 'ซักเสร็จแล้ว' ? 'ready' : 'washing',
-      items: items.length > 0 ? items : (matchedOrder?.items || [{ id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15 }]),
+      items: sanitizedItems.length > 0 ? sanitizedItems : (matchedOrder?.items || [{ id: 'item-1', name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15 }]),
       totalWeightKg: estimatedWeight,
       totalPrice: totalCost || matchedOrder?.totalPrice || 15,
       paymentStatus: matchedOrder?.paymentStatus || 'Corporate Invoice',
@@ -473,7 +499,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       assignedStaffAvatar: matchedOrder?.assignedStaffAvatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
       assignedMachine: matchedOrder?.assignedMachine || 'Intake Station #01',
       waterTemp: matchedOrder?.waterTemp || 'Warm (40°C)',
-      notes: `ประเภทผ้า: ${items.map(i => `${i.name} (${i.quantity})`).join(', ')} | เวลาจัดส่ง: ${deliveryTime}`,
+      notes: `ประเภทผ้า: ${sanitizedItems.map(i => `${i.name} (${i.quantity})`).join(', ')} | เวลาจัดส่ง: ${deliveryTime}`,
       receivedAt: matchedOrder?.receivedAt || realReceivedAt,
       completedAt: actionType === 'ซักเสร็จแล้ว' ? realReceivedAt : undefined,
       createdAt: Date.now(),
@@ -517,7 +543,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
       setCustomDept('');
       setDeliveryTime('');
       setItems([
-        { id: `item-${Date.now()}`, name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: 1, unitPrice: 15, careNote: '' },
+        { id: `item-${Date.now()}`, name: 'เสื้อกาวน์สีเขียว', category: 'Clothing', quantity: '', unitPrice: 15, careNote: '' },
       ]);
       const updatedOrders = [...existingOrders, newOrder];
       setTrackingCode(generateTrackingCode(todayStr, updatedOrders));
@@ -983,10 +1009,18 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                           type="number"
                           min="1"
                           required
-                          value={item.quantity}
-                          onChange={(e) => handleUpdateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                          className="w-full pl-3 pr-8 py-2 bg-white border border-[#c4c6cf] rounded-lg text-center font-bold text-[#002045] text-xs"
-                          placeholder="1"
+                          value={item.quantity === '' ? '' : item.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              handleUpdateItem(item.id, { quantity: '' });
+                            } else {
+                              const parsed = parseInt(val, 10);
+                              handleUpdateItem(item.id, { quantity: isNaN(parsed) ? '' : Math.max(1, parsed) });
+                            }
+                          }}
+                          className="w-full pl-3 pr-8 py-2 bg-white border border-[#c4c6cf] rounded-lg text-center font-bold text-[#002045] text-xs focus:bg-white focus:outline-hidden focus:border-[#0061a5]"
+                          placeholder={language === 'th' ? 'ระบุจำนวน' : 'Qty'}
                         />
                         <span className="absolute right-2.5 top-2 text-[10px] text-[#74777f] pointer-events-none">
                           {language === 'th' ? 'ชิ้น' : 'pcs'}
