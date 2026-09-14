@@ -37,6 +37,7 @@ import { NotificationDrawer } from './components/NotificationDrawer';
 import { LoginModal } from './components/LoginModal';
 import { FloatingMobileMenu } from './components/FloatingMobileMenu';
 import { WeatherModal } from './components/WeatherModal';
+import { ServicePortalModal } from './components/ServicePortalModal';
 import { WeatherData, fetchCurrentWeather } from './services/weatherService';
 import { realtimeHub, RealtimeMessage } from './services/realtimeService';
 import { fetchGoogleSheetLaundryOrders, fetchGoogleSheetMaintenanceTickets, fetchGoogleSheetOtRecords, fetchGoogleSheetAnnouncements, GOOGLE_SHEET_URL } from './services/googleSheetSyncService';
@@ -47,6 +48,9 @@ export default function App() {
   const [laundrySubTab, setLaundrySubTab] = useState<'pipeline' | 'rags_gloves' | 'analytics'>('pipeline');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Floating Service Portal Window on Page Load: offers 'laundry' and 'document_delivery'
+  const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(true);
 
   // Authentication State - Security Policy: Start unauthenticated when page is opened
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -168,6 +172,19 @@ export default function App() {
     if (!isUserAdmin) return;
     setSettingsInitialTab(tab);
     setSettingsModalOpen(true);
+  };
+
+  // Handler for Service Portal floating selector: directs immediately to chosen service
+  const handleSelectServiceFromPortal = (service: 'laundry' | 'document_delivery') => {
+    setCurrentTab(service);
+    setServicePortalOpen(false);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', service);
+      window.history.pushState({}, '', url.toString());
+    } catch {
+      // ignore
+    }
   };
 
   // Helper to test if orders list is structurally identical to avoid unnecessary re-renders
@@ -710,6 +727,7 @@ export default function App() {
           onLogout={handleLogout}
           onOpenWeather={() => setWeatherModalOpen(true)}
           currentWeather={currentWeather}
+          onOpenServicePortal={() => setServicePortalOpen(true)}
         />
 
         {/* Scrollable Main Canvas */}
@@ -1044,6 +1062,7 @@ export default function App() {
         onToggleNotifications={() => setNotificationsOpen(true)}
         onLogin={() => setLoginModalOpen(true)}
         onLogout={handleLogout}
+        onOpenServicePortal={() => setServicePortalOpen(true)}
       />
 
       {/* Real-time GPS & Google Weather Sync Modal */}
@@ -1052,6 +1071,14 @@ export default function App() {
         onClose={() => setWeatherModalOpen(false)}
         cachedWeather={currentWeather}
         onUpdateWeather={setCurrentWeather}
+      />
+
+      {/* Floating Welcome Service Portal Selector Window */}
+      <ServicePortalModal
+        isOpen={servicePortalOpen}
+        onClose={() => setServicePortalOpen(false)}
+        onSelectService={handleSelectServiceFromPortal}
+        currentTab={currentTab}
       />
     </div>
   );

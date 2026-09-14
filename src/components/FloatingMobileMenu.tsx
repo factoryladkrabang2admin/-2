@@ -34,6 +34,7 @@ interface FloatingMobileMenuProps {
   onToggleNotifications: () => void;
   onLogin?: () => void;
   onLogout?: () => void;
+  onOpenServicePortal?: () => void;
 }
 
 export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
@@ -45,6 +46,7 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
   onToggleNotifications,
   onLogin,
   onLogout,
+  onOpenServicePortal,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -446,6 +448,33 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Service Portal Quick Switcher */}
+                {onOpenServicePortal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onOpenServicePortal();
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-all flex items-center justify-between group cursor-pointer shadow-2xs text-left"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <Sparkles className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-blue-900 truncate">
+                          {language === 'th' ? 'เลือกบริการ (ซักผ้า / พัสดุ)' : 'Choose Service Portal'}
+                        </p>
+                        <p className="text-[10px] text-blue-700/80 truncate">
+                          {language === 'th' ? 'ข้อมูลการซักผ้า & รับ-ส่ง เอกสาร พัสดุ' : 'Laundry & Parcel Delivery'}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-blue-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  </button>
+                )}
 
                 {/* 2. Actions: Notifications & Settings (Settings restricted to Admin / Supervisor) */}
                 <div className={canAccessServices ? "grid grid-cols-2 gap-2" : "space-y-2"}>

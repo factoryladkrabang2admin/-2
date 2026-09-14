@@ -49,6 +49,7 @@ interface TopNavBarProps {
   onLogout?: () => void;
   onOpenWeather?: () => void;
   currentWeather?: WeatherData | null;
+  onOpenServicePortal?: () => void;
 }
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
@@ -68,6 +69,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   onLogout,
   onOpenWeather,
   currentWeather,
+  onOpenServicePortal,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -423,6 +425,23 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             </>
           )}
         </div>
+
+        {/* Service Portal Quick Selector Button */}
+        {onOpenServicePortal && (
+          <button
+            type="button"
+            id="top-nav-service-portal-btn"
+            onClick={onOpenServicePortal}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-900/70 bg-blue-50/80 hover:bg-blue-100/90 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-semibold text-xs transition-all cursor-pointer shadow-2xs group shrink-0"
+            title={language === 'th' ? 'เลือกบริการหลัก (ข้อมูลการซักผ้า / รับ-ส่ง เอกสาร พัสดุ)' : 'Choose Service (Laundry / Parcel Delivery)'}
+            aria-label="Service Portal"
+          >
+            <LayoutGrid className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
+            <span className="hidden sm:inline">
+              {language === 'th' ? 'เลือกบริการ' : 'Services'}
+            </span>
+          </button>
+        )}
 
         {/* Weather Button (Google Weather) */}
         <button
