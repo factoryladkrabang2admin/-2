@@ -370,9 +370,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
         }
 
         if (actionType === 'รับ') {
-          markTrackingCodeAsReceivedLocally(effectiveTrackingCode, itemTitle);
+          if (effectiveTrackingCode) {
+            markTrackingCodeAsReceivedLocally(effectiveTrackingCode);
+          }
           if (matchedParcel?.trackingCode) {
-            markTrackingCodeAsReceivedLocally(matchedParcel.trackingCode, matchedParcel.itemTitle);
+            markTrackingCodeAsReceivedLocally(matchedParcel.trackingCode);
           }
         }
 

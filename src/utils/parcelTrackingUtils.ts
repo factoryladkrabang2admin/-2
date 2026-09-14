@@ -131,61 +131,14 @@ export function getParcelTrackingUrl(trackingCode: string): string {
 /**
  * Assigns tracking codes to parcel records:
  * - Keeps original authoritative tracking codes from Google Sheet / submissions.
- * - Links 'รับ' (Receive) records to their corresponding 'ส่ง' (Send) tracking codes.
- * - DOES NOT invent synthetic sequence numbers that leapfrog or skip numbers in the running sequence.
+ * - STRICT RULE: Does NOT link or assign tracking codes based on matching item titles.
+ * - A receive ('รับ') record only possesses a tracking code if it was explicitly created/submitted with one.
  */
 export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
   if (!records || records.length === 0) return [];
 
-  // Sort by sequence or timestamp (earliest first)
-  const sortedBySeq = [...records].sort((a, b) => (a.seq || 0) - (b.seq || 0));
-
-  const codeAssignmentMap = new Map<string, string>();
-  // Map of known send items by normalized title/sender to match with receive items
-  const sendItemMap = new Map<string, string>();
-
-  // 1. Register all authentic tracking codes from 'ส่ง' records
-  sortedBySeq.forEach((r) => {
-    if (r.actionType === 'ส่ง') {
-      if (r.trackingCode) {
-        codeAssignmentMap.set(r.id, r.trackingCode);
-        if (r.itemTitle) {
-          const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
-          sendItemMap.set(key, r.trackingCode);
-        }
-      }
-    }
-  });
-
-  // 2. Link 'รับ' records to matching 'ส่ง' tracking codes
-  sortedBySeq.forEach((r) => {
-    if (r.actionType === 'รับ') {
-      if (r.trackingCode) {
-        codeAssignmentMap.set(r.id, r.trackingCode);
-      } else {
-        // Try to match with send item
-        let matchedCode: string | undefined;
-        if (r.itemTitle) {
-          const key = `${r.itemTitle.trim().toLowerCase()}_${(r.senderName || '').trim().toLowerCase()}`;
-          matchedCode = sendItemMap.get(key);
-        }
-
-        if (matchedCode) {
-          codeAssignmentMap.set(r.id, matchedCode);
-        }
-        // NOTE: Unlinked receive items must NOT generate a new sequence number here,
-        // which previously caused the outgoing sequence to skip numbers.
-      }
-    }
-  });
-
-  return records.map((r) => {
-    const assigned = codeAssignmentMap.get(r.id);
-    if (assigned && r.trackingCode !== assigned) {
-      return { ...r, trackingCode: assigned };
-    }
-    return r;
-  });
+  // Return records preserving authentic tracking codes, strictly avoiding synthetic cross-linking by item title
+  return records;
 }
 
 /**
@@ -204,7 +157,8 @@ export function normalizeParcelTrackingCode(code?: string): string {
 }
 
 /**
- * Gets a set of tracking codes and item keys that have been confirmed received ("รับแล้ว")
+ * Gets a set of tracking codes that have been confirmed received ("รับแล้ว")
+ * STRICT RULE: Only tracking codes are collected. Never item titles.
  */
 export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Set<string> {
   const receivedCodes = new Set<string>();
@@ -216,9 +170,6 @@ export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Se
         if (r.trackingCode) {
           const norm = normalizeParcelTrackingCode(r.trackingCode);
           if (norm) receivedCodes.add(norm);
-        }
-        if (r.itemTitle) {
-          receivedCodes.add(`title:${r.itemTitle.trim().toLowerCase()}`);
         }
       } else if (r.actionType === 'ส่ง') {
         const isStatusReceived =
@@ -232,7 +183,7 @@ export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Se
     });
   }
 
-  // 2. From localStorage cache of received tracking codes
+  // 2. From localStorage cache of received tracking codes (ignoring any legacy 'title:' entries)
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
@@ -240,8 +191,9 @@ export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Se
         const arr = JSON.parse(stored);
         if (Array.isArray(arr)) {
           arr.forEach((c) => {
-            if (typeof c === 'string') {
-              receivedCodes.add(normalizeParcelTrackingCode(c));
+            if (typeof c === 'string' && !c.startsWith('title:')) {
+              const norm = normalizeParcelTrackingCode(c);
+              if (norm) receivedCodes.add(norm);
             }
           });
         }
@@ -255,6 +207,13 @@ export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Se
 /**
  * Checks if a parcel record represents a received document/parcel, OR
  * if an outgoing ("ส่ง") document/parcel has been received ("รับแล้ว").
+ *
+ * STRICT RULE:
+ * 1. Incoming ("รับ") is always received.
+ * 2. Outgoing ("ส่ง"):
+ *    - If the item title of receive and send are the same, DO NOT change status to 'รับแล้ว'.
+ *    - ONLY exact matching tracking codes can change the status to 'รับแล้ว'.
+ *    - If the record has no tracking code, it CANNOT change status to 'รับแล้ว'.
  */
 export function isParcelConfirmedReceived(
   record: ParcelDeliveryRecord,
@@ -274,42 +233,38 @@ export function isParcelConfirmedReceived(
     return true;
   }
 
+  // 3. For Outgoing ("ส่ง") records:
+  // Must have a tracking code to be confirmed received.
   const normCode = normalizeParcelTrackingCode(record.trackingCode);
-  const titleKey = record.itemTitle ? `title:${record.itemTitle.trim().toLowerCase()}` : '';
-
-  // 3. Check against pre-computed or on-the-fly received set
-  const set = receivedCodesSet || (allRecords ? getReceivedTrackingCodesSet(allRecords) : null);
-  if (set) {
-    if (normCode && set.has(normCode)) return true;
-    if (titleKey && set.has(titleKey)) return true;
+  if (!normCode) {
+    return false;
   }
 
-  // 4. Fallback check directly against allRecords if set was not provided
+  // Check against received tracking codes set (only contains valid tracking codes)
+  const set = receivedCodesSet || (allRecords ? getReceivedTrackingCodesSet(allRecords) : null);
+  if (set && set.has(normCode)) {
+    return true;
+  }
+
+  // Check directly against allRecords for a "รับ" record with matching tracking code
   if (allRecords && allRecords.length > 0) {
     const isMatchedInRecords = allRecords.some((r) => {
       if (r.actionType !== 'รับ') return false;
-      if (normCode && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode) {
-        return true;
-      }
-      if (
-        record.itemTitle &&
-        r.itemTitle &&
-        record.itemTitle.trim().toLowerCase() === r.itemTitle.trim().toLowerCase()
-      ) {
-        return true;
-      }
-      return false;
+      return r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode;
     });
     if (isMatchedInRecords) return true;
   }
 
-  // 5. Check localStorage directly
-  if (normCode && typeof window !== 'undefined') {
+  // Check localStorage directly strictly by tracking code
+  if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
       if (stored) {
         const arr = JSON.parse(stored);
-        if (Array.isArray(arr) && arr.some((c) => normalizeParcelTrackingCode(c) === normCode)) {
+        if (
+          Array.isArray(arr) &&
+          arr.some((c) => typeof c === 'string' && !c.startsWith('title:') && normalizeParcelTrackingCode(c) === normCode)
+        ) {
           return true;
         }
       }
@@ -320,27 +275,31 @@ export function isParcelConfirmedReceived(
 }
 
 /**
- * Saves a tracking code or item title to local received cache
+ * Saves a tracking code to local received cache.
+ * STRICT RULE: Only saves tracking code, never item title.
  */
-export function markTrackingCodeAsReceivedLocally(trackingCode?: string, itemTitle?: string) {
-  if (typeof window === 'undefined') return;
+export function markTrackingCodeAsReceivedLocally(trackingCode?: string) {
+  if (typeof window === 'undefined' || !trackingCode) return;
   try {
+    const norm = normalizeParcelTrackingCode(trackingCode);
+    if (!norm) return;
+
     const stored = localStorage.getItem('proworkflow_received_tracking_codes_v1');
     let arr: string[] = [];
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) arr = parsed;
+        if (Array.isArray(parsed)) {
+          // Clean out any legacy 'title:' entries
+          arr = parsed
+            .filter((c) => typeof c === 'string' && !c.startsWith('title:'))
+            .map((c) => normalizeParcelTrackingCode(c));
+        }
       } catch {}
     }
 
-    if (trackingCode) {
-      const norm = normalizeParcelTrackingCode(trackingCode);
-      if (norm && !arr.includes(norm)) arr.push(norm);
-    }
-    if (itemTitle) {
-      const titleKey = `title:${itemTitle.trim().toLowerCase()}`;
-      if (!arr.includes(titleKey)) arr.push(titleKey);
+    if (!arr.includes(norm)) {
+      arr.push(norm);
     }
 
     localStorage.setItem('proworkflow_received_tracking_codes_v1', JSON.stringify(arr));
@@ -396,101 +355,70 @@ export function checkParcelAlreadyReceived(options: {
   allRecords?: ParcelDeliveryRecord[];
 }): CheckAlreadyReceivedResult {
   const effectiveCode = options.queryTrackingCode || options.trackingCode;
-  const { itemTitle, senderName, recipientName, actionType = 'รับ', allRecords = [] } = options;
+  const { allRecords = [] } = options;
 
   const normCode = normalizeParcelTrackingCode(effectiveCode);
-  const receivedCodesSet = getReceivedTrackingCodesSet(allRecords);
-
-  // 1. Check by Tracking Code
-  if (normCode) {
-    // Check if there is an incoming ("รับ") record with this tracking code
-    const incomingMatch = allRecords.find(
-      (r) => r.actionType === 'รับ' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
-    );
-    if (incomingMatch) {
-      return {
-        isAlreadyReceived: true,
-        reason: 'tracking_code_received',
-        matchedRecord: incomingMatch,
-        message: `รหัสติดตาม "${effectiveCode}" ถูกบันทึกรับไปแล้วเมื่อ ${incomingMatch.timestamp || 'ก่อนหน้านี้'} โดย ${incomingMatch.recipientName || 'ผู้รับ'} (${incomingMatch.recipientDepartment || '-'}) ไม่สามารถทำรายการซ้ำได้`,
-        duplicateDetails: {
-          timestamp: incomingMatch.timestamp,
-          itemTitle: incomingMatch.itemTitle,
-          senderName: incomingMatch.senderName,
-          recipientName: incomingMatch.recipientName,
-          recipientDepartment: incomingMatch.recipientDepartment,
-          operatorName: incomingMatch.operatorName,
-          trackingCode: incomingMatch.trackingCode,
-        },
-      };
-    }
-
-    // Check if there is an outgoing ("ส่ง") record with this tracking code that has already been received
-    const outgoingMatch = allRecords.find(
-      (r) => r.actionType === 'ส่ง' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
-    );
-    if (outgoingMatch && isParcelConfirmedReceived(outgoingMatch, allRecords, receivedCodesSet)) {
-      return {
-        isAlreadyReceived: true,
-        reason: 'outgoing_confirmed',
-        matchedRecord: outgoingMatch,
-        message: `รหัสติดตาม "${effectiveCode}" (${outgoingMatch.itemTitle || 'เอกสาร/พัสดุ'}) มีสถานะรับแล้ว ไม่สามารถทำรายการรับซ้ำได้`,
-        duplicateDetails: {
-          timestamp: outgoingMatch.timestamp,
-          itemTitle: outgoingMatch.itemTitle,
-          senderName: outgoingMatch.senderName,
-          recipientName: outgoingMatch.recipientName,
-          recipientDepartment: outgoingMatch.recipientDepartment,
-          operatorName: outgoingMatch.operatorName,
-          trackingCode: outgoingMatch.trackingCode,
-        },
-      };
-    }
-
-    // Check against local cached received codes
-    if (receivedCodesSet.has(normCode)) {
-      return {
-        isAlreadyReceived: true,
-        reason: 'local_cache',
-        message: `รหัสติดตาม "${effectiveCode}" ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้`,
-        duplicateDetails: {
-          trackingCode: effectiveCode,
-        },
-      };
-    }
+  if (!normCode) {
+    return { isAlreadyReceived: false };
   }
 
-  // 2. If actionType is 'รับ', check by Item Title + Sender + Recipient matching
-  if (actionType === 'รับ' && itemTitle && itemTitle.trim() && senderName && senderName.trim() && recipientName && recipientName.trim()) {
-    const cleanTitle = itemTitle.trim().toLowerCase();
-    const cleanSender = senderName.trim().toLowerCase();
-    const cleanRecipient = recipientName.trim().toLowerCase();
+  const receivedCodesSet = getReceivedTrackingCodesSet(allRecords);
 
-    const duplicateReceivedMatch = allRecords.find((r) => {
-      if (r.actionType !== 'รับ') return false;
-      const rTitle = (r.itemTitle || '').trim().toLowerCase();
-      const rSender = (r.senderName || '').trim().toLowerCase();
-      const rRecipient = (r.recipientName || '').trim().toLowerCase();
-      return rTitle === cleanTitle && rSender === cleanSender && rRecipient === cleanRecipient;
-    });
+  // 1. Check by Tracking Code:
+  // Check if there is an incoming ("รับ") record with this tracking code
+  const incomingMatch = allRecords.find(
+    (r) => r.actionType === 'รับ' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
+  );
+  if (incomingMatch) {
+    return {
+      isAlreadyReceived: true,
+      reason: 'tracking_code_received',
+      matchedRecord: incomingMatch,
+      message: `รหัสติดตาม "${effectiveCode}" ถูกบันทึกรับไปแล้วเมื่อ ${incomingMatch.timestamp || 'ก่อนหน้านี้'} โดย ${incomingMatch.recipientName || 'ผู้รับ'} (${incomingMatch.recipientDepartment || '-'}) ไม่สามารถทำรายการซ้ำได้`,
+      duplicateDetails: {
+        timestamp: incomingMatch.timestamp,
+        itemTitle: incomingMatch.itemTitle,
+        senderName: incomingMatch.senderName,
+        recipientName: incomingMatch.recipientName,
+        recipientDepartment: incomingMatch.recipientDepartment,
+        operatorName: incomingMatch.operatorName,
+        trackingCode: incomingMatch.trackingCode,
+      },
+    };
+  }
 
-    if (duplicateReceivedMatch) {
-      return {
-        isAlreadyReceived: true,
-        reason: 'duplicate_item_match',
-        matchedRecord: duplicateReceivedMatch,
-        message: `ข้อมูลเอกสาร/พัสดุ "${itemTitle}" (จาก ${senderName} ถึง ${recipientName}) ถูกทำรายการรับไปแล้วเมื่อ ${duplicateReceivedMatch.timestamp || 'ก่อนหน้านี้'} ไม่สามารถทำรายการซ้ำได้`,
-        duplicateDetails: {
-          timestamp: duplicateReceivedMatch.timestamp,
-          itemTitle: duplicateReceivedMatch.itemTitle,
-          senderName: duplicateReceivedMatch.senderName,
-          recipientName: duplicateReceivedMatch.recipientName,
-          recipientDepartment: duplicateReceivedMatch.recipientDepartment,
-          operatorName: duplicateReceivedMatch.operatorName,
-          trackingCode: duplicateReceivedMatch.trackingCode,
-        },
-      };
-    }
+  // Check if there is an outgoing ("ส่ง") record with this tracking code that has already been received
+  const outgoingMatch = allRecords.find(
+    (r) => r.actionType === 'ส่ง' && r.trackingCode && normalizeParcelTrackingCode(r.trackingCode) === normCode
+  );
+  if (outgoingMatch && isParcelConfirmedReceived(outgoingMatch, allRecords, receivedCodesSet)) {
+    return {
+      isAlreadyReceived: true,
+      reason: 'outgoing_confirmed',
+      matchedRecord: outgoingMatch,
+      message: `รหัสติดตาม "${effectiveCode}" (${outgoingMatch.itemTitle || 'เอกสาร/พัสดุ'}) มีสถานะรับแล้ว ไม่สามารถทำรายการรับซ้ำได้`,
+      duplicateDetails: {
+        timestamp: outgoingMatch.timestamp,
+        itemTitle: outgoingMatch.itemTitle,
+        senderName: outgoingMatch.senderName,
+        recipientName: outgoingMatch.recipientName,
+        recipientDepartment: outgoingMatch.recipientDepartment,
+        operatorName: outgoingMatch.operatorName,
+        trackingCode: outgoingMatch.trackingCode,
+      },
+    };
+  }
+
+  // Check against local cached received codes
+  if (receivedCodesSet.has(normCode)) {
+    return {
+      isAlreadyReceived: true,
+      reason: 'local_cache',
+      message: `รหัสติดตาม "${effectiveCode}" ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้`,
+      duplicateDetails: {
+        trackingCode: effectiveCode,
+      },
+    };
   }
 
   return { isAlreadyReceived: false };
