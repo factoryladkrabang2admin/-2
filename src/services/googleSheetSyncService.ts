@@ -23,73 +23,11 @@ import {
   generateParcelTrackingCode 
 } from '../utils/parcelTrackingUtils';
 
-export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/edit?resourcekey=&gid=1278573396#gid=1278573396';
-export const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/export?format=csv&gid=1278573396';
+export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432#gid=1327805432';
+export const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/export?format=csv&gid=1327805432';
 
-// Backup Snapshot CSV text in case network is disconnected or blocked by CORS in some browsers
-export const FALLBACK_SHEET_CSV = `ประทับเวลา,กรุณาระบุวันที่,เลือกข้อมูล,ชื่อผู้ดำเนินการ,แผนก,ประเภทผ้า,จำนวน (ตัว/ชิ้น/ผืน),เวลาที่จัดส่ง,แผนก,ประเภทผ้า
-20/8/2026,20/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,11.30,,
-20/8/2026,20/8/2026,ซักเสร็จแล้ว,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,11.30,2/1,เสื้อกาวน์สีเขียว
-20/8/2026,20/8/2026,ซักเสร็จแล้ว,สุริยา,B/1,ผ้าปูโต๊ะ,12,13.45,B/1,ผ้าปูโต๊ะ
-21/8/2026,21/8/2026,ซักเสร็จแล้ว,สุริยา,3/1,เสื้อกาวน์สีเขียว,30,10.15,3/1,เสื้อกาวน์สีเขียว
-21/8/2026,21/8/2026,ซักเสร็จแล้ว,สุริยา,A/1,ผ้ากรองแอร์,5,15.00,A/1,ผ้ากรองแอร์
-22/8/2026,22/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,18,12.35,,
-22/8/2026,22/8/2026,ซักเสร็จแล้ว,สุริยา,2/1,เสื้อกาวน์สีเขียว,18,12.35,2/1,เสื้อกาวน์สีเขียว
-22/8/2026,22/8/2026,อยู่ระหว่างการซัก,สุริยา,2/2,เสื้อกาวน์สีเขียว,24,12.35,,
-22/8/2026,22/8/2026,ซักเสร็จแล้ว,สุริยา,2/2,เสื้อกาวน์สีเขียว,24,12.35,2/2,เสื้อกาวน์สีเขียว
-22/8/2026,22/8/2026,อยู่ระหว่างการซัก,สุริยา,2/3,เสื้อกาวน์สีเขียว,15,12.35,,
-22/8/2026,22/8/2026,ซักเสร็จแล้ว,สุริยา,2/3,เสื้อกาวน์สีเขียว,15,12.35,2/3,เสื้อกาวน์สีเขียว
-22/8/2026,22/8/2026,อยู่ระหว่างการซัก,สุริยา,3/1,เสื้อกาวน์สีเขียว,26,12.35,,
-22/8/2026,22/8/2026,ซักเสร็จแล้ว,สุริยา,3/1,เสื้อกาวน์สีเขียว,26,12.35,3/1,เสื้อกาวน์สีเขียว
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,3/2,เสื้อกาวน์สีเขียว,28,12.35,,
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีเขียว,36,12.35,,
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,3/4,เสื้อกาวน์สีเขียว,30,12.35,,
-23/8/2026,23/8/2026,ซักเสร็จแล้ว,สุริยา,3/4,เสื้อกาวน์สีเขียว,30,12.35,3/4,เสื้อกาวน์สีเขียว
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,3/5,เสื้อกาวน์สีเขียว,42,12.35,,
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,A/2,เสื้อกาวน์สีเขียว,10,12.35,,
-23/8/2026,23/8/2026,ซักเสร็จแล้ว,สุริยา,A/2,เสื้อกาวน์สีเขียว,10,12.35,A/2,เสื้อกาวน์สีเขียว
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,A/3,เสื้อกาวน์สีเขียว,6,12.35,,
-23/8/2026,23/8/2026,อยู่ระหว่างการซัก,สุริยา,A/2,ผ้ากรองแอร์,3,14.35,,
-23/8/2026,23/8/2026,ซักเสร็จแล้ว,สุริยา,A/2,ผ้ากรองแอร์,3,14.35,A/2,ผ้ากรองแอร์
-24/8/2026,24/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,22,11.00,,
-24/8/2026,24/8/2026,ซักเสร็จแล้ว,สุริยา,2/1,เสื้อกาวน์สีเขียว,22,11.00,2/1,เสื้อกาวน์สีเขียว
-24/8/2026,24/8/2026,ซักเสร็จแล้ว,สุริยา,B/2,ผ้าเช็ดมือ,15,14.20,B/2,ผ้าเช็ดมือ
-25/8/2026,25/8/2026,อยู่ระหว่างการซัก,สุริยา,3/2,เสื้อกาวน์สีเขียว,32,10.45,,
-25/8/2026,25/8/2026,ซักเสร็จแล้ว,สุริยา,3/2,เสื้อกาวน์สีเขียว,32,10.45,3/2,เสื้อกาวน์สีเขียว
-26/8/2026,26/8/2026,อยู่ระหว่างการซัก,สุริยา,A/1,เสื้อกาวน์สีเขียว,16,13.15,,
-26/8/2026,26/8/2026,ซักเสร็จแล้ว,สุริยา,A/1,เสื้อกาวน์สีเขียว,16,13.15,A/1,เสื้อกาวน์สีเขียว
-27/8/2026,27/8/2026,อยู่ระหว่างการซัก,สุริยา,2/2,เสื้อกาวน์สีเขียว,25,11.30,,
-27/8/2026,27/8/2026,ซักเสร็จแล้ว,สุริยา,2/2,เสื้อกาวน์สีเขียว,25,11.30,2/2,เสื้อกาวน์สีเขียว
-28/8/2026,28/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีเขียว,38,12.00,,
-28/8/2026,28/8/2026,ซักเสร็จแล้ว,สุริยา,3/3,เสื้อกาวน์สีเขียว,38,12.00,3/3,เสื้อกาวน์สีเขียว
-29/8/2026,29/8/2026,อยู่ระหว่างการซัก,สุริยา,A/2,ผ้ากรองแอร์,4,14.00,,
-29/8/2026,29/8/2026,ซักเสร็จแล้ว,สุริยา,A/2,ผ้ากรองแอร์,4,14.00,A/2,ผ้ากรองแอร์
-30/8/2026,30/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,10.30,,
-30/8/2026,30/8/2026,ซักเสร็จแล้ว,สุริยา,2/1,เสื้อกาวน์สีเขียว,20,10.30,2/1,เสื้อกาวน์สีเขียว
-30/8/2026,30/8/2026,อยู่ระหว่างการซัก,สุริยา,3/1,เสื้อกาวน์สีเขียว,18,11.45,,
-30/8/2026,30/8/2026,ซักเสร็จแล้ว,สุริยา,3/1,เสื้อกาวน์สีเขียว,18,11.45,3/1,เสื้อกาวน์สีเขียว
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/5,เสื้อกาวน์สีเขียว,49,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีกรมท่า,12,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/3,เสื้อกาวน์สีเขียว,15,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/2,เสื้อกาวน์สีเขียว,30,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/1,เสื้อกาวน์สีเขียว,10,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/2,เสื้อกาวน์สีเขียว,30,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,2/3,เสื้อกาวน์สีเขียว,29,12.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,A/3,เสื้อกาวน์สีเขียว,6,14.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/4,เสื้อกาวน์สีเขียว,29,14.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,3/1,เสื้อกาวน์สีเขียว,21,14.35,,,
-31/8/2026,31/8/2026,อยู่ระหว่างการซัก,สุริยา,B/1,เสื้อกาวน์สีเขียว,12,14.35,,,
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/5,เสื้อกาวน์สีเขียว,49
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/3,เสื้อกาวน์สีกรมท่า,12
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/3,เสื้อกาวน์สีเขียว,15
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/2,เสื้อกาวน์สีเขียว,30
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/1,เสื้อกาวน์สีเขียว,10
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/2,เสื้อกาวน์สีเขียว,30
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,2/3,เสื้อกาวน์สีเขียว,29
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,A/3,เสื้อกาวน์สีเขียว,6
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,B/1,เสื้อกาวน์สีเขียว,12
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/1,เสื้อกาวน์สีเขียว,21
-31/8/2026,,,ซักเสร็จแล้ว,,,,,,31/8/2026,3/4,เสื้อกาวน์สีเขียว,29`;
+// Clean Header schema for the target Google Sheet: https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432
+export const FALLBACK_SHEET_CSV = `ประทับเวลา,กรุณาระบุวันที่,เลือกข้อมูล,ชื่อผู้ดำเนินการ,แผนก,ประเภทผ้า,จำนวน (ตัว/ชิ้น/ผืน),เวลาที่จัดส่ง,รหัสติดตาม`;
 
 export interface GoogleSheetSyncResult {
   success: boolean;
@@ -363,84 +301,60 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
   const rows = parseCSV(csvText);
   if (rows.length <= 1) return [];
 
+  const header = rows[0].map((h) => (h || '').trim());
+  // Dynamically map column positions from header names
+  const findCol = (terms: string[]) =>
+    header.findIndex((h) => terms.some((t) => h.toLowerCase().includes(t.toLowerCase())));
+
+  const timeCol = findCol(['ประทับเวลา', 'timestamp', 'เวลาประทับ']);
+  const dateCol = findCol(['กรุณาระบุวันที่', 'วันที่', 'date']);
+  const actionColIdx = findCol(['เลือกข้อมูล', 'สถานะ', 'action', 'status']);
+  const operatorCol = findCol(['ชื่อผู้ดำเนินการ', 'ผู้ดำเนินการ', 'ชื่อ', 'operator']);
+  const deptCol = findCol(['แผนก', 'department', 'dept', 'room']);
+  const garmentCol = findCol(['ประเภทผ้า', 'ชนิดผ้า', 'ผ้า', 'garment']);
+  const qtyCol = findCol(['จำนวน', 'qty', 'quantity']);
+  const deliveryTimeCol = findCol(['เวลาที่จัดส่ง', 'เวลาจัดส่ง', 'เวลาส่ง', 'delivery']);
+  const trackingCol = findCol(['รหัสติดตาม', 'tracking', 'track', 'code']);
+
+  const getCol = (r: string[], idx: number, fallbackIdx: number) => {
+    const i = idx >= 0 ? idx : fallbackIdx;
+    return (r[i] || '').trim().replace(/^["']+|["']+$/g, '');
+  };
+
+  const cleanTracking = (code: string) => (code || '').replace(/[\s\-_]/g, '').toLowerCase();
+
   const dataRows = rows.slice(1);
   const allOrders: LaundryOrder[] = [];
   const dailySeqMap: { [dateStr: string]: number } = {};
-
-  // Track pending 'washing' orders awaiting completion per (Date + Dept + Garment)
   const pendingWashingOrders: { [key: string]: LaundryOrder[] } = {};
-
-  let lastSeenDate = '2026-06-01';
+  let lastSeenDate = '2026-09-14';
 
   dataRows.forEach((r, idx) => {
-    const timestamp = (r[0] || '').trim();
-    const date1 = (r[1] || '').trim();
-    const actionCol = (r[2] || '').trim();
-    const operator = (r[3] || '').trim();
-    const dept1 = (r[4] || '').trim();
-    const garment1 = (r[5] || '').trim();
-    const qtyCol1 = (r[6] || '').trim();
-    const deliveryTime = (r[7] || '').trim();
-    const date2 = (r[8] || '').trim();
-    const dept2 = (r[9] || '').trim();
-    const garment2 = (r[10] || '').trim();
-    const qtyCol2 = (r[11] || '').trim();
+    if (!r || r.every((c) => !c.trim())) return;
 
-    const rawDate = date1 || date2 || (timestamp ? timestamp.split(',')[0].split(' ')[0] : '');
+    const timestamp = getCol(r, timeCol, 0);
+    const dateVal = getCol(r, dateCol, 1);
+    const actionVal = getCol(r, actionColIdx, 2);
+    const operator = getCol(r, operatorCol, 3);
+    const rawDept = getCol(r, deptCol, 4);
+    const garment = getCol(r, garmentCol, 5);
+    const rawQty = getCol(r, qtyCol, 6);
+    const deliveryTime = getCol(r, deliveryTimeCol, 7);
+    const rawTrackingCode = getCol(r, trackingCol, 8);
+
+    const rawDate = dateVal || (timestamp ? timestamp.split(',')[0].split(' ')[0] : '');
     if (rawDate) {
       lastSeenDate = normalizeDate(rawDate, timestamp, lastSeenDate);
     }
     const normalizedDate = rawDate ? normalizeDate(rawDate, timestamp, lastSeenDate) : lastSeenDate;
 
-    let rawDept = dept1 || dept2 || '';
-    if (!rawDept) {
-      for (let c = 0; c < r.length; c++) {
-        const val = (r[c] || '').trim();
-        if (!val || val === timestamp || val === date1 || val === date2 || val === actionCol || val === operator) continue;
-        if (
-          /^[A-Za-z0-9]+[/-][A-Za-z0-9]+/i.test(val) ||
-          /^[A-Za-z]\s*\d+/i.test(val) ||
-          val.includes('ลาดกระบัง') ||
-          val.includes('ธุรการ') ||
-          val.includes('สวัสดิการ') ||
-          val.includes('สรรหา')
-        ) {
-          rawDept = val;
-          break;
-        }
-      }
-    }
     const dept = normalizeDepartment(rawDept);
+    if (!dept && !garment) return;
 
-    let garment = garment1 || garment2 || '';
-    if (!garment) {
-      for (let c = 0; c < r.length; c++) {
-        const val = (r[c] || '').trim();
-        if (!val || val === timestamp || val === date1 || val === date2 || val === actionCol || val === operator || val === rawDept) continue;
-        if (
-          val.includes('ผ้า') ||
-          val.includes('กาวน์') ||
-          val.includes('เอี๊ยม') ||
-          val.includes('หมวก') ||
-          val.includes('ชุด') ||
-          val.includes('ปลอก') ||
-          val.includes('Visitor')
-        ) {
-          garment = val;
-          break;
-        }
-      }
-    }
-
-    if (!dept || !garment) return;
-
-    let parsedQty = parseInt(qtyCol1, 10);
-    if (isNaN(parsedQty) || parsedQty <= 0) {
-      parsedQty = parseInt(qtyCol2, 10);
-    }
+    let parsedQty = parseInt(rawQty, 10);
     if (isNaN(parsedQty) || parsedQty <= 0) {
       for (let c = 0; c < r.length; c++) {
-        if (c === 0 || c === 1 || c === 8) continue; // skip timestamp & date
+        if (c === timeCol || c === dateCol || c === trackingCol) continue;
         const val = (r[c] || '').trim();
         if (/^\d+$/.test(val)) {
           const num = parseInt(val, 10);
@@ -451,10 +365,9 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
         }
       }
     }
-    const hasExplicitQty = !isNaN(parsedQty) && parsedQty > 0;
-    const finalQty = hasExplicitQty ? parsedQty : 1;
+    const finalQty = !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 1;
 
-    // Format Thai display dates
+    // Date display string
     const dateParts = normalizedDate.split('-');
     const yearNum = parseInt(dateParts[0], 10);
     const monthNum = parseInt(dateParts[1], 10) - 1;
@@ -466,122 +379,155 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
       day: 'numeric',
     });
 
-    const isExplicitCompleted =
-      actionCol.includes('เสร็จ') ||
-      actionCol.includes('เรียบร้อย') ||
-      actionCol.includes('พร้อมส่ง') ||
-      actionCol.includes('จัดส่งแล้ว') ||
-      actionCol.toLowerCase().includes('ready') ||
-      actionCol.toLowerCase().includes('complete') ||
-      actionCol.toLowerCase().includes('done');
+    const isCompleted =
+      actionVal.includes('เสร็จ') ||
+      actionVal.includes('เรียบร้อย') ||
+      actionVal.includes('พร้อมส่ง') ||
+      actionVal.includes('จัดส่งแล้ว') ||
+      actionVal.toLowerCase().includes('ready') ||
+      actionVal.toLowerCase().includes('complete') ||
+      actionVal.toLowerCase().includes('done');
 
-    const key = `${normalizedDate}|${dept.toUpperCase()}|${garment.trim().toLowerCase()}`;
+    const cleanRowCode = cleanTracking(rawTrackingCode);
+    const formattedDelivery = formatDeliveryTime(deliveryTime);
 
-    // Check if there is an active pending 'washing' order waiting for completion
+    // 1. FIRST PRIORITY: If tracking code is present and already in allOrders, update that order!
+    if (cleanRowCode) {
+      const existingOrderByCode = allOrders.find(
+        (o) => cleanTracking(o.trackingCode) === cleanRowCode
+      );
+      if (existingOrderByCode) {
+        if (isCompleted) {
+          existingOrderByCode.stage = 'ready';
+          existingOrderByCode.completedAt =
+            timestamp || `${thaiDateStr} ${formattedDelivery || '12:35 น.'}`;
+          if (formattedDelivery) {
+            existingOrderByCode.estimatedCompletion = `${thaiDateStr}, ${formattedDelivery}`;
+          }
+          if (!existingOrderByCode.historyTimeline.some((h) => h.stage === 'ready')) {
+            existingOrderByCode.historyTimeline.push({
+              stage: 'ready',
+              label: 'ซักเสร็จแล้ว',
+              timestamp: timestamp || (formattedDelivery ? formattedDelivery : '12:35 น.'),
+              note: `อัปเดตสถานะ: ซักเสร็จแล้ว (จาก Google Sheet รหัส: ${existingOrderByCode.trackingCode})`,
+              operator: operator || existingOrderByCode.assignedStaff || 'เจ้าหน้าที่',
+            });
+          }
+        } else {
+          if (operator) existingOrderByCode.assignedStaff = operator;
+          if (formattedDelivery) existingOrderByCode.estimatedCompletion = `${thaiDateStr}, ${formattedDelivery}`;
+        }
+        return; // Handled! Do not create duplicate order
+      }
+    }
+
+    // 2. SECOND PRIORITY: If completed, try matching open pending 'washing' order by (Date + Dept + Garment + Qty)
+    const key = `${normalizedDate}|${dept.toUpperCase()}|${(garment || '').trim().toLowerCase()}`;
     const pendingList = pendingWashingOrders[key] || [];
-
-    // Find index of pending order that matches BOTH department, garment type AND exact quantity
     let matchedPendingIdx = -1;
-    if (isExplicitCompleted && pendingList.length > 0) {
+    if (isCompleted && pendingList.length > 0) {
       matchedPendingIdx = pendingList.findIndex((o) => {
         const orderQty = o.items[0]?.quantity ?? 1;
         return orderQty === finalQty;
       });
     }
 
-    if (isExplicitCompleted && matchedPendingIdx !== -1) {
-      // Pair with the earliest pending open order matching department, garment, and quantity (FIFO)
+    if (isCompleted && matchedPendingIdx !== -1) {
       const targetOrder = pendingList.splice(matchedPendingIdx, 1)[0];
       targetOrder.stage = 'ready';
-      targetOrder.completedAt = timestamp || `${thaiDateStr} ${deliveryTime ? formatDeliveryTime(deliveryTime) : '12:35 น.'}`;
-
-      if (deliveryTime) {
-        targetOrder.estimatedCompletion = `${thaiDateStr}, ${formatDeliveryTime(deliveryTime)}`;
+      targetOrder.completedAt =
+        timestamp || `${thaiDateStr} ${formattedDelivery || '12:35 น.'}`;
+      if (rawTrackingCode) {
+        targetOrder.trackingCode = rawTrackingCode;
       }
-
+      if (formattedDelivery) {
+        targetOrder.estimatedCompletion = `${thaiDateStr}, ${formattedDelivery}`;
+      }
       targetOrder.historyTimeline.push({
         stage: 'ready',
         label: 'ซักเสร็จแล้ว',
-        timestamp: timestamp || (deliveryTime ? formatDeliveryTime(deliveryTime) : '12:35 น.'),
-        note: `อัปเดตสถานะ: ซักเสร็จแล้ว (ตรงตามเงื่อนไข: แผนก ${dept} • ${garment} • จำนวน ${finalQty} ชิ้น)${deliveryTime ? ` [เวลาจัดส่ง: ${formatDeliveryTime(deliveryTime)}]` : ''}`,
+        timestamp: timestamp || (formattedDelivery ? formattedDelivery : '12:35 น.'),
+        note: `อัปเดตสถานะ: ซักเสร็จแล้ว (ตรงตามเงื่อนไข: แผนก ${dept} • ${garment} • จำนวน ${finalQty} ชิ้น)${formattedDelivery ? ` [เวลาจัดส่ง: ${formattedDelivery}]` : ''}`,
         operator: operator || targetOrder.customerName || 'ระบบอัตโนมัติ Google Sheet',
       });
+      return;
+    }
+
+    // 3. Otherwise, create a new order ticket
+    if (!dailySeqMap[normalizedDate]) {
+      dailySeqMap[normalizedDate] = 1;
     } else {
-      // Create a NEW order ticket (even if same date, dept, garment exists on the same day)
-      if (!dailySeqMap[normalizedDate]) {
-        dailySeqMap[normalizedDate] = 1;
-      } else {
-        dailySeqMap[normalizedDate]++;
+      dailySeqMap[normalizedDate]++;
+    }
+    const seqNumber = dailySeqMap[normalizedDate];
+    const yy = dateParts[0].slice(-2);
+    const mm = dateParts[1];
+    const dd = dateParts[2];
+
+    const finalTrackingCode =
+      rawTrackingCode || `LKB2 - ${yy}${mm}${dd}${String(seqNumber).padStart(2, '0')}`;
+    const estCompletion = `${thaiDateStr}, ${formattedDelivery || '12:35 น.'}`;
+    const unitPrice =
+      garment.includes('ผ้ากรอง') || garment.includes('ผ้าคลุม') ? 20 : 15;
+    const totalWeight = parseFloat((finalQty * 0.35).toFixed(1)) || 1.5;
+    const initialStage = isCompleted ? 'ready' : 'washing';
+
+    const orderId = rawTrackingCode
+      ? `gsheet-${cleanTracking(rawTrackingCode)}`
+      : `gsheet-row-${idx}-${normalizedDate}-${seqNumber}`;
+
+    const newOrder: LaundryOrder = {
+      id: orderId,
+      trackingCode: finalTrackingCode,
+      orderDate: normalizedDate,
+      customerName: operator || `เจ้าหน้าที่ ${dept}`,
+      customerRoomOrDept: dept,
+      serviceType: 'Wash & Fold',
+      priority: 'normal',
+      stage: initialStage,
+      items: [
+        {
+          id: `item-${idx}-1`,
+          name: garment || 'ผ้าทั่วไป',
+          category: getGarmentCategory(garment || 'ผ้าทั่วไป'),
+          quantity: finalQty,
+          unitPrice: unitPrice,
+          careNote: 'บันทึกผ่าน Google Sheet',
+        },
+      ],
+      totalWeightKg: totalWeight,
+      totalPrice: finalQty * unitPrice,
+      paymentStatus: 'Corporate Invoice',
+      assignedStaff: operator || 'สุริยา',
+      assignedStaffAvatar: isCompleted
+        ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
+      assignedMachine: 'Intake Station #01',
+      waterTemp: 'Warm (40°C)',
+      notes: `ประเภทผ้า: ${garment} | แผนก: ${dept} | จำนวน: ${finalQty} ชิ้น`,
+      receivedAt: timestamp || `${thaiDateStr} เวลา 08:30 น.`,
+      estimatedCompletion: estCompletion,
+      completedAt: isCompleted ? timestamp || `${thaiDateStr} 12:35 น.` : undefined,
+      historyTimeline: [
+        {
+          stage: initialStage,
+          label: initialStage === 'ready' ? 'ซักเสร็จแล้ว' : 'อยู่ระหว่างซัก',
+          timestamp: timestamp || '08:30 น.',
+          note: isCompleted
+            ? `บันทึกข้อมูล: แผนก ${dept} ส่ง ${garment} จำนวน ${finalQty} ชิ้น (สถานะ: ซักเสร็จแล้ว)`
+            : `บันทึกข้อมูลรับผ้า: แผนก ${dept} ส่ง ${garment} จำนวน ${finalQty} ชิ้น (สถานะ: อยู่ระหว่างซัก)`,
+          operator: operator || 'ระบบอัตโนมัติ Google Sheet',
+        },
+      ],
+    };
+
+    allOrders.push(newOrder);
+
+    if (!isCompleted) {
+      if (!pendingWashingOrders[key]) {
+        pendingWashingOrders[key] = [];
       }
-
-      const seqNumber = dailySeqMap[normalizedDate];
-      const yy = dateParts[0].slice(-2);
-      const mm = dateParts[1];
-      const dd = dateParts[2];
-      // Accurate tracking code matching the date in Google Sheet: LKB2 - YYMMDDSS
-      const trackingCode = `LKB2 - ${yy}${mm}${dd}${String(seqNumber).padStart(2, '0')}`;
-
-      const formattedDelivery = formatDeliveryTime(deliveryTime);
-      const estCompletion = `${thaiDateStr}, ${formattedDelivery}`;
-      const unitPrice = garment.includes('ผ้ากรอง') || garment.includes('ผ้าคลุม') ? 20 : 15;
-      const totalWeight = parseFloat((finalQty * 0.35).toFixed(1)) || 1.5;
-
-      const initialStage = isExplicitCompleted ? 'ready' : 'washing';
-
-      const newOrder: LaundryOrder = {
-        id: `gsheet-row-${idx}-${normalizedDate}-${seqNumber}`,
-        trackingCode: trackingCode,
-        orderDate: normalizedDate,
-        customerName: operator || `เจ้าหน้าที่ ${dept}`,
-        customerRoomOrDept: dept,
-        serviceType: 'Wash & Fold',
-        priority: 'normal',
-        stage: initialStage,
-        items: [
-          {
-            id: `item-${idx}-1`,
-            name: garment,
-            category: getGarmentCategory(garment),
-            quantity: finalQty,
-            unitPrice: unitPrice,
-            careNote: 'บันทึกผ่าน Google Sheet',
-          },
-        ],
-        totalWeightKg: totalWeight,
-        totalPrice: finalQty * unitPrice,
-        paymentStatus: 'Corporate Invoice',
-        assignedStaff: operator || 'สุริยา',
-        assignedStaffAvatar: isExplicitCompleted
-          ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'
-          : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
-        assignedMachine: 'Intake Station #01',
-        waterTemp: 'Warm (40°C)',
-        notes: `ประเภทผ้า: ${garment} | แผนก: ${dept} | จำนวน: ${finalQty} ชิ้น`,
-        receivedAt: timestamp || `${thaiDateStr} เวลา 08:30 น.`,
-        estimatedCompletion: estCompletion,
-        completedAt: isExplicitCompleted ? (timestamp || `${thaiDateStr} 12:35 น.`) : undefined,
-        historyTimeline: [
-          {
-            stage: initialStage,
-            label: initialStage === 'ready' ? 'ซักเสร็จแล้ว' : 'อยู่ระหว่างซัก',
-            timestamp: timestamp || '08:30 น.',
-            note: isExplicitCompleted
-              ? `บันทึกข้อมูล: แผนก ${dept} ส่ง ${garment} จำนวน ${finalQty} ชิ้น (สถานะ: ซักเสร็จแล้ว)`
-              : `บันทึกข้อมูลรับผ้า: แผนก ${dept} ส่ง ${garment} จำนวน ${finalQty} ชิ้น (สถานะ: อยู่ระหว่างซัก)`,
-            operator: operator || 'ระบบอัตโนมัติ Google Sheet',
-          },
-        ],
-      };
-
-      allOrders.push(newOrder);
-
-      // If this was an intake order (washing), add to pending queue so a future completion row can pair with it
-      if (!isExplicitCompleted) {
-        if (!pendingWashingOrders[key]) {
-          pendingWashingOrders[key] = [];
-        }
-        pendingWashingOrders[key].push(newOrder);
-      }
+      pendingWashingOrders[key].push(newOrder);
     }
   });
 
@@ -589,19 +535,21 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
 }
 
 /**
- * Fetch and sync Google Sheet data with multi-tier failover and graceful snapshot fallback
+ * Fetch and sync Google Sheet data exclusively from user-specified sheet
+ * Google Sheet: https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432
  */
 export async function fetchGoogleSheetLaundryOrders(): Promise<GoogleSheetSyncResult> {
   const candidateUrls = [
-    // 1. Backend Proxy (direct fetch from Google Sheets with raw format and no CORS issues)
-    '/api/sheet-csv?sheetId=1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos&gid=1278573396',
-    // 2. Direct export format
-    'https://docs.google.com/spreadsheets/d/1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos/export?format=csv&gid=1278573396',
+    // 1. Backend Proxy for the specified Google Sheet
+    '/api/sheet-csv?sheetId=1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI&gid=1327805432',
+    // 2. Direct export format for the specified Google Sheet
+    'https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/export?format=csv&gid=1327805432',
     // 3. Fallback direct export url
     GOOGLE_SHEET_CSV_URL,
   ];
 
   let csvText: string | null = null;
+  let detectedAuthError = false;
 
   for (const url of candidateUrls) {
     try {
@@ -619,9 +567,27 @@ export async function fetchGoogleSheetLaundryOrders(): Promise<GoogleSheetSyncRe
 
       clearTimeout(timeoutId);
 
+      if (response.status === 401 || response.status === 403) {
+        try {
+          const errJson = await response.json();
+          if (errJson?.requiresAuth) {
+            detectedAuthError = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       if (response.ok) {
         const text = await response.text();
-        if (text && text.includes('ประทับเวลา') && text.length > 50) {
+        if (
+          text &&
+          !text.includes('<!DOCTYPE') &&
+          !text.includes('<html') &&
+          !text.includes('accounts.google.com') &&
+          text.includes('ประทับเวลา') &&
+          text.length > 50
+        ) {
           csvText = text;
           lastSuccessfulLaundryCsvText = text;
           try {
@@ -649,6 +615,9 @@ export async function fetchGoogleSheetLaundryOrders(): Promise<GoogleSheetSyncRe
     orders,
     rawRowsCount: finalText.split('\n').filter(Boolean).length - 1,
     lastSyncedAt: new Date(),
+    error: detectedAuthError
+      ? 'Google Sheet ต้องการเปิดสิทธิ์แชร์สาธารณะ (กรุณาตั้งค่า แชร์ -> "ทุกคนที่มีลิงก์มีสิทธิ์ดู" ใน Google Sheet เพื่อให้อ่านข้อมูล Real-time ได้ทันที)'
+      : undefined,
   };
 }
 

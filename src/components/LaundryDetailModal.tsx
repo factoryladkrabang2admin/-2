@@ -1,8 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { LaundryOrder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
-import { QRCodeSVG } from 'qrcode.react';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
 import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import {
@@ -10,14 +9,11 @@ import {
   Shirt,
   Calendar,
   Building2,
-  Download,
-  QrCode,
   CheckCircle2,
   Waves,
   Copy,
   Tag,
   Sparkles,
-  Image as ImageIcon,
   Trash2,
   AlertTriangle,
   ShieldCheck
@@ -29,6 +25,7 @@ interface LaundryDetailModalProps {
   onClose: () => void;
   onUpdateOrder?: (updated: LaundryOrder) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onCompleteOrder?: (order: LaundryOrder) => void;
   currentUser?: AdminUserAccount;
 }
 
@@ -55,13 +52,12 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
   onClose,
   onUpdateOrder,
   onDeleteOrder,
+  onCompleteOrder,
   currentUser,
 }) => {
   const { language } = useLanguage();
-  const [downloadingQr, setDownloadingQr] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const qrContainerRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !order) return null;
 
@@ -85,137 +81,6 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
   const totalItems = order.items.reduce((s, i) => s + i.quantity, 0);
   const deptStyle = getDepartmentColor(order.customerRoomOrDept);
   const garmentStyle = getGarmentColor(garmentTypeName);
-
-  const trackingUrl = typeof window !== 'undefined' && window.location?.origin
-    ? `${window.location.origin}${window.location.pathname}?track=${encodeURIComponent(order.trackingCode)}`
-    : `https://ais-pre-zdwqcfau7cehjcy4fegllj-754000315222.asia-southeast1.run.app/?track=${encodeURIComponent(order.trackingCode)}`;
-
-  // High-resolution Canvas generator for downloading the Laundry Tracking QR Code card
-  const handleDownloadQrCode = async () => {
-    try {
-      setDownloadingQr(true);
-      const canvas = document.createElement('canvas');
-      const width = 800;
-      const height = 960;
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        setDownloadingQr(false);
-        return;
-      }
-
-      // Background gradient (Clean modern sky-blue palette)
-      const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-      bgGrad.addColorStop(0, '#F0F9FF');
-      bgGrad.addColorStop(0.45, '#FFFFFF');
-      bgGrad.addColorStop(1, '#E0F2FE');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      // Decorative outer border
-      ctx.save();
-      ctx.strokeStyle = '#7DD3FC';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(24, 24, width - 48, height - 48);
-      ctx.restore();
-
-      // Top Title
-      ctx.fillStyle = '#0369A1';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('ระบบติดตามสถานะงานผ้า', width / 2, 85);
-
-      ctx.fillStyle = '#64748B';
-      ctx.font = '500 20px sans-serif';
-      ctx.fillText('ธุรการ โรงงานลาดกระบัง 2', width / 2, 122);
-
-      // Tracking Code Pill Header
-      ctx.fillStyle = '#002045';
-      ctx.beginPath();
-      ctx.roundRect((width - 380) / 2, 145, 380, 54, 14);
-      ctx.fill();
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 24px monospace';
-      ctx.fillText(order.trackingCode, width / 2, 181);
-
-      // Department & Fabric Type
-      ctx.fillStyle = '#1E293B';
-      ctx.font = '600 18px sans-serif';
-      const deptText = `แผนก: ${order.customerRoomOrDept || 'ทั่วไป'}   |   ประเภทผ้า: ${garmentTypeName}`;
-      ctx.fillText(deptText, width / 2, 235);
-
-      // Extract SVG element from ref
-      const svgElement = qrContainerRef.current?.querySelector('svg');
-      if (svgElement) {
-        const svgData = new XMLSerializer().serializeToString(svgElement);
-        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const blobURL = URL.createObjectURL(svgBlob);
-
-        const qrImg = new Image();
-        qrImg.onload = () => {
-          const qrSize = 500;
-          const qrX = (width - qrSize) / 2;
-          const qrY = 265;
-
-          // White card with soft drop shadow behind QR
-          ctx.fillStyle = '#FFFFFF';
-          ctx.shadowColor = 'rgba(2, 132, 199, 0.2)';
-          ctx.shadowBlur = 24;
-          ctx.shadowOffsetY = 8;
-          ctx.beginPath();
-          ctx.roundRect(qrX - 25, qrY - 25, qrSize + 50, qrSize + 50, 24);
-          ctx.fill();
-          ctx.shadowColor = 'transparent';
-
-          // Inner sky accent border
-          ctx.strokeStyle = '#BAE6FD';
-          ctx.lineWidth = 3;
-          ctx.stroke();
-
-          // Draw QR
-          ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-
-          // Footer info
-          ctx.fillStyle = '#0284C7';
-          ctx.font = 'bold 22px sans-serif';
-          ctx.fillText('สแกนเพื่อตรวจสอบสถานะการซัก-อบผ้าแบบเรียลไทม์', width / 2, 875);
-
-          ctx.fillStyle = '#94A3B8';
-          ctx.font = '16px sans-serif';
-          ctx.fillText(`ผู้ส่ง: ${order.customerName}   |   จำนวน: ${totalItems} ชิ้น`, width / 2, 915);
-
-          // Trigger download
-          const cleanCode = order.trackingCode.replace(/[^a-zA-Z0-9_-]/g, '_');
-          const link = document.createElement('a');
-          link.download = `laundry-qr-${cleanCode}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-          URL.revokeObjectURL(blobURL);
-          setDownloadingQr(false);
-        };
-
-        qrImg.onerror = () => {
-          // Fallback if SVG to blob fails
-          const cleanCode = order.trackingCode.replace(/[^a-zA-Z0-9_-]/g, '_');
-          const fallbackLink = document.createElement('a');
-          fallbackLink.download = `laundry-qr-${cleanCode}.png`;
-          fallbackLink.href = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(trackingUrl)}`;
-          fallbackLink.target = '_blank';
-          fallbackLink.click();
-          setDownloadingQr(false);
-        };
-
-        qrImg.src = blobURL;
-      } else {
-        setDownloadingQr(false);
-      }
-    } catch (err) {
-      console.error('Error downloading laundry QR code:', err);
-      setDownloadingQr(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-xs overflow-y-auto">
@@ -260,19 +125,20 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleDownloadQrCode}
-              disabled={downloadingQr}
-              className="p-2 bg-white/15 hover:bg-white/25 text-white rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer border border-white/20 shadow-xs disabled:opacity-60"
-              title={language === 'th' ? 'ดาวน์โหลด QR Code ติดตามสถานะงานผ้า' : 'Download QR Code'}
-            >
-              <Download className={`w-4 h-4 text-[#66affe] ${downloadingQr ? 'animate-bounce' : ''}`} />
-              <span className="hidden sm:inline">
-                {downloadingQr 
-                  ? (language === 'th' ? 'กำลังดาวน์โหลด...' : 'Downloading...') 
-                  : (language === 'th' ? 'ดาวน์โหลด QR Code' : 'Download QR')}
-              </span>
-            </button>
+            {currentStage === 'washing' && onCompleteOrder && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onCompleteOrder(order);
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs active:scale-95"
+                title={language === 'th' ? 'กดเปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed'}
+              >
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span className="hidden sm:inline">{language === 'th' ? 'ซักเสร็จแล้ว' : 'Mark Done'}</span>
+              </button>
+            )}
 
             <button
               onClick={onClose}
@@ -367,78 +233,61 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
 
             {/* Essential Details Body */}
             <div className="flex-1 p-6 overflow-y-auto space-y-4">
-              {/* QR Code & Live Link Tracking Card - Visible to all users */}
-              <div className="bg-[#f8fafc] p-4 rounded-2xl border border-[#e2e8f0] flex flex-col md:flex-row items-center gap-5">
-                <div 
-                  ref={qrContainerRef}
-                  className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center shrink-0"
-                >
-                  <QRCodeSVG 
-                    value={trackingUrl} 
-                    size={124} 
-                    level="M" 
-                    includeMargin={false}
-                    className="rounded-md"
-                  />
-                  <span className="font-mono text-xs font-bold text-[#002045] mt-2 bg-slate-100 px-2.5 py-0.5 rounded-md">
-                    {order.trackingCode}
-                  </span>
-                </div>
-
-                <div className="flex-1 w-full text-center md:text-left space-y-2.5">
+              {/* Tracking Code Card - Clean, Focused, No QR Code */}
+              <div className="bg-gradient-to-br from-slate-50 to-sky-50/60 p-4 sm:p-5 rounded-2xl border border-sky-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-center gap-3.5 w-full sm:w-auto">
+                  <div className="w-12 h-12 rounded-2xl bg-[#002045] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Tag className="w-6 h-6 text-[#66affe]" />
+                  </div>
                   <div>
-                    <div className="flex items-center justify-center md:justify-start gap-1.5 text-xs font-bold text-[#0061a5] uppercase tracking-wider">
-                      <QrCode className="w-4 h-4 text-[#0061a5]" />
-                      <span>{language === 'th' ? 'QR Code ติดตามสถานะงานผ้า' : 'Laundry Tracking QR Code'}</span>
+                    <span className="text-[11px] font-bold text-[#0061a5] uppercase tracking-wider block">
+                      {language === 'th' ? 'รหัสติดตามงานผ้า' : 'Tracking Code'}
+                    </span>
+                    <div className="font-mono text-xl sm:text-2xl font-black text-[#002045] tracking-wide mt-0.5 select-all">
+                      {order.trackingCode}
                     </div>
-                    <p className="text-xs text-[#595c62] mt-1 flex items-center justify-center md:justify-start gap-1">
-                      <ImageIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>
-                        {language === 'th' 
-                          ? 'เมื่อสแกน QR Code จะแสดงผลข้อมูลสถานะการซัก-อบผ้าเป็นรูปภาพ (Status Image Card) แบบเรียลไทม์ทันที' 
-                          : 'Scanning this QR code displays the real-time laundry status as a high-definition image card.'}
-                      </span>
+                    <p className="text-xs text-[#595c62] mt-0.5">
+                      {language === 'th' ? 'ใช้รหัสนี้สำหรับค้นหาและติดตามสถานะงานผ้าในระบบ' : 'Use this code to search and track laundry order in system'}
                     </p>
                   </div>
+                </div>
 
-                  {/* Quick Actions */}
-                  <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadQrCode}
-                      disabled={downloadingQr}
-                      className="px-3 py-1.5 bg-[#002045] text-white hover:bg-[#003366] rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-60"
-                      title={language === 'th' ? 'ดาวน์โหลด QR Code' : 'Download QR Code'}
-                    >
-                      <Download className={`w-3.5 h-3.5 text-[#66affe] ${downloadingQr ? 'animate-bounce' : ''}`} />
-                      <span>
-                        {downloadingQr 
-                          ? (language === 'th' ? 'กำลังดาวน์โหลด...' : 'Downloading...') 
-                          : (language === 'th' ? 'ดาวน์โหลด QR Code' : 'Download QR Code')}
-                      </span>
-                    </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(order.trackingCode);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-[#002045] border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                  >
+                    {copied ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span className="text-emerald-700">{language === 'th' ? 'คัดลอกแล้ว' : 'Copied!'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-slate-500" />
+                        <span>{language === 'th' ? 'คัดลอกรหัส' : 'Copy Code'}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {currentStage === 'washing' && onCompleteOrder && (
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(order.trackingCode);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
+                        onClose();
+                        onCompleteOrder(order);
                       }}
-                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-[#002045] border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
                     >
-                      {copied ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-emerald-700">{language === 'th' ? 'คัดลอกรหัสแล้ว' : 'Copied Code!'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{language === 'th' ? 'คัดลอกรหัส' : 'Copy Code'}</span>
-                        </>
-                      )}
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>{language === 'th' ? 'เปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed'}</span>
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -506,6 +355,20 @@ export const LaundryDetailModal: React.FC<LaundryDetailModalProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
+            {currentStage === 'washing' && onCompleteOrder && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onCompleteOrder(order);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>{language === 'th' ? 'เปลี่ยนสถานะเป็นซักเสร็จแล้ว' : 'Mark as Washed'}</span>
+              </button>
+            )}
+
             {/* Admin-only Delete Icon Button in Footer (Icon only) */}
             {isUserAdmin && onDeleteOrder && (
               <button

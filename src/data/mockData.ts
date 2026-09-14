@@ -214,6 +214,38 @@ export function isUserAdminOrSupervisor(user?: AdminUserAccount | null, isAuthen
   return false;
 }
 
+export function canCreateLaundryOrder(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
+  if (!isAuthenticated || !user) return false;
+  // ผู้ดูแล, แอดมินเพจ (Admin / Supervisor / Super Admin / Page Admin)
+  if (isUserAdminOrSupervisor(user, isAuthenticated)) return true;
+
+  const role = (user.role || '').toLowerCase().trim();
+  const name = (user.name || '').toLowerCase().trim();
+  const username = (user.username || '').toLowerCase().replace(/^@/, '').trim();
+
+  // พนักงาน ตำแหน่ง ธุรการ (Admin officer / General admin / ธุรการลาดกระบัง)
+  if (
+    role.includes('ธุรการ') ||
+    role.includes('admin officer') ||
+    role.includes('clerk') ||
+    name.includes('ธุรการ') ||
+    username.includes('admin')
+  ) {
+    return true;
+  }
+
+  // Check known employee department for user if they have employeeId
+  const empId = getUserEmployeeId(user);
+  if (empId) {
+    const matchedStaff = INITIAL_OT_STAFF_EMPLOYEES.find(s => s.employeeId === empId);
+    if (matchedStaff && matchedStaff.department.includes('ธุรการ')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export interface StaffEmployeeInfo {
   employeeId: string;
   name: string;

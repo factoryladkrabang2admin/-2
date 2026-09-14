@@ -155,6 +155,7 @@ export default function App() {
   // Modals & Drawers State
   const [inviteMemberModalOpen, setInviteMemberModalOpen] = useState(false);
   const [createLaundryModalOpen, setCreateLaundryModalOpen] = useState(false);
+  const [orderToComplete, setOrderToComplete] = useState<LaundryOrder | null>(null);
   const [selectedLaundryOrder, setSelectedLaundryOrder] = useState<LaundryOrder | null>(null);
   const [standaloneTrackingOrder, setStandaloneTrackingOrder] = useState<LaundryOrder | null>(null);
   const [parcelTrackCode, setParcelTrackCode] = useState<string | null>(null);
@@ -185,6 +186,13 @@ export default function App() {
     } catch {
       // ignore
     }
+  };
+
+  // Handler to open CreateLaundryModal in "ซักเสร็จแล้ว" completion mode (same workflow as Parcel Delivery)
+  const handleOpenCompleteOrder = (order: LaundryOrder) => {
+    setSelectedLaundryOrder(null);
+    setOrderToComplete(order);
+    setCreateLaundryModalOpen(true);
   };
 
   // Helper to test if orders list is structurally identical to avoid unnecessary re-renders
@@ -272,23 +280,35 @@ export default function App() {
           }
         }
 
-        // Merge with existing local orders (preserve non-gsheet manual orders)
+        // Google Sheet is the SINGLE SOURCE OF TRUTH for laundry orders
+        // Check for any newly submitted manual order in this session that hasn't appeared in Google Sheet yet
         const currentStored = realtimeHub.getStoredLaundryOrders();
-        const nonSheetOrders = currentStored.filter((o) => !o.id.startsWith('gsheet-'));
-        const mergedOrders = [...result.orders, ...nonSheetOrders];
+        const cleanSheetCodes = new Set(
+          result.orders.map((o) => (o.trackingCode || o.id).replace(/[\s\-_]/g, '').toLowerCase())
+        );
+
+        const pendingLocalOrders = currentStored.filter((o) => {
+          if (o.id.startsWith('gsheet-')) return false;
+          const code = (o.trackingCode || o.id).replace(/[\s\-_]/g, '').toLowerCase();
+          if (!code || cleanSheetCodes.has(code)) return false;
+          // Keep only orders manually created in this session within the last 45 seconds
+          return (o as any).createdAt && Date.now() - (o as any).createdAt < 45000;
+        });
+
+        const finalOrders = [...result.orders, ...pendingLocalOrders];
 
         // Update known orders map
         const newMap = new Map<string, LaundryStage>();
-        mergedOrders.forEach((o) => newMap.set(o.id, o.stage));
+        finalOrders.forEach((o) => newMap.set(o.id, o.stage));
         knownOrdersMapRef.current = newMap;
 
         // Only update state if data actually changed
         setLaundryOrders((prev) => {
-          if (areLaundryOrdersEqual(prev, mergedOrders)) {
+          if (areLaundryOrdersEqual(prev, finalOrders)) {
             return prev;
           }
-          realtimeHub.saveLaundryOrders(mergedOrders);
-          return mergedOrders;
+          realtimeHub.saveLaundryOrders(finalOrders);
+          return finalOrders;
         });
       } else if (!result.success) {
         setSheetSyncError(result.error || 'Failed to sync Google Sheet');
@@ -600,14 +620,45 @@ export default function App() {
 
   // Handlers for Laundry actions
   const handleAddLaundryOrder = (newOrder: LaundryOrder) => {
-    const updatedOrders = [newOrder, ...laundryOrders];
+    const cleanNewCode = (newOrder.trackingCode || '').replace(/[\s\-_]/g, '').toLowerCase();
+    const existingIndex = cleanNewCode
+      ? laundryOrders.findIndex(o => (o.trackingCode || '').replace(/[\s\-_]/g, '').toLowerCase() === cleanNewCode)
+      : -1;
+
+    let updatedOrders: LaundryOrder[];
+    const isCompleted = newOrder.stage === 'ready' || newOrder.stage === 'delivered';
+
+    const orderWithTimestamp: LaundryOrder = {
+      ...newOrder,
+      createdAt: (newOrder as any).createdAt || Date.now(),
+    };
+
+    if (existingIndex >= 0) {
+      const existing = laundryOrders[existingIndex];
+      const merged: LaundryOrder = {
+        ...existing,
+        ...orderWithTimestamp,
+        id: existing.id,
+        stage: orderWithTimestamp.stage,
+        completedAt: isCompleted ? (orderWithTimestamp.completedAt || new Date().toISOString()) : existing.completedAt,
+        historyTimeline: [
+          ...(existing.historyTimeline || []),
+          ...(orderWithTimestamp.historyTimeline || []),
+        ],
+      };
+      updatedOrders = [...laundryOrders];
+      updatedOrders[existingIndex] = merged;
+    } else {
+      updatedOrders = [orderWithTimestamp, ...laundryOrders];
+    }
+
     setLaundryOrders(updatedOrders);
 
     const newActivity: ActivityItem = {
       id: `act-${Date.now()}`,
       type: 'task_completed',
       user: currentUser?.name || 'Alex Vance',
-      title: 'registered laundry intake order',
+      title: isCompleted ? 'completed laundry processing' : 'registered laundry intake order',
       highlightText: `${newOrder.trackingCode} (${newOrder.customerName})`,
       subtitle: `${newOrder.serviceType} • Just now`,
       timestamp: 'Just now',
@@ -620,12 +671,12 @@ export default function App() {
     realtimeHub.saveLaundryOrders(updatedOrders);
     realtimeHub.saveActivities(updatedActivities);
 
-    // Create and broadcast notification for new laundry order
+    // Create and broadcast notification for laundry order
     const notif: AppNotification = {
       id: `notif-new-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       type: 'laundry_new',
-      title: 'มีรายการซัก-อบผ้าใหม่เข้าระบบ',
-      desc: `รหัส: ${newOrder.trackingCode} • ${newOrder.customerName}${newOrder.customerRoomOrDept ? ` (แผนก ${newOrder.customerRoomOrDept})` : ''} • สถานะ: อยู่ระหว่างซัก`,
+      title: isCompleted ? 'ผ้าซักเสร็จเรียบร้อยแล้ว' : 'มีรายการซัก-อบผ้าใหม่เข้าระบบ',
+      desc: `รหัส: ${newOrder.trackingCode} • ${newOrder.customerName}${newOrder.customerRoomOrDept ? ` (แผนก ${newOrder.customerRoomOrDept})` : ''} • สถานะ: ${isCompleted ? 'ซักเสร็จแล้ว พร้อมส่ง' : 'อยู่ระหว่างซัก'}`,
       time: 'เมื่อสักครู่',
       timestamp: Date.now(),
       unread: true,
@@ -805,10 +856,14 @@ export default function App() {
               currentUser={currentUser}
               isAuthenticated={isAuthenticated}
               initialSubTab="rags_gloves"
-              onOpenCreateOrder={() => setCreateLaundryModalOpen(true)}
+              onOpenCreateOrder={() => {
+                setOrderToComplete(null);
+                setCreateLaundryModalOpen(true);
+              }}
               onSelectOrder={(order) => setSelectedLaundryOrder(order)}
               onUpdateOrder={handleUpdateLaundryOrder}
               onDeleteOrder={handleDeleteLaundryOrder}
+              onCompleteOrder={handleOpenCompleteOrder}
               onSyncGoogleSheet={() => syncGoogleSheet(true)}
               isSyncingSheet={isSyncingSheet}
               lastSheetSyncTime={lastSheetSyncTime}
@@ -957,10 +1012,14 @@ export default function App() {
               currentUser={currentUser}
               isAuthenticated={isAuthenticated}
               initialSubTab={laundrySubTab}
-              onOpenCreateOrder={() => setCreateLaundryModalOpen(true)}
+              onOpenCreateOrder={() => {
+                setOrderToComplete(null);
+                setCreateLaundryModalOpen(true);
+              }}
               onSelectOrder={(order) => setSelectedLaundryOrder(order)}
               onUpdateOrder={handleUpdateLaundryOrder}
               onDeleteOrder={handleDeleteLaundryOrder}
+              onCompleteOrder={handleOpenCompleteOrder}
               onSyncGoogleSheet={() => syncGoogleSheet(true)}
               isSyncingSheet={isSyncingSheet}
               lastSheetSyncTime={lastSheetSyncTime}
@@ -980,9 +1039,14 @@ export default function App() {
 
       <CreateLaundryModal
         isOpen={createLaundryModalOpen}
-        onClose={() => setCreateLaundryModalOpen(false)}
+        onClose={() => {
+          setCreateLaundryModalOpen(false);
+          setOrderToComplete(null);
+        }}
         onAddOrder={handleAddLaundryOrder}
         existingOrders={laundryOrders}
+        onSyncGoogleSheet={() => syncGoogleSheet(true)}
+        initialOrderToComplete={orderToComplete}
       />
 
       <LaundryDetailModal
@@ -991,6 +1055,7 @@ export default function App() {
         onClose={() => setSelectedLaundryOrder(null)}
         onUpdateOrder={handleUpdateLaundryOrder}
         onDeleteOrder={handleDeleteLaundryOrder}
+        onCompleteOrder={handleOpenCompleteOrder}
         currentUser={currentUser}
       />
 

@@ -25,7 +25,7 @@ export interface RealtimeMessage {
 }
 
 const STORAGE_KEYS = {
-  LAUNDRY_ORDERS: 'proworkflow_laundry_orders_v3',
+  LAUNDRY_ORDERS: 'proworkflow_laundry_orders_v4',
   PROJECTS: 'proworkflow_projects_v2',
   TEAM_MEMBERS: 'proworkflow_team_members_v2',
   ACTIVITIES: 'proworkflow_activities_v2',
@@ -56,27 +56,15 @@ class RealtimeHub {
   private sanitizeLegacyMockStorage() {
     if (typeof window === 'undefined') return;
     try {
-      const isCleaned = localStorage.getItem('proworkflow_mock_cleaned_v2');
-      if (!isCleaned) {
-        // Clean out legacy mock laundry orders (keep only real gsheet orders or user manual ones)
-        const rawLaundry = localStorage.getItem(STORAGE_KEYS.LAUNDRY_ORDERS);
-        if (rawLaundry) {
-          const parsed = JSON.parse(rawLaundry);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.filter(o => 
-              o && typeof o.id === 'string' && 
-              !o.id.startsWith('lnd-1') && 
-              !o.id.startsWith('lnd-2') && 
-              !o.id.startsWith('lnd-3') && 
-              !o.id.startsWith('lnd-4') && 
-              !o.id.startsWith('lnd-5') && 
-              !o.id.startsWith('lnd-6') &&
-              !o.id.startsWith('lnd-live-')
-            );
-            localStorage.setItem(STORAGE_KEYS.LAUNDRY_ORDERS, JSON.stringify(cleaned));
-          }
-        }
+      // Purge legacy corrupted / runaway laundry order cache keys
+      localStorage.removeItem('proworkflow_laundry_orders_v3');
+      localStorage.removeItem('proworkflow_laundry_orders_v2');
+      localStorage.removeItem('proworkflow_laundry_orders_v1');
+      localStorage.removeItem('proworkflow_laundry_orders');
+      localStorage.removeItem('proworkflow_laundry_csv_cache_v2');
 
+      const isCleaned = localStorage.getItem('proworkflow_mock_cleaned_v3');
+      if (!isCleaned) {
         // Clean out legacy mock projects, activities, notifications, rags & gloves
         const rawProj = localStorage.getItem(STORAGE_KEYS.PROJECTS);
         if (rawProj) {
@@ -100,7 +88,7 @@ class RealtimeHub {
         }
         localStorage.removeItem('rags_gloves_records_v1');
 
-        localStorage.setItem('proworkflow_mock_cleaned_v2', 'true');
+        localStorage.setItem('proworkflow_mock_cleaned_v3', 'true');
       }
     } catch {
       // storage error
@@ -215,7 +203,22 @@ class RealtimeHub {
       const raw = localStorage.getItem(STORAGE_KEYS.LAUNDRY_ORDERS);
       if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out legacy corrupted duplicate sub- orders and mock items
+          const cleaned = parsed.filter(
+            (o) =>
+              o &&
+              typeof o.id === 'string' &&
+              !o.id.startsWith('sub-') &&
+              !o.id.startsWith('lnd-1') &&
+              !o.id.startsWith('lnd-2') &&
+              !o.id.startsWith('lnd-3') &&
+              !o.id.startsWith('lnd-4') &&
+              !o.id.startsWith('lnd-5') &&
+              !o.id.startsWith('lnd-6')
+          );
+          return cleaned;
+        }
       }
     } catch {
       // ignore

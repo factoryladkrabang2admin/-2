@@ -20,6 +20,7 @@ interface ParcelSubmissionRecord {
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
+const LAUNDRY_DATA_FILE = path.join(DATA_DIR, "laundry_submissions.json");
 
 // Helper to generate running tracking code identical to Laundry QR code
 function extractServerDateTag(input?: string): string {
@@ -93,6 +94,29 @@ function saveSubmission(record: ParcelSubmissionRecord) {
     fs.writeFileSync(PARCEL_DATA_FILE, JSON.stringify(inMemorySubmissions, null, 2), "utf-8");
   } catch (err) {
     console.warn("Could not persist parcel submission to disk:", err);
+  }
+}
+
+let inMemoryLaundrySubmissions: any[] = [];
+try {
+  if (fs.existsSync(LAUNDRY_DATA_FILE)) {
+    const raw = fs.readFileSync(LAUNDRY_DATA_FILE, "utf-8");
+    inMemoryLaundrySubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemoryLaundrySubmissions.length} saved laundry submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load laundry submissions from file:", e);
+}
+
+function saveLaundrySubmission(record: any) {
+  inMemoryLaundrySubmissions.unshift(record);
+  if (inMemoryLaundrySubmissions.length > 500) {
+    inMemoryLaundrySubmissions = inMemoryLaundrySubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(LAUNDRY_DATA_FILE, JSON.stringify(inMemoryLaundrySubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist laundry submission to disk:", err);
   }
 }
 
@@ -263,15 +287,15 @@ async function startServer() {
   // Google Sheet proxy endpoint for streaming raw CSV with intelligent parcel itemTitle enrichment
   app.get("/api/sheet-csv", async (req, res) => {
     try {
-      const sheetId = (req.query.sheetId as string) || "1qbKEbnjIPb2eM-DOLAkFZv3hDl2cioKeUqiLcdYqjos";
+      const sheetId = (req.query.sheetId as string) || "1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI";
       const gid = req.query.gid as string | undefined;
       const sheetName = req.query.sheet as string | undefined;
+      const targetGid = gid || "1327805432";
 
       let exportUrl = "";
       if (sheetName) {
         exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
       } else {
-        const targetGid = gid || "1278573396";
         exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}`;
       }
 
@@ -283,10 +307,31 @@ async function startServer() {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          return res.status(response.status).json({
+            error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์สาธารณะ (กรุณาตั้งค่าแชร์ใน Google Sheet เป็น 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' / Anyone with the link can view)",
+            requiresAuth: true,
+            sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit?gid=${targetGid}#gid=${targetGid}`,
+          });
+        }
         return res.status(response.status).json({ error: `Google Sheets export returned ${response.status}` });
       }
 
       let csvText = await response.text();
+
+      // If Google returned an HTML authentication / login gate instead of CSV data
+      if (
+        csvText.includes("<!DOCTYPE") ||
+        csvText.includes("<html") ||
+        csvText.includes("accounts.google.com") ||
+        csvText.includes("document-root")
+      ) {
+        return res.status(403).json({
+          error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์แบบสาธารณะ (กรุณาตั้งค่า 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' ใน Google Sheet)",
+          requiresAuth: true,
+          sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit?gid=${gid || "1327805432"}#gid=${gid || "1327805432"}`,
+        });
+      }
 
       // If this is the parcel delivery sheet (gid=1955620947 or sheetId=1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330),
       // enrich any row where column 7 (ชื่อเอกสาร / พัสดุ) is empty using our saved submissions!
@@ -599,6 +644,159 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during parcel submission",
+      });
+    }
+  });
+
+  // Laundry Google Form & Google Sheet direct submission endpoint
+  // Google Form: https://docs.google.com/forms/d/e/1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ/viewform?usp=pp_url
+  // Google Sheet: https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432#gid=1327805432
+  app.get("/api/laundry-submissions", (_req, res) => {
+    res.json({
+      success: true,
+      submissions: inMemoryLaundrySubmissions,
+      count: inMemoryLaundrySubmissions.length,
+    });
+  });
+
+  app.post("/api/laundry-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const actionType = payload.actionType || "อยู่ระหว่างการซัก";
+      const operatorName = (payload.operatorName || "").trim();
+      const department = (payload.department || "").trim();
+      const deliveryTime = (payload.deliveryTime || "12.35").trim();
+      const trackingCode = (payload.trackingCode || "").trim();
+
+      if (!operatorName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้ดำเนินการ",
+        });
+      }
+      if (!department) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุแผนก",
+        });
+      }
+
+      // Date parsing
+      let year = "2026";
+      let month = "9";
+      let day = "14";
+      if (payload.date) {
+        const clean = String(payload.date).trim();
+        if (clean.includes("-")) {
+          const p = clean.split("-");
+          year = p[0];
+          month = String(parseInt(p[1], 10));
+          day = String(parseInt(p[2], 10));
+        } else if (clean.includes("/")) {
+          const p = clean.split("/");
+          day = String(parseInt(p[0], 10));
+          month = String(parseInt(p[1], 10));
+          year = p[2];
+          if (parseInt(year, 10) > 2500) year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      // Items list: either payload.items or single item from payload.garmentType / quantity
+      const itemsToSubmit: Array<{ garmentType: string; quantity: number | string }> = [];
+      if (Array.isArray(payload.items) && payload.items.length > 0) {
+        for (const it of payload.items) {
+          itemsToSubmit.push({
+            garmentType: (it.garmentType || it.name || "เสื้อกาวน์สีเขียว").trim(),
+            quantity: it.quantity || 1,
+          });
+        }
+      } else {
+        itemsToSubmit.push({
+          garmentType: (payload.garmentType || "เสื้อกาวน์สีเขียว").trim(),
+          quantity: payload.quantity || 1,
+        });
+      }
+
+      const GOOGLE_LAUNDRY_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ/formResponse";
+      const savedRecords: any[] = [];
+      let anySuccess = false;
+
+      for (const item of itemsToSubmit) {
+        const formParams = new URLSearchParams();
+        formParams.append("entry.250169946", actionType);
+        formParams.append("entry.507087445", `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+        formParams.append("entry.507087445_year", year);
+        formParams.append("entry.507087445_month", month);
+        formParams.append("entry.507087445_day", day);
+        formParams.append("entry.409924680", operatorName);
+        formParams.append("entry.2031428945", department);
+        formParams.append("entry.1296199940", item.garmentType);
+        formParams.append("entry.1567032658", String(item.quantity));
+        formParams.append("entry.1719198625", deliveryTime);
+        if (trackingCode) {
+          formParams.append("entry.1367173718", trackingCode);
+        }
+        formParams.append("fvv", "1");
+        formParams.append("pageHistory", "0");
+
+        let syncedToGoogle = false;
+
+        try {
+          const formRes = await fetch(GOOGLE_LAUNDRY_FORM_ACTION_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            body: formParams.toString(),
+          });
+          const formText = await formRes.text();
+          syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 || formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+          if (syncedToGoogle) {
+            anySuccess = true;
+          }
+        } catch (fetchErr: any) {
+          console.warn("Error posting laundry item to Google Form:", fetchErr.message);
+        }
+
+        const record = {
+          id: `lnd-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          actionType,
+          date: `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`,
+          operatorName,
+          department,
+          garmentType: item.garmentType,
+          quantity: Number(item.quantity) || 1,
+          deliveryTime,
+          trackingCode,
+          syncedToGoogle,
+          createdAt: Date.now(),
+        };
+
+        saveLaundrySubmission(record);
+        savedRecords.push(record);
+      }
+
+      return res.json({
+        success: true,
+        googleSheetSynced: anySuccess,
+        message: anySuccess
+          ? "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว"
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
+        countSubmitted: itemsToSubmit.length,
+        trackingCode,
+        records: savedRecords,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/laundry-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during laundry submission",
       });
     }
   });

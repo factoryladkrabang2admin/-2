@@ -236,6 +236,7 @@ export interface LaundryOrder {
   receivedAt: string;
   estimatedCompletion: string;
   completedAt?: string;
+  createdAt?: number;
   historyTimeline: {
     stage: LaundryStage;
     label: string;

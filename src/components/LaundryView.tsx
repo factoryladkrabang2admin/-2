@@ -38,7 +38,6 @@ import {
   Check,
   Tag,
   Hand,
-  QrCode,
   Copy,
   Download
 } from 'lucide-react';
@@ -46,7 +45,7 @@ import { GOOGLE_SHEET_URL } from '../services/googleSheetSyncService';
 import { WashingMachineActiveIcon, ReadyStatusAnimatedIcon } from './LaundryStatusIcons';
 import { getDepartmentColor, getGarmentColor } from '../utils/laundryColorHelper';
 
-const LAUNDRY_GOOGLE_FORM_URL = 'https://forms.gle/gWJNKwbDcTjzibBf9';
+const LAUNDRY_GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ/viewform?usp=pp_url';
 
 interface LaundryAdvancedFilters {
   trackingCode: string;
@@ -63,8 +62,8 @@ const defaultFilters: LaundryAdvancedFilters = {
   trackingCode: '',
   department: 'all',
   stage: 'all',
-  dateScope: 'today',
-  month: 'current',
+  dateScope: 'all',
+  month: 'all',
   year: 'all',
   startDate: '',
   endDate: '',
@@ -80,6 +79,7 @@ interface LaundryViewProps {
   onSelectOrder: (order: LaundryOrder) => void;
   onUpdateOrder: (updated: LaundryOrder) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onCompleteOrder?: (order: LaundryOrder) => void;
   onSyncGoogleSheet?: () => void;
   isSyncingSheet?: boolean;
   lastSheetSyncTime?: Date | null;
@@ -97,6 +97,7 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
   onSelectOrder,
   onUpdateOrder,
   onDeleteOrder,
+  onCompleteOrder,
   onSyncGoogleSheet,
   isSyncingSheet = false,
   lastSheetSyncTime,
@@ -129,10 +130,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
 
   // Analytics Modal State
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState<boolean>(false);
-
-  // QR Code Modal State for Google Form
-  const [showQrModal, setShowQrModal] = useState<boolean>(false);
-  const [copiedQrLink, setCopiedQrLink] = useState<boolean>(false);
 
   const STAGES: { id: LaundryStage | 'all'; label: string; countColor: string }[] = [
     { id: 'all', label: language === 'th' ? 'ทั้งหมด' : 'All Orders', countColor: 'bg-slate-200 text-slate-800' },
@@ -564,6 +561,17 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* 0. ไอคอน เพิ่มรายการซักผ้า (อยู่หน้าไอคอนสถิติ บันทึกผ่าน Google Form และ Google Sheet) */}
+            <button
+              type="button"
+              onClick={onOpenCreateOrder}
+              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-sky-950 border border-sky-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-sky-300 group relative"
+              title={language === 'th' ? 'เพิ่มรายการซักผ้า (Google Form / Google Sheet)' : 'Add Laundry Record (Google Form / Google Sheet)'}
+              aria-label={language === 'th' ? 'เพิ่มรายการซักผ้า' : 'Add Laundry Record'}
+            >
+              <Plus className="w-5 h-5 text-sky-600 stroke-[2.5] group-hover:scale-110 transition-transform" />
+            </button>
+
             {/* 1. ไอคอน สถิติและการวิเคราะห์ (ย้ายมาไว้ข้างหน้า ข้อมูลเศษผ้า - ถุงมือ) */}
             <button
               type="button"
@@ -602,6 +610,24 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
               >
                 <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
               </a>
+            )}
+
+            {/* 3.1 ปุ่ม ซิงค์ข้อมูลล่าสุดจาก Google Sheet */}
+            {onSyncGoogleSheet && (
+              <button
+                type="button"
+                onClick={onSyncGoogleSheet}
+                disabled={isSyncingSheet}
+                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-sky-800 border border-sky-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-sky-300"
+                title={
+                  language === 'th'
+                    ? (isSyncingSheet ? 'กำลังดึงข้อมูลจาก Google Sheet...' : 'ซิงค์ข้อมูลล่าสุดจาก Google Sheet')
+                    : (isSyncingSheet ? 'Syncing...' : 'Sync with Google Sheet')
+                }
+                aria-label="Sync with Google Sheet"
+              >
+                <RefreshCw className={`w-5 h-5 text-sky-700 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+              </button>
             )}
 
             {/* 4. ไอคอน ตัวกรองการค้นหา */}
@@ -700,22 +726,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
               >
                 <CalendarDays className="w-4 h-4" />
               </button>
-
-              {/* เส้นคั่นบางๆ และไอคอน QR code (จำกัดสิทธิ์เฉพาะผู้ดูแลและแอดมินเพจเท่านั้น) */}
-              {canAccessGoogleSheet && (
-                <>
-                  <div className="w-[1px] h-4 bg-sky-200 mx-0.5" />
-                  <button
-                    type="button"
-                    onClick={() => setShowQrModal(true)}
-                    className="p-2 rounded-lg transition-all cursor-pointer text-sky-900 hover:text-sky-950 hover:bg-sky-100/70 active:scale-95 group relative"
-                    title={language === 'th' ? 'QR Code แบบฟอร์มกรอกข้อมูลการซัก-อบผ้า (เฉพาะผู้ดูแล/แอดมิน)' : 'Laundry Google Form QR Code (Admin Only)'}
-                    aria-label={language === 'th' ? 'QR Code แบบฟอร์มกรอกข้อมูลการซัก-อบผ้า' : 'Laundry Google Form QR Code'}
-                  >
-                    <QrCode className="w-4 h-4 text-sky-700 transition-transform group-hover:scale-110" />
-                  </button>
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -828,6 +838,27 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Banner if Google Sheet requires public permissions or reported error */}
+      {sheetSyncError && (
+        <div className="p-3.5 bg-amber-50/95 border border-amber-300 text-amber-900 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Info className="w-4 h-4 text-amber-700 shrink-0" />
+            <span className="leading-relaxed">
+              {sheetSyncError}
+            </span>
+          </div>
+          <a
+            href={GOOGLE_SHEET_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-bold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200/80 px-3 py-1.5 rounded-lg transition-colors shrink-0 whitespace-nowrap"
+          >
+            <span>{language === 'th' ? 'เปิดดู Google Sheet' : 'Open Sheet'}</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: ORDERS PIPELINE */}
@@ -1030,13 +1061,17 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleToggleStage(e, order);
+                                if (onCompleteOrder) {
+                                  onCompleteOrder(order);
+                                } else {
+                                  handleToggleStage(e, order);
+                                }
                               }}
-                              className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
-                              title={language === 'th' ? 'บันทึกซักเสร็จ' : 'Mark Ready'}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 shadow-xs"
+                              title={language === 'th' ? 'กดเปลี่ยนสถานะ: ซักเสร็จแล้ว' : 'Mark as Washed & Ready'}
                             >
-                              <Check className="w-3 h-3" />
-                              <span>{language === 'th' ? 'เสร็จ' : 'Done'}</span>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{language === 'th' ? 'ซักเสร็จแล้ว' : 'Mark Ready'}</span>
                             </button>
                           </div>
                         </div>
@@ -1265,6 +1300,31 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                           <span className="text-[#74777f] font-medium">{language === 'th' ? 'จำนวนผ้าทั้งหมด' : 'Total Items'}</span>
                           <span className="text-[#002045] font-black text-base">{totalItemQty} <span className="text-xs font-semibold text-[#74777f]">{language === 'th' ? 'ชิ้น' : 'items'}</span></span>
                         </div>
+
+                        {/* Quick Action Button: Mark as Washed (ลักษณะการทำงานและบันทึกข้อมูลเหมือน รับ-ส่ง เอกสาร / พัสดุ) */}
+                        {order.stage === 'washing' ? (
+                          <div className="mt-3 pt-2.5 border-t border-[#f3f3f4]" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => onCompleteOrder ? onCompleteOrder(order) : null}
+                              className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                              title={language === 'th' ? 'กดเปลี่ยนสถานะ: ซักเสร็จแล้ว' : 'Mark as Washed & Ready'}
+                            >
+                              <CheckCircle2 className="w-4 h-4 text-white" />
+                              <span>{language === 'th' ? 'เปลี่ยนสถานะ ซักเสร็จแล้ว' : 'Mark as Washed & Ready'}</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-3 pt-2.5 border-t border-[#f3f3f4] flex items-center justify-between text-xs">
+                            <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{language === 'th' ? 'ซักเสร็จเรียบร้อยแล้ว' : 'Washed & Ready'}</span>
+                            </span>
+                            <span className="font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              {order.trackingCode}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Footer Row: Est Time & View Details Indicator */}
@@ -1370,6 +1430,7 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                         <th className="py-3.5 px-4 font-semibold">{language === 'th' ? 'จำนวน' : 'Quantity'}</th>
                         <th className="py-3.5 px-4 font-semibold">{language === 'th' ? 'สถานะ' : 'Status'}</th>
                         <th className="py-3.5 px-4 font-semibold">{language === 'th' ? 'เวลา / กำหนดเสร็จ' : t.estReady}</th>
+                        <th className="py-3.5 px-4 font-semibold text-center">{language === 'th' ? 'การจัดการ' : 'Actions'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#e2e8f0]">
@@ -1424,6 +1485,24 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                                 <Clock className="w-3.5 h-3.5 text-[#0061a5]" />
                                 <span>{order.estimatedCompletion}</span>
                               </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                              {order.stage === 'washing' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onCompleteOrder ? onCompleteOrder(order) : null}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                                  title={language === 'th' ? 'กดเปลี่ยนสถานะ: ซักเสร็จแล้ว' : 'Mark as Washed & Ready'}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                  <span>{language === 'th' ? 'ซักเสร็จแล้ว' : 'Mark Ready'}</span>
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  {language === 'th' ? 'ซักเสร็จแล้ว' : 'Ready'}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1796,117 +1875,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                   <span>{language === 'th' ? 'ใช้งานตัวกรอง' : 'Apply Filters'}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* QR Code Modal for Google Form (Admin / Supervisor Only) */}
-      {showQrModal && canAccessGoogleSheet && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={() => setShowQrModal(false)}
-        >
-          <div 
-            className="bg-white rounded-3xl shadow-2xl border border-emerald-100 w-full max-w-md overflow-hidden p-6 animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shadow-md">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-[#002045]">
-                    {language === 'th' ? 'QR Code แบบฟอร์มซัก-อบผ้า' : 'Laundry Intake Form QR Code'}
-                  </h3>
-                  <p className="text-xs text-[#74777f]">
-                    {language === 'th' ? 'สแกนเพื่อบันทึกข้อมูลผ่าน Google Form' : 'Scan to submit laundry orders via Google Form'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowQrModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
-                title={language === 'th' ? 'ปิด' : 'Close'}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* QR Code Container */}
-            <div className="py-5 flex flex-col items-center justify-center text-center">
-              <div className="p-4 bg-gradient-to-b from-emerald-50 to-white rounded-2xl border-2 border-emerald-200/80 shadow-md">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(LAUNDRY_GOOGLE_FORM_URL)}&margin=8`}
-                  alt="QR Code Google Form"
-                  className="w-52 h-52 sm:w-60 sm:h-60 rounded-xl bg-white shadow-inner"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-
-              <div className="mt-4 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-[11px] font-semibold flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{language === 'th' ? 'สแกนด้วยกล้องมือถือเพื่อเปิดแบบฟอร์มทันที' : 'Scan with mobile camera to open form instantly'}</span>
-              </div>
-
-              {/* URL Box */}
-              <div className="mt-3.5 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-left">
-                <span className="text-xs font-mono text-slate-600 truncate flex-1 select-all">
-                  {LAUNDRY_GOOGLE_FORM_URL}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(LAUNDRY_GOOGLE_FORM_URL);
-                    setCopiedQrLink(true);
-                    setTimeout(() => setCopiedQrLink(false), 2500);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                    copiedQrLink
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
-                  }`}
-                >
-                  {copiedQrLink ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>{language === 'th' ? 'คัดลอกแล้ว' : 'Copied'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
-              <a
-                href={LAUNDRY_GOOGLE_FORM_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-700/20 transition-all cursor-pointer"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>{language === 'th' ? 'เปิดแบบฟอร์ม' : 'Open Form'}</span>
-              </a>
-
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(LAUNDRY_GOOGLE_FORM_URL)}&margin=10`}
-                download="laundry-form-qr-code.png"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{language === 'th' ? 'บันทึกรูป QR' : 'Save QR'}</span>
-              </a>
             </div>
           </div>
         </div>
