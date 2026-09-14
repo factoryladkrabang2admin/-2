@@ -14,16 +14,21 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     try {
-      const savedTheme = localStorage.getItem('app_theme');
-      if (savedTheme === 'dark' || savedTheme === 'light') {
-        return savedTheme;
+      // Clean up legacy automatic dark theme if present
+      const legacyTheme = localStorage.getItem('app_theme');
+      if (legacyTheme === 'dark') {
+        localStorage.removeItem('app_theme');
       }
-      if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        return 'dark';
+
+      // Check if user explicitly chose a theme previously
+      const savedTheme = localStorage.getItem('proworkflow_user_selected_theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        return savedTheme;
       }
     } catch {
       // ignore
     }
+    // Default to light mode upon opening page
     return 'light';
   });
 
@@ -32,6 +37,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setTheme = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
     try {
+      localStorage.setItem('proworkflow_user_selected_theme', newTheme);
       localStorage.setItem('app_theme', newTheme);
     } catch {
       // ignore
