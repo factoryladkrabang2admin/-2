@@ -18,7 +18,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Moon,
-  Sun
+  Sun,
+  FileSignature
 } from 'lucide-react';
 import { useLanguage, LANGUAGE_CONFIGS, getLanguageConfig } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -220,6 +221,14 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
       url: 'https://script.google.com/macros/s/AKfycbxBWCnWwGsnka6ROGBx0dRcGt2W9lMC3a_B9yZdbTm6Er0Dr_RvbRygbsFQgt0hLNcFXg/exec',
       icon: Hash,
       color: 'from-amber-50 to-orange-100 text-amber-600 border-amber-200',
+    },
+    {
+      title: language === 'th' ? 'เอกสารเสนอลงนาม' : 'Document Signature',
+      sub: language === 'th' ? 'ระบบเอกสารเสนอลงนาม' : 'Document Signature System',
+      tag: language === 'th' ? 'ลงนาม' : 'Sign',
+      url: 'https://script.google.com/macros/s/AKfycbxQ1xxU2xyIV_2W59ciEYXjptEzwFbPkyRE7XsvkQ70gfQPyUfN-uSVrXrAQ1VHm6zRvg/exec',
+      icon: FileSignature,
+      color: 'from-violet-50 to-purple-100 text-violet-600 border-violet-200',
     },
   ];
 
@@ -449,33 +458,6 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                   )}
                 </div>
 
-                {/* Service Portal Quick Switcher */}
-                {onOpenServicePortal && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsOpen(false);
-                      onOpenServicePortal();
-                    }}
-                    className="w-full p-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-all flex items-center justify-between group cursor-pointer shadow-2xs text-left"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                        <Sparkles className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-blue-900 truncate">
-                          {language === 'th' ? 'เลือกบริการ (ซักผ้า / พัสดุ)' : 'Choose Service Portal'}
-                        </p>
-                        <p className="text-[10px] text-blue-700/80 truncate">
-                          {language === 'th' ? 'ข้อมูลการซักผ้า & รับ-ส่ง เอกสาร พัสดุ' : 'Laundry & Parcel Delivery'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-blue-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
-                  </button>
-                )}
-
                 {/* 2. Actions: Notifications & Settings (Settings restricted to Admin / Supervisor) */}
                 <div className={canAccessServices ? "grid grid-cols-2 gap-2" : "space-y-2"}>
                   {/* Notifications Action */}
@@ -578,11 +560,11 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                             {language === 'th' ? 'ระบบและลิงก์ด่วน' : 'Services & Quick Links'}
                           </span>
                           <span className="text-[9px] font-bold px-1.5 py-0.2 bg-indigo-200 text-indigo-900 rounded-full">
-                            5 {language === 'th' ? 'ระบบ' : 'apps'}
+                            {quickLinks.length} {language === 'th' ? 'ระบบ' : 'apps'}
                           </span>
                         </div>
                         <p className="text-[10px] text-indigo-700/80 truncate">
-                          Zimbra • สวัสดิการ • Zycoda • JCS • Running No.
+                          Zimbra • สวัสดิการ • Zycoda • JCS • Running No. • เอกสารเสนอลงนาม
                         </p>
                       </div>
                     </div>

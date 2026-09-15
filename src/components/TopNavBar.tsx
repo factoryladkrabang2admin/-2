@@ -20,7 +20,8 @@ import {
   Hash,
   Moon,
   Sun,
-  CloudSun
+  CloudSun,
+  FileSignature
 } from 'lucide-react';
 import { WeatherData } from '../services/weatherService';
 import { NavigationTab, LaundryOrder } from '../types';
@@ -349,6 +350,35 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                       </div>
                       <ExternalLink className="w-3.5 h-3.5 text-[#74777f] group-hover:text-amber-600 shrink-0 ml-1.5 transition-colors" />
                     </a>
+
+                    {/* 6. เอกสารเสนอลงนาม - ใต้ Running No. */}
+                    <a
+                      href="https://script.google.com/macros/s/AKfycbxQ1xxU2xyIV_2W59ciEYXjptEzwFbPkyRE7XsvkQ70gfQPyUfN-uSVrXrAQ1VHm6zRvg/exec"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setServicesDropdownOpen(false)}
+                      className="w-full p-2.5 rounded-xl text-left text-xs flex items-center justify-between transition-all hover:bg-violet-50/70 border border-transparent hover:border-violet-200 group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-50 to-purple-100 border border-violet-200/80 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 group-hover:bg-violet-600 transition-all">
+                          <FileSignature className="w-4 h-4 text-violet-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-[#002045] group-hover:text-violet-700 transition-colors">
+                              {language === 'th' ? 'เอกสารเสนอลงนาม' : 'Document Signature'}
+                            </span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-violet-100 text-violet-800 rounded-full border border-violet-200">
+                              {language === 'th' ? 'ลงนาม' : 'Sign'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#74777f] truncate mt-0.5">
+                            {language === 'th' ? 'ระบบเอกสารเสนอลงนาม' : 'Document Signature System'}
+                          </p>
+                        </div>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-[#74777f] group-hover:text-violet-600 shrink-0 ml-1.5 transition-colors" />
+                    </a>
                   </div>
                 </div>
               </>
@@ -425,23 +455,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             </>
           )}
         </div>
-
-        {/* Service Portal Quick Selector Button */}
-        {onOpenServicePortal && (
-          <button
-            type="button"
-            id="top-nav-service-portal-btn"
-            onClick={onOpenServicePortal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-900/70 bg-blue-50/80 hover:bg-blue-100/90 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-semibold text-xs transition-all cursor-pointer shadow-2xs group shrink-0"
-            title={language === 'th' ? 'เลือกบริการหลัก (ข้อมูลการซักผ้า / รับ-ส่ง เอกสาร พัสดุ)' : 'Choose Service (Laundry / Parcel Delivery)'}
-            aria-label="Service Portal"
-          >
-            <LayoutGrid className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
-            <span className="hidden sm:inline">
-              {language === 'th' ? 'เลือกบริการ' : 'Services'}
-            </span>
-          </button>
-        )}
 
         {/* Weather Button (Google Weather) */}
         <button
