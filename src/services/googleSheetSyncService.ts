@@ -624,6 +624,7 @@ export async function fetchGoogleSheetLaundryOrders(): Promise<GoogleSheetSyncRe
 // ==========================================
 // RAGS & GLOVES (เศษผ้า - ถุงมือ) GOOGLE SHEET INTEGRATION
 // ==========================================
+export const RAGS_GLOVES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSd0iF7VKIbQxRsvXbhVZXiIXkkBfe7Mu26D0dLWhaOfVbfkrw/viewform?usp=pp_url';
 export const RAGS_GLOVES_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kPRApx8bpI5zcojAxoRREhbBkuZtU2DpQvVd-9hNIiU/edit?resourcekey=&gid=447781807#gid=447781807';
 export const RAGS_GLOVES_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1kPRApx8bpI5zcojAxoRREhbBkuZtU2DpQvVd-9hNIiU/gviz/tq?tqx=out:csv&gid=447781807';
 

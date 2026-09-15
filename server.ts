@@ -801,6 +801,143 @@ async function startServer() {
     }
   });
 
+  // Rags & Gloves (เศษผ้า - ถุงมือ) Google Form & Sheet Submission
+  app.post("/api/rags-gloves-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      
+      // Date parsing (YYYY-MM-DD or DD/MM/YYYY)
+      let year = "2026";
+      let month = "9";
+      let day = "15";
+      if (payload.date) {
+        const clean = String(payload.date).trim();
+        if (clean.includes("-")) {
+          const p = clean.split("-");
+          year = p[0];
+          month = String(parseInt(p[1], 10));
+          day = String(parseInt(p[2], 10));
+        } else if (clean.includes("/")) {
+          const p = clean.split("/");
+          day = String(parseInt(p[0], 10));
+          month = String(parseInt(p[1], 10));
+          year = p[2];
+          if (parseInt(year, 10) > 2500) year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const formatVal = (val: any) => {
+        if (val === undefined || val === null || val === "") return "";
+        return String(val).trim();
+      };
+
+      const discardRags = formatVal(payload.discardRags);
+      const discardGloves = formatVal(payload.discardGloves);
+      const beforeRags = formatVal(payload.beforeRags);
+      const beforeGloves = formatVal(payload.beforeGloves);
+      const afterRags = formatVal(payload.afterRags);
+      const afterGloves = formatVal(payload.afterGloves);
+
+      const GOOGLE_RAGS_GLOVES_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSd0iF7VKIbQxRsvXbhVZXiIXkkBfe7Mu26D0dLWhaOfVbfkrw/formResponse";
+
+      const formParams = new URLSearchParams();
+      const dateFormatted = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      formParams.append("entry.507087445", dateFormatted);
+      formParams.append("entry.507087445_year", year);
+      formParams.append("entry.507087445_month", month);
+      formParams.append("entry.507087445_day", day);
+
+      if (discardRags !== "") formParams.append("entry.1248564706", discardRags);
+      if (discardGloves !== "") formParams.append("entry.829742500", discardGloves);
+      if (beforeRags !== "") formParams.append("entry.140645531", beforeRags);
+      if (beforeGloves !== "") formParams.append("entry.302762672", beforeGloves);
+      if (afterRags !== "") formParams.append("entry.119255118", afterRags);
+      if (afterGloves !== "") formParams.append("entry.1199146722", afterGloves);
+
+      // Google Form has 4 sections/pages:
+      // Page 0: วันที่ (Date)
+      // Page 1: คัดทิ้ง (KG) - เศษผ้า & ถุงมือ
+      // Page 2: ก่อนซัก (KG) - เศษผ้า & ถุงมือ
+      // Page 3: หลังซัก (KG) - เศษผ้า & ถุงมือ
+      // pageHistory MUST be "0,1,2,3" so that Google Forms processes and records all pages into Google Sheet!
+      let fbzx = "";
+      try {
+        const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLSd0iF7VKIbQxRsvXbhVZXiIXkkBfe7Mu26D0dLWhaOfVbfkrw/viewform", {
+          signal: AbortSignal.timeout(3000),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          }
+        });
+        if (viewRes.ok) {
+          const viewHtml = await viewRes.text();
+          const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+          if (fbzxMatch) fbzx = fbzxMatch[1];
+        }
+      } catch {
+        // Fallback gracefully
+      }
+
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0,1,2,3");
+      if (fbzx) {
+        formParams.append("fbzx", fbzx);
+      }
+
+      let syncedToGoogle = false;
+      let formStatus = 0;
+
+      try {
+        const formRes = await fetch(GOOGLE_RAGS_GLOVES_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: formParams.toString(),
+        });
+        formStatus = formRes.status;
+        const formText = await formRes.text();
+        syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 || formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+      } catch (fetchErr: any) {
+        console.warn("Error posting rags & gloves to Google Form:", fetchErr.message);
+      }
+
+      return res.json({
+        success: true,
+        googleSheetSynced: syncedToGoogle,
+        formStatus,
+        message: syncedToGoogle 
+          ? "บันทึกข้อมูลผ่าน Google Form ลง Google Sheet เรียบร้อยแล้ว" 
+          : "บันทึกข้อมูลเข้าระบบเรียบร้อยแล้ว",
+        record: {
+          date: dateFormatted,
+          day: parseInt(day, 10),
+          month: parseInt(month, 10),
+          year: parseInt(year, 10),
+          discardRagsKg: parseFloat(discardRags) || 0,
+          discardGlovesKg: parseFloat(discardGloves) || 0,
+          beforeWashRagsKg: parseFloat(beforeRags) || 0,
+          beforeWashGlovesKg: parseFloat(beforeGloves) || 0,
+          afterWashRagsKg: parseFloat(afterRags) || 0,
+          afterWashGlovesKg: parseFloat(afterGloves) || 0,
+          syncedToGoogle,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (err: any) {
+      console.error("Error in /api/rags-gloves-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during rags & gloves submission",
+      });
+    }
+  });
+
   // Health check API
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });

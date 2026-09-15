@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { RagsGlovesDailyRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { realtimeHub } from '../services/realtimeService';
-import { AdminUserAccount, DEFAULT_ADMIN_USER, isUserAdminOrSupervisor } from '../data/mockData';
+import { AdminUserAccount, DEFAULT_ADMIN_USER, isUserAdminOrSupervisor, canRecordRagsGloves } from '../data/mockData';
+import { CreateRagsGlovesRecordModal } from './CreateRagsGlovesRecordModal';
 import { 
   fetchGoogleSheetRagsGloves, 
   RAGS_GLOVES_SHEET_URL,
@@ -40,7 +41,8 @@ import {
   Percent,
   Bell,
   Filter,
-  Hand
+  Hand,
+  ClipboardPen
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -62,7 +64,7 @@ interface AddedNotificationData {
   timestamp: string;
 }
 
-export const RAGS_GLOVES_FORM_URL = 'https://docs.google.com/forms/d/1Iu1AwEsRobId9kfREog6OFt8VGzTV7qF3VNNoSQkbXU/edit';
+export const RAGS_GLOVES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSd0iF7VKIbQxRsvXbhVZXiIXkkBfe7Mu26D0dLWhaOfVbfkrw/viewform?usp=pp_url';
 
 const STORAGE_KEY = 'rags_gloves_monthly_data_v3';
 
@@ -77,6 +79,11 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
   const isAdmin = useMemo(() => {
     return isUserAdminOrSupervisor(currentUser, isAuthenticated);
   }, [currentUser, isAuthenticated]);
+
+  // ตรวจสอบสิทธิ์การมองเห็นและทำรายการ บันทึกรายการ: จำกัดเฉพาะ ผู้ดูแล, แอดมินเพจ และพนักงาน ตำแหน่งธุรการ เท่านั้น
+  const canRecord = useMemo(() => {
+    return canRecordRagsGloves(currentUser, isAuthenticated);
+  }, [currentUser, isAuthenticated]);
   
   // Current Month / Year selection (defaults to current date or August 2026)
   const today = new Date();
@@ -88,6 +95,7 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
   const [lastSyncedTime, setLastSyncedTime] = useState<Date | null>(null);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
   const [addedNotification, setAddedNotification] = useState<AddedNotificationData | null>(null);
@@ -731,6 +739,19 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* บันทึกรายการ Icon Button (หน้าไอคอนสถิติ - จำกัดสิทธิ์เฉพาะ ผู้ดูแล, แอดมินเพจ และพนักงานตำแหน่งธุรการเท่านั้น) */}
+            {canRecord && (
+              <button
+                type="button"
+                onClick={() => setRecordModalOpen(true)}
+                className="p-2.5 rounded-xl bg-gradient-to-r from-[#5d4037] to-[#8d5b4c] hover:from-[#4e342e] hover:to-[#6d4c41] text-white border border-[#5d4037] backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:shadow-md"
+                title={language === 'th' ? 'บันทึกรายการ' : 'Record Entry'}
+                aria-label={language === 'th' ? 'บันทึกรายการ' : 'Record Entry'}
+              >
+                <ClipboardPen className="w-5 h-5 text-white stroke-[2]" />
+              </button>
+            )}
+
             {/* 1. Statistics Icon Button */}
             <button
               type="button"
@@ -2025,6 +2046,61 @@ export const RagsGlovesLogView: React.FC<RagsGlovesLogViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Record Modal (บันทึกรายการผ่าน Google Form & Sheet) */}
+      <CreateRagsGlovesRecordModal
+        isOpen={recordModalOpen}
+        onClose={() => setRecordModalOpen(false)}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
+        defaultDate={`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(Math.min(today.getDate(), records.length || 31)).padStart(2, '0')}`}
+        onRecordSaved={(newRecord) => {
+          if (!newRecord) return;
+          const { year, month, day, discardRagsKg, discardGlovesKg, beforeWashRagsKg, beforeWashGlovesKg, afterWashRagsKg, afterWashGlovesKg } = newRecord;
+          const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+
+          setMonthlyData((prev) => {
+            const existingMonthRecords = prev[monthKey] ? [...prev[monthKey]] : createEmptyMonthRecords(year, month - 1);
+            if (day >= 1 && day <= existingMonthRecords.length) {
+              existingMonthRecords[day - 1] = {
+                ...existingMonthRecords[day - 1],
+                discardRagsKg: discardRagsKg !== undefined && discardRagsKg !== '' ? Number(discardRagsKg) : existingMonthRecords[day - 1].discardRagsKg,
+                discardGlovesKg: discardGlovesKg !== undefined && discardGlovesKg !== '' ? Number(discardGlovesKg) : existingMonthRecords[day - 1].discardGlovesKg,
+                beforeWashRagsKg: beforeWashRagsKg !== undefined && beforeWashRagsKg !== '' ? Number(beforeWashRagsKg) : existingMonthRecords[day - 1].beforeWashRagsKg,
+                beforeWashGlovesKg: beforeWashGlovesKg !== undefined && beforeWashGlovesKg !== '' ? Number(beforeWashGlovesKg) : existingMonthRecords[day - 1].beforeWashGlovesKg,
+                afterWashRagsKg: afterWashRagsKg !== undefined && afterWashRagsKg !== '' ? Number(afterWashRagsKg) : existingMonthRecords[day - 1].afterWashRagsKg,
+                afterWashGlovesKg: afterWashGlovesKg !== undefined && afterWashGlovesKg !== '' ? Number(afterWashGlovesKg) : existingMonthRecords[day - 1].afterWashGlovesKg,
+              };
+            }
+            const updated = {
+              ...prev,
+              [monthKey]: existingMonthRecords,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            return updated;
+          });
+
+          const bTotal = (Number(beforeWashRagsKg) || 0) + (Number(beforeWashGlovesKg) || 0);
+          const aTotal = (Number(afterWashRagsKg) || 0) + (Number(afterWashGlovesKg) || 0);
+          const dTotal = (Number(discardRagsKg) || 0) + (Number(discardGlovesKg) || 0);
+
+          setAddedNotification({
+            day,
+            monthName: language === 'th' ? (thaiMonths[month - 1] || '') : (engMonths[month - 1] || ''),
+            year,
+            beforeRagsKg: Number(beforeWashRagsKg) || 0,
+            beforeGlovesKg: Number(beforeWashGlovesKg) || 0,
+            beforeTotalKg: bTotal,
+            afterTotalKg: aTotal,
+            discardTotalKg: dTotal,
+            timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          });
+
+          setSaveSuccessNotice(true);
+          setTimeout(() => setSaveSuccessNotice(false), 5000);
+        }}
+        onSyncRequested={() => performSync(true)}
+      />
     </div>
   );
 };

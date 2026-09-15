@@ -270,6 +270,17 @@ export function canCreateParcelOrder(user?: AdminUserAccount | null, isAuthentic
 
 export const canCreateParcelRecord = canCreateParcelOrder;
 
+/**
+ * ตรวจสอบสิทธิ์การมองเห็นและทำรายการบันทึกรายการ เศษผ้า - ถุงมือ
+ * ข้อกำหนด: ไอคอน บันทึกรายการ จำกัดสิทธิ์การมองเห็นและทำรายการเฉพาะ:
+ * 1. ผู้ดูแล (Super Administrator / Administrator / ผู้ดูแลระบบ)
+ * 2. แอดมินเพจ (Page Admin / Supervisor)
+ * 3. พนักงาน ตำแหน่งธุรการ เท่านั้น
+ */
+export function canRecordRagsGloves(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
+  return canCreateLaundryOrder(user, isAuthenticated);
+}
+
 
 export interface StaffEmployeeInfo {
   employeeId: string;
