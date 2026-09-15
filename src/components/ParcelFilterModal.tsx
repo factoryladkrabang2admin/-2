@@ -12,6 +12,7 @@ import {
   Search
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export interface ParcelFilterState {
   actionType: string;         // 'all' | 'ส่ง' | 'รับ'
@@ -37,6 +38,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
   onApply,
   records,
 }) => {
+  const { language } = useLanguage();
   const [localFilters, setLocalFilters] = useState<ParcelFilterState>(filters);
 
   useEffect(() => {
@@ -89,13 +91,18 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
               <Filter className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">ตัวกรองเอกสารและพัสดุ</h3>
-              <p className="text-xs text-pink-100">ปรับแต่งเงื่อนไขการค้นหาและแสดงผล</p>
+              <h3 className="text-lg font-bold">
+                {language === 'th' ? 'ตัวกรองเอกสารและพัสดุ' : 'Parcel & Document Filter'}
+              </h3>
+              <p className="text-xs text-pink-100">
+                {language === 'th' ? 'ปรับแต่งเงื่อนไขการค้นหาและแสดงผล' : 'Customize search criteria and view results'}
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
           >
             <X className="w-5 h-5" />
           </button>
@@ -106,7 +113,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
           {/* Action Type Filter */}
           <div>
             <label className="block font-semibold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-              ประเภทรายการ
+              {language === 'th' ? 'ประเภทรายการ' : 'Record Type'}
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -119,7 +126,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 }`}
               >
                 <Package className="w-4 h-4" />
-                ทั้งหมด
+                {language === 'th' ? 'ทั้งหมด' : 'All'}
               </button>
 
               <button
@@ -132,7 +139,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 }`}
               >
                 <Send className="w-4 h-4" />
-                รายการส่ง
+                {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
               </button>
 
               <button
@@ -145,7 +152,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 }`}
               >
                 <Inbox className="w-4 h-4" />
-                รายการรับ
+                {language === 'th' ? 'รายการรับ' : 'Incoming'}
               </button>
             </div>
           </div>
@@ -153,7 +160,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
           {/* Sender Department */}
           <div>
             <label className="block font-semibold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              แผนกผู้ส่ง
+              {language === 'th' ? 'แผนกผู้ส่ง' : 'Sender Department'}
             </label>
             <div className="relative">
               <Building2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -162,7 +169,9 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 onChange={(e) => setLocalFilters({ ...localFilters, senderDepartment: e.target.value })}
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
               >
-                <option value="all">ทุกแผนกผู้ส่ง</option>
+                <option value="all">
+                  {language === 'th' ? 'ทุกแผนกผู้ส่ง' : 'All Sender Departments'}
+                </option>
                 {senderDepartments.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
@@ -173,7 +182,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
           {/* Recipient Department */}
           <div>
             <label className="block font-semibold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              แผนกผู้รับ
+              {language === 'th' ? 'แผนกผู้รับ' : 'Recipient Department'}
             </label>
             <div className="relative">
               <Building2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -182,7 +191,9 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 onChange={(e) => setLocalFilters({ ...localFilters, recipientDepartment: e.target.value })}
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
               >
-                <option value="all">ทุกแผนกผู้รับ</option>
+                <option value="all">
+                  {language === 'th' ? 'ทุกแผนกผู้รับ' : 'All Recipient Departments'}
+                </option>
                 {recipientDepartments.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
@@ -193,13 +204,13 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
           {/* Search keyword */}
           <div>
             <label className="block font-semibold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              คำค้นหาเฉพาะ (ชื่อเอกสาร/พัสดุ หรือชื่อบุคคล)
+              {language === 'th' ? 'คำค้นหาเฉพาะ (ชื่อเอกสาร/พัสดุ หรือชื่อบุคคล)' : 'Specific Keyword (Item name or person name)'}
             </label>
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="ระบุคำค้นหา..."
+                placeholder={language === 'th' ? 'ระบุคำค้นหา...' : 'Enter keyword...'}
                 value={localFilters.keyword}
                 onChange={(e) => setLocalFilters({ ...localFilters, keyword: e.target.value })}
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 text-sm focus:outline-hidden focus:ring-2 focus:ring-pink-500"
@@ -210,11 +221,13 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
           {/* Date range */}
           <div>
             <label className="block font-semibold text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              ช่วงวันที่บันทึก (Date Range)
+              {language === 'th' ? 'ช่วงวันที่บันทึก (Date Range)' : 'Date Range'}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <span className="text-xs text-slate-400 block mb-1">ตั้งแต่วันที่</span>
+                <span className="text-xs text-slate-400 block mb-1">
+                  {language === 'th' ? 'ตั้งแต่วันที่' : 'From Date'}
+                </span>
                 <input
                   type="date"
                   value={localFilters.startDate}
@@ -223,7 +236,9 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
                 />
               </div>
               <div>
-                <span className="text-xs text-slate-400 block mb-1">ถึงวันที่</span>
+                <span className="text-xs text-slate-400 block mb-1">
+                  {language === 'th' ? 'ถึงวันที่' : 'To Date'}
+                </span>
                 <input
                   type="date"
                   value={localFilters.endDate}
@@ -243,7 +258,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-pink-600 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            ล้างตัวกรองทั้งหมด
+            {language === 'th' ? 'ล้างตัวกรองทั้งหมด' : 'Reset All'}
           </button>
 
           <div className="flex items-center gap-2">
@@ -252,7 +267,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
             >
-              ยกเลิก
+              {language === 'th' ? 'ยกเลิก' : 'Cancel'}
             </button>
             <button
               type="button"
@@ -260,7 +275,7 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
               className="flex items-center gap-1.5 px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              ใช้งานตัวกรอง
+              {language === 'th' ? 'ใช้งานตัวกรอง' : 'Apply Filters'}
             </button>
           </div>
         </div>
@@ -268,3 +283,4 @@ export const ParcelFilterModal: React.FC<ParcelFilterModalProps> = ({
     </div>
   );
 };
+

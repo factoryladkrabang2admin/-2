@@ -368,7 +368,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     });
 
     if (duplicateCheck.isAlreadyReceived) {
-      setErrorMessage(duplicateCheck.message || 'รหัสติดตามหรือข้อมูลนี้ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้');
+      setErrorMessage(duplicateCheck.message || (language === 'th' ? 'รหัสติดตามหรือข้อมูลนี้ถูกทำรายการรับไปแล้ว ไม่สามารถทำรายการซ้ำได้' : 'This tracking code or record has already been received. Duplicate entry not allowed.'));
       return;
     }
 
@@ -416,11 +416,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
         setIsSuccess(true);
         onRecordCreated(res.record);
       } else {
-        setErrorMessage(res.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        setErrorMessage(res.error || (language === 'th' ? 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' : 'Failed to save. Please try again.'));
       }
     } catch (err: any) {
       console.error('Error submitting parcel delivery Google Form:', err);
-      setErrorMessage(err?.message || 'เกิดข้อผิดพลาดในการส่งคำขอ POST ไปยัง Google Form');
+      setErrorMessage(err?.message || (language === 'th' ? 'เกิดข้อผิดพลาดในการส่งคำขอ POST ไปยัง Google Form' : 'Error submitting request to Google Form.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -458,7 +458,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   // Copy details to clipboard
   const handleCopyDetails = async () => {
     if (!lastSavedRecord) return;
-    const text = `[บันทึกรับ-ส่งเอกสาร/พัสดุ]\nวันที่เวลา: ${lastSavedRecord.timestamp}\nประเภท: ${lastSavedRecord.actionType}\nผู้ส่ง: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nผู้รับ: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nรายการ: ${lastSavedRecord.itemTitle}`;
+    const text = language === 'th'
+      ? `[บันทึกรับ-ส่งเอกสาร/พัสดุ]\nวันที่เวลา: ${lastSavedRecord.timestamp}\nประเภท: ${lastSavedRecord.actionType}\nผู้ส่ง: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nผู้รับ: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nรายการ: ${lastSavedRecord.itemTitle}`
+      : `[Document & Parcel Record]\nTimestamp: ${lastSavedRecord.timestamp}\nType: ${lastSavedRecord.actionType === 'รับ' ? 'Receive (Incoming)' : 'Send (Outgoing)'}\nSender: ${lastSavedRecord.senderName} (${lastSavedRecord.senderDepartment})\nRecipient: ${lastSavedRecord.recipientName} (${lastSavedRecord.recipientDepartment})\nItem: ${lastSavedRecord.itemTitle}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedData(true);
@@ -486,7 +488,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             </div>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-black tracking-tight text-white drop-shadow-xs">
-                {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document & Parcel Delivery'}
+                {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document / Parcel'}
               </h2>
             </div>
           </div>
@@ -515,7 +517,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 </div>
                 <div className="min-w-0 flex items-center h-10">
                   <h3 className="text-base font-black text-emerald-900 dark:text-emerald-100">
-                    {lastSavedRecord.actionType === 'รับ' ? 'บันทึกข้อมูลเข้าแล้ว' : 'บันทึกข้อมูลออกแล้ว'}
+                    {lastSavedRecord.actionType === 'รับ' 
+                      ? (language === 'th' ? 'บันทึกข้อมูลเข้าแล้ว' : 'Incoming delivery recorded')
+                      : (language === 'th' ? 'บันทึกข้อมูลออกแล้ว' : 'Outgoing delivery recorded')}
                   </h3>
                 </div>
               </div>
@@ -524,26 +528,36 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-800/90 border border-emerald-200 dark:border-emerald-800 text-xs space-y-2">
                 <div className="grid grid-cols-2 gap-2 text-slate-700 dark:text-slate-300">
                   <div>
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ประเภท:</span>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                      {language === 'th' ? 'ประเภท:' : 'Type:'}
+                    </span>
                     <span className="font-black text-pink-600 dark:text-pink-400 text-sm">
-                      {lastSavedRecord.actionType}
+                      {lastSavedRecord.actionType === 'รับ'
+                        ? (language === 'th' ? 'รับ' : 'Receive')
+                        : (language === 'th' ? 'ส่ง' : 'Send')}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">วันที่เวลา:</span>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                      {language === 'th' ? 'วันที่เวลา:' : 'Timestamp:'}
+                    </span>
                     <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
                       {lastSavedRecord.timestamp}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ผู้ส่ง:</span>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                      {language === 'th' ? 'ผู้ส่ง:' : 'Sender:'}
+                    </span>
                     <span className="font-bold text-slate-900 dark:text-white">
                       {lastSavedRecord.senderName}
                     </span>{' '}
                     <span className="text-slate-500">({lastSavedRecord.senderDepartment})</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ผู้รับ:</span>
+                    <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                      {language === 'th' ? 'ผู้รับ:' : 'Recipient:'}
+                    </span>
                     <span className="font-bold text-slate-900 dark:text-white">
                       {lastSavedRecord.recipientName}
                     </span>{' '}
@@ -551,14 +565,18 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   </div>
                   <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
                     <div>
-                      <span className="text-slate-400 dark:text-slate-500 text-[10px] block">ชื่อเอกสาร / พัสดุ:</span>
+                      <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                        {language === 'th' ? 'ชื่อเอกสาร / พัสดุ:' : 'Item / Document Title:'}
+                      </span>
                       <span className="font-bold text-pink-600 dark:text-pink-400 text-sm">
                         {lastSavedRecord.itemTitle || '-'}
                       </span>
                     </div>
                     {lastSavedRecord.trackingCode && (
                       <div className="text-right">
-                        <span className="text-slate-400 dark:text-slate-500 text-[10px] block">รหัสติดตาม:</span>
+                        <span className="text-slate-400 dark:text-slate-500 text-[10px] block">
+                          {language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:'}
+                        </span>
                         <span className={`font-mono font-bold text-xs px-2.5 py-1 rounded-md border inline-flex items-center gap-1.5 ${
                           lastSavedRecord.actionType === 'รับ'
                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs'
@@ -569,7 +587,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                           </span>
                           {lastSavedRecord.actionType === 'รับ' && (
                             <span className="font-sans font-bold text-[11px] bg-emerald-200/80 dark:bg-emerald-900/90 text-emerald-900 dark:text-emerald-100 px-1.5 py-0.5 rounded-md">
-                              รับแล้ว
+                              {language === 'th' ? 'รับแล้ว' : 'Received'}
                             </span>
                           )}
                         </span>
@@ -593,7 +611,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                           ? 'text-emerald-900 dark:text-emerald-200'
                           : 'text-slate-500 dark:text-slate-400'
                       }`}>
-                        {lastSavedRecord.actionType === 'รับ' ? 'รหัสติดตาม (รับเอกสาร/พัสดุแล้ว):' : 'รหัสติดตามสถานะ:'}
+                        {lastSavedRecord.actionType === 'รับ'
+                          ? (language === 'th' ? 'รหัสติดตาม (รับเอกสาร/พัสดุแล้ว):' : 'Tracking Code (Received):')
+                          : (language === 'th' ? 'รหัสติดตามสถานะ:' : 'Status Tracking Code:')}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <span className={`font-mono font-black text-sm tracking-wider ${
@@ -605,7 +625,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                         </span>
                         {lastSavedRecord.actionType === 'รับ' && (
                           <span className="font-sans font-bold text-xs bg-emerald-200/90 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700">
-                            รับแล้ว
+                            {language === 'th' ? 'รับแล้ว' : 'Received'}
                           </span>
                         )}
                       </div>
@@ -621,7 +641,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       }`}
                     >
                       {copiedTrackingCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedTrackingCode ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}</span>
+                      <span>
+                        {copiedTrackingCode 
+                          ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') 
+                          : (language === 'th' ? 'คัดลอกรหัส' : 'Copy Code')}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -633,9 +657,13 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <div className="font-bold">ข้อมูล 5 รายการหลักบันทึกเข้า Google Sheet เรียบร้อยแล้ว</div>
+                      <div className="font-bold">
+                        {language === 'th' ? 'ข้อมูล 5 รายการหลักบันทึกเข้า Google Sheet เรียบร้อยแล้ว' : 'Core items saved to Google Sheet successfully'}
+                      </div>
                       <div className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-                        หมายเหตุ: ในแบบฟอร์ม Google Form ปัจจุบันยังไม่มีคำถามสำหรับ <span className="font-bold underline">"ชื่อเอกสาร / พัสดุ"</span> ทำให้ Google Form ยังไม่นำข้อมูลนี้ไปกรอกในคอลัมน์ของ Sheet หากต้องการให้บันทึกอัตโนมัติในครั้งต่อไป สามารถกดเปิด Google Form เพื่อเพิ่มคำถาม 1 ข้อได้ทันที
+                        {language === 'th' 
+                          ? 'หมายเหตุ: ในแบบฟอร์ม Google Form ปัจจุบันยังไม่มีคำถามสำหรับ "ชื่อเอกสาร / พัสดุ" ทำให้ Google Form ยังไม่นำข้อมูลนี้ไปกรอกในคอลัมน์ของ Sheet'
+                          : 'Note: The current Google Form template does not include an item title question yet.'}
                       </div>
                     </div>
                   </div>
@@ -647,14 +675,14 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      <span>เปิดแก้ไข Google Form (กด + เพิ่มคำถามชื่อเอกสาร)</span>
+                      <span>{language === 'th' ? 'เปิดแก้ไข Google Form' : 'Edit Google Form'}</span>
                     </a>
                   </div>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>บันทึกชื่อเอกสาร / พัสดุ ลงใน Google Sheet เรียบร้อยสมบูรณ์</span>
+                  <span>{language === 'th' ? 'บันทึกชื่อเอกสาร / พัสดุ ลงใน Google Sheet เรียบร้อยสมบูรณ์' : 'Item title synchronized with Google Sheet'}</span>
                 </div>
               )}
 
@@ -663,7 +691,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <div className="p-2.5 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    เพิ่มรหัสติดตาม <span className="font-mono font-black">{lastSavedRecord.trackingCode}</span> เข้าไปใน Google Sheet เรียบร้อยแล้ว
+                    {language === 'th' ? 'เพิ่มรหัสติดตาม ' : 'Tracking code added: '}
+                    <span className="font-mono font-black">{lastSavedRecord.trackingCode}</span>
+                    {language === 'th' ? ' เข้าไปใน Google Sheet เรียบร้อยแล้ว' : ' in Google Sheet'}
                   </span>
                 </div>
               )}
@@ -676,7 +706,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>บันทึกรายการใหม่อีกครั้ง</span>
+                  <span>{language === 'th' ? 'บันทึกรายการใหม่อีกครั้ง' : 'Record Another'}</span>
                 </button>
 
                 <button
@@ -685,7 +715,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   {copiedData ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedData ? 'คัดลอกแล้ว' : 'คัดลอกข้อมูล'}</span>
+                  <span>{copiedData ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') : (language === 'th' ? 'คัดลอกข้อมูล' : 'Copy Details')}</span>
                 </button>
               </div>
             </div>
@@ -705,7 +735,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <span>1. ประเภท</span>
+                  <span>{language === 'th' ? '1. ประเภท' : '1. Type'}</span>
                   <span className="text-rose-500 font-bold">*</span>
                 </label>
               </div>
@@ -790,7 +820,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5"
                     >
                       <Search className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>ค้นหา รหัสติดตาม (ดึงข้อมูลที่ส่งอัตโนมัติ)</span>
+                      <span>{language === 'th' ? 'ค้นหา รหัสติดตาม (ดึงข้อมูลที่ส่งอัตโนมัติ)' : 'Search Tracking Code (Auto-fill)'}</span>
                     </label>
                     {searchTrackingCode && (
                       <button
@@ -798,7 +828,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                         onClick={handleClearTrackingSearch}
                         className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-100 cursor-pointer flex items-center gap-0.5"
                       >
-                        <X className="w-3 h-3" /> ล้าง
+                        <X className="w-3 h-3" /> {language === 'th' ? 'ล้าง' : 'Clear'}
                       </button>
                     )}
                   </div>
@@ -812,7 +842,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') e.preventDefault();
                       }}
-                      placeholder="พิมพ์หรือวางรหัสติดตาม เช่น LKB2 - 26091201"
+                      placeholder={language === 'th' ? 'พิมพ์หรือวางรหัสติดตาม เช่น LKB2 - 26091201' : 'Enter tracking code, e.g. LKB2 - 26091201'}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border-2 border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-slate-100 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                     />
                     {searchTrackingCode && (
@@ -820,7 +850,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                         type="button"
                         onClick={handleClearTrackingSearch}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                        title="ล้างข้อมูล"
+                        title={language === 'th' ? 'ล้างข้อมูล' : 'Clear'}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -832,18 +862,18 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     <div className="p-2.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 text-xs text-emerald-900 dark:text-emerald-100 space-y-1.5 animate-in fade-in">
                       <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-200">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span>ดึงข้อมูลที่ส่งเรียบร้อยแล้ว: {matchedParcel.itemTitle}</span>
+                        <span>{language === 'th' ? 'ดึงข้อมูลที่ส่งเรียบร้อยแล้ว:' : 'Matched outgoing item:'} {matchedParcel.itemTitle}</span>
                       </div>
                       <div className="text-[11px] text-emerald-700 dark:text-emerald-300 pl-5">
-                        ผู้ส่ง: {matchedParcel.senderName} ({matchedParcel.senderDepartment}) ➔ ผู้รับ: {matchedParcel.recipientName} ({matchedParcel.recipientDepartment})
+                        {language === 'th' ? 'ผู้ส่ง:' : 'Sender:'} {matchedParcel.senderName} ({matchedParcel.senderDepartment}) ➔ {language === 'th' ? 'ผู้รับ:' : 'Recipient:'} {matchedParcel.recipientName} ({matchedParcel.recipientDepartment})
                       </div>
                       {matchedParcel.trackingCode && (
                         <div className="pl-5 pt-0.5 flex items-center gap-2">
-                          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">รหัสติดตาม:</span>
+                          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">{language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:'}</span>
                           <span className="font-mono font-black text-xs text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1 shadow-2xs">
                             <span>{matchedParcel.trackingCode}</span>
                             <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-800 px-1.5 py-0.2 rounded">
-                              รับแล้ว
+                              {language === 'th' ? 'รับแล้ว' : 'Received'}
                             </span>
                           </span>
                         </div>
@@ -851,12 +881,12 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     </div>
                   )}
 
-                  {/* Duplicate Alert Banner (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้) */}
+                  {/* Duplicate Alert Banner */}
                   {duplicateStatus.isAlreadyReceived && (
                     <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/70 border-2 border-rose-400 dark:border-rose-700 text-xs text-rose-900 dark:text-rose-100 space-y-1 animate-in fade-in">
                       <div className="flex items-center gap-1.5 font-bold text-rose-800 dark:text-rose-200">
                         <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                        <span>ตั้งค่าระบบ: รายการนี้ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้</span>
+                        <span>{language === 'th' ? 'ตั้งค่าระบบ: รายการนี้ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้' : 'System Policy: This parcel has already been received.'}</span>
                       </div>
                       <p className="text-[11px] text-rose-700 dark:text-rose-300 pl-5 leading-relaxed">
                         {duplicateStatus.message}
@@ -867,12 +897,12 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   {!matchedParcel && projectedReceiveTrackingCode && !duplicateStatus.isAlreadyReceived && (
                     <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between">
                       <span className="text-[11px] text-emerald-800 dark:text-emerald-200 font-semibold">
-                        รหัสติดตามที่จะบันทึกรับ:
+                        {language === 'th' ? 'รหัสติดตามที่จะบันทึกรับ:' : 'Assigned Tracking Code:'}
                       </span>
                       <span className="font-mono font-bold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
                         <span className="font-black">{projectedReceiveTrackingCode}</span>
                         <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-800 px-1.5 py-0.2 rounded">
-                          รับแล้ว
+                          {language === 'th' ? 'รับแล้ว' : 'Received'}
                         </span>
                       </span>
                     </div>
@@ -881,7 +911,11 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   {searchTrackingCode.trim() && !matchedParcel && (
                     <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>ไม่พบรหัสติดตาม "{searchTrackingCode}" ในรายการที่ส่ง สามารถกรอกข้อมูลเองด้านล่างได้</span>
+                      <span>
+                        {language === 'th' 
+                          ? `ไม่พบรหัสติดตาม "${searchTrackingCode}" ในรายการที่ส่ง สามารถกรอกข้อมูลเองด้านล่างได้` 
+                          : `Tracking code "${searchTrackingCode}" not found in outgoing records. You can fill out details below.`}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -892,7 +926,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-rose-600" />
-                <span>2. ชื่อผู้ส่งตามหน้าซอง</span>
+                <span>{language === 'th' ? '2. ชื่อผู้ส่งตามหน้าซอง' : '2. Sender Name on Label'}</span>
                 <span className="text-rose-500 font-bold">*</span>
               </label>
 
@@ -904,7 +938,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   setSenderName(val);
                 }}
                 suggestions={senderSuggestions}
-                placeholder="เช่น ทดสอบ, เจม, มาร์ค, คุณศศิประภา"
+                placeholder={language === 'th' ? 'เช่น ทดสอบ, เจม, มาร์ค, คุณศศิประภา' : 'e.g. Test, James, Mark, Staff'}
                 icon={<User className="w-3.5 h-3.5 text-rose-500" />}
                 accentColor="rose"
                 required
@@ -917,7 +951,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="bg-rose-50/50 dark:bg-rose-950/20 p-3.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-rose-600" />
-                <span>3. แผนกผู้ส่ง</span>
+                <span>{language === 'th' ? '3. แผนกผู้ส่ง' : '3. Sender Department'}</span>
                 <span className="text-rose-500 font-bold">*</span>
               </label>
 
@@ -929,7 +963,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   setSenderDepartment(val);
                 }}
                 suggestions={senderDeptSuggestions}
-                placeholder="เช่น การเงิน, ธุรการลาดกระบัง 1, ธุรการลาดกระบัง 2"
+                placeholder={language === 'th' ? 'เช่น การเงิน, ธุรการลาดกระบัง 1, ธุรการลาดกระบัง 2' : 'e.g. Finance, Admin Lat Krabang 1, Admin 2'}
                 icon={<Building className="w-3.5 h-3.5 text-rose-500" />}
                 accentColor="rose"
                 required
@@ -942,7 +976,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-emerald-600" />
-                <span>4. ชื่อผู้รับตามหน้าซอง</span>
+                <span>{language === 'th' ? '4. ชื่อผู้รับตามหน้าซอง' : '4. Recipient Name on Label'}</span>
                 <span className="text-rose-500 font-bold">*</span>
               </label>
 
@@ -954,7 +988,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   setRecipientName(val);
                 }}
                 suggestions={recipientSuggestions}
-                placeholder="เช่น เจม, มาร์ค, คุณศศิประภา"
+                placeholder={language === 'th' ? 'เช่น เจม, มาร์ค, คุณศศิประภา' : 'e.g. James, Mark, Staff'}
                 icon={<User className="w-3.5 h-3.5 text-emerald-500" />}
                 accentColor="emerald"
                 required
@@ -967,7 +1001,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-900/40 space-y-2">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-emerald-600" />
-                <span>5. แผนกผู้รับ</span>
+                <span>{language === 'th' ? '5. แผนกผู้รับ' : '5. Recipient Department'}</span>
                 <span className="text-rose-500 font-bold">*</span>
               </label>
 
@@ -979,7 +1013,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                   setRecipientDepartment(val);
                 }}
                 suggestions={recipientDeptSuggestions}
-                placeholder="เช่น ธุรการลาดกระบัง 2, ธุรการลาดกระบัง 1, การเงิน"
+                placeholder={language === 'th' ? 'เช่น ธุรการลาดกระบัง 2, ธุรการลาดกระบัง 1, การเงิน' : 'e.g. Admin Lat Krabang 2, Admin 1, Finance'}
                 icon={<Building className="w-3.5 h-3.5 text-emerald-500" />}
                 accentColor="emerald"
                 required
@@ -993,7 +1027,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                  <span>ชื่อเอกสาร / พัสดุ</span>
+                  <span>{language === 'th' ? 'ชื่อเอกสาร / พัสดุ' : 'Item / Document Title'}</span>
                   <span className="text-rose-500 font-bold">*</span>
                 </label>
 
@@ -1003,10 +1037,10 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       type="button"
                       onClick={handleRefreshFormStatus}
                       className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
-                      title="คลิกเพื่อตรวจเช็ค Google Form อีกครั้ง"
+                      title={language === 'th' ? 'คลิกเพื่อตรวจเช็ค Google Form อีกครั้ง' : 'Check Google Form status again'}
                     >
                       <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                      ตรวจสถานะ Form
+                      {language === 'th' ? 'ตรวจสถานะ Form' : 'Check Status'}
                     </button>
                   </div>
                 )}
@@ -1023,7 +1057,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') e.preventDefault();
                 }}
-                placeholder="เช่น PO ผลไม้, ใบสั่งซื้อ, ซองเอกสารทั่วไป"
+                placeholder={language === 'th' ? 'เช่น PO ผลไม้, ใบสั่งซื้อ, ซองเอกสารทั่วไป' : 'e.g. Fruit PO, Purchase Order, Document Envelope'}
                 className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all ${
                   hasAttemptedSubmit && !isItemTitleValid
                     ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
@@ -1043,10 +1077,12 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 <div className="mt-2 p-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 text-[11px] text-amber-800 dark:text-amber-200 space-y-1.5">
                   <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-100">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>คำแนะนำ: เพื่อให้ข้อมูลช่องนี้ลงใน Google Sheet</span>
+                    <span>{language === 'th' ? 'คำแนะนำ: เพื่อให้ข้อมูลช่องนี้ลงใน Google Sheet' : 'Recommendation: Sync to Google Sheet'}</span>
                   </div>
                   <p className="leading-relaxed text-slate-600 dark:text-slate-300">
-                    แบบฟอร์ม Google Form ปัจจุบันมี 5 คำถามหลัก (ยังไม่มีคำถามสำหรับชื่อเอกสาร) หากต้องการให้ Google Form บันทึกช่องนี้ลง Google Sheet ด้วย สามารถกดเปิด Google Form เพื่อเพิ่มคำถาม 1 ข้อได้ทันที
+                    {language === 'th'
+                      ? 'แบบฟอร์ม Google Form ปัจจุบันมี 5 คำถามหลัก (ยังไม่มีคำถามสำหรับชื่อเอกสาร) หากต้องการให้ Google Form บันทึกช่องนี้ลง Google Sheet ด้วย สามารถกดเปิด Google Form เพื่อเพิ่มคำถาม 1 ข้อได้ทันที'
+                      : 'The current Google Form has 5 primary questions. To record item titles into Google Sheet automatically, please add a title question in Google Form.'}
                   </p>
                   <div className="flex flex-wrap items-center gap-2 pt-0.5">
                     <a
@@ -1056,7 +1092,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] transition-colors"
                     >
                       <ExternalLink className="w-3 h-3" />
-                      <span>เปิดแก้ไข Google Form (กด + เพิ่มคำถามชื่อเอกสาร)</span>
+                      <span>{language === 'th' ? 'เปิดแก้ไข Google Form (กด + เพิ่มคำถามชื่อเอกสาร)' : 'Edit Google Form'}</span>
                     </a>
                     <button
                       type="button"
@@ -1064,7 +1100,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold text-[10px] hover:bg-amber-50 cursor-pointer"
                     >
                       <RefreshCw className={`w-2.5 h-2.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                      <span>เช็คอีกครั้งเมื่อเพิ่มแล้ว</span>
+                      <span>{language === 'th' ? 'เช็คอีกครั้งเมื่อเพิ่มแล้ว' : 'Check Again'}</span>
                     </button>
                   </div>
                 </div>
@@ -1075,7 +1111,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                <span>วันที่เวลาบันทึก:</span>
+                <span>{language === 'th' ? 'วันที่เวลาบันทึก:' : 'Timestamp:'}</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-white">
                   {timestamp || '-'}
                 </span>
@@ -1084,10 +1120,10 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                 type="button"
                 onClick={handleResetTimestamp}
                 className="text-[11px] text-pink-600 hover:text-pink-700 font-bold flex items-center gap-1 cursor-pointer"
-                title="รีเฟรชเวลาปัจจุบัน"
+                title={language === 'th' ? 'รีเฟรชเวลาปัจจุบัน' : 'Refresh time'}
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>รีเฟรชเวลา</span>
+                <span>{language === 'th' ? 'รีเฟรชเวลา' : 'Refresh Time'}</span>
               </button>
             </div>
           </form>
@@ -1142,7 +1178,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               disabled={isSubmitting || (!isSuccess && (!isRecipientNameValid || !isRecipientDeptValid || !isSenderNameValid || !isSenderDeptValid || !isItemTitleValid || duplicateStatus.isAlreadyReceived))}
               title={
                 !isSuccess && (!isRecipientNameValid || !isRecipientDeptValid)
-                  ? 'กรุณากรอกชื่อผู้รับตามหน้าซองและแผนกผู้รับให้เรียบร้อยก่อนบันทึก'
+                  ? (language === 'th' ? 'กรุณากรอกชื่อผู้รับตามหน้าซองและแผนกผู้รับให้เรียบร้อยก่อนบันทึก' : 'Please fill in recipient name and department before saving')
                   : undefined
               }
               className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${

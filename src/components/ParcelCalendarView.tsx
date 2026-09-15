@@ -145,7 +145,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
           <button
             onClick={handlePrevMonth}
             className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-            title="เดือนก่อนหน้า"
+            title={language === 'th' ? 'เดือนก่อนหน้า' : 'Previous Month'}
           >
             <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
@@ -157,7 +157,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
           <button
             onClick={handleNextMonth}
             className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-pink-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-            title="เดือนถัดไป"
+            title={language === 'th' ? 'เดือนถัดไป' : 'Next Month'}
           >
             <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
@@ -166,7 +166,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
             onClick={handleToday}
             className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-pink-200 dark:border-pink-900/50 bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 text-xs font-bold hover:bg-pink-100 transition-colors cursor-pointer ml-auto sm:ml-0"
           >
-            วันนี้
+            {language === 'th' ? 'วันนี้' : 'Today'}
           </button>
         </div>
 
@@ -180,7 +180,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
-            ทั้งหมด
+            {language === 'th' ? 'ทั้งหมด' : 'All'}
           </button>
           <button
             onClick={() => setTypeFilter('ส่ง')}
@@ -190,7 +190,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
-            📤 ส่ง
+            📤 {language === 'th' ? 'ส่ง' : 'Send'}
           </button>
           <button
             onClick={() => setTypeFilter('รับ')}
@@ -200,7 +200,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
-            📥 รับ
+            📥 {language === 'th' ? 'รับ' : 'Receive'}
           </button>
         </div>
       </div>
@@ -282,18 +282,22 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                       {sentCount > 0 && (
                         <span 
                           className={`inline-flex items-center justify-center gap-0.5 py-0.5 rounded sm:rounded-md font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 w-full md:w-auto leading-none min-w-0 ${getBadgeClass(sentCount)}`}
-                          title={`ส่ง ${sentCount} รายการ`}
+                          title={language === 'th' ? `ส่ง ${sentCount} รายการ` : `Send ${sentCount} item(s)`}
                         >
-                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">ส่ง</span>
+                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">
+                            {language === 'th' ? 'ส่ง' : 'Send'}
+                          </span>
                           <span className="font-mono font-black">{sentCount}</span>
                         </span>
                       )}
                       {receivedCount > 0 && (
                         <span 
                           className={`inline-flex items-center justify-center gap-0.5 py-0.5 rounded sm:rounded-md font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-full md:w-auto leading-none min-w-0 ${getBadgeClass(receivedCount)}`}
-                          title={`รับ ${receivedCount} รายการ`}
+                          title={language === 'th' ? `รับ ${receivedCount} รายการ` : `Receive ${receivedCount} item(s)`}
                         >
-                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">รับ</span>
+                          <span className="text-[7px] sm:text-[8px] md:text-[10px] shrink-0 scale-95 sm:scale-100">
+                            {language === 'th' ? 'รับ' : 'Recv'}
+                          </span>
                           <span className="font-mono font-black">{receivedCount}</span>
                         </span>
                       )}
@@ -313,10 +317,10 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-pink-600" />
               <h4 className="text-base font-bold text-slate-900 dark:text-white">
-                รายการวันที่ {selectedDay} {language === 'th' ? `${thaiMonths[currentMonth]} ${currentYear + 543}` : monthLabel}
+                {language === 'th' ? `รายการวันที่ ${selectedDay} ${thaiMonths[currentMonth]} ${currentYear + 543}` : `Items for ${selectedDay} ${monthLabel}`}
               </h4>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-bold">
-                {selectedDayRecords.length} รายการ
+                {language === 'th' ? `${selectedDayRecords.length} รายการ` : `${selectedDayRecords.length} items`}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -324,11 +328,12 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 onClick={() => setIsDayModalOpen(true)}
                 className="text-xs px-3 py-1 rounded-lg bg-pink-50 dark:bg-pink-950/50 hover:bg-pink-100 text-pink-700 dark:text-pink-300 font-bold transition-colors cursor-pointer border border-pink-200 dark:border-pink-800"
               >
-                เปิดในหน้าต่าง
+                {language === 'th' ? 'เปิดในหน้าต่าง' : 'Open in Modal'}
               </button>
               <button
                 onClick={() => setSelectedDay(null)}
                 className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title={language === 'th' ? 'ปิด' : 'Close'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -337,7 +342,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
 
           {selectedDayRecords.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">
-              ไม่มีบันทึกรับ-ส่ง เอกสาร / พัสดุ ในวันที่เลือก
+              {language === 'th' ? 'ไม่มีบันทึกรับ-ส่ง เอกสาร / พัสดุ ในวันที่เลือก' : 'No parcel or document records for this date'}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -359,7 +364,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
                               : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200'
                         }`}>
-                          {!isSent ? '📥 รายการรับ' : isConfirmedReceived ? '📤 รายการส่ง (รับแล้ว)' : '📤 รายการส่ง'}
+                          {!isSent 
+                            ? (language === 'th' ? '📥 รายการรับ' : '📥 Incoming') 
+                            : isConfirmedReceived 
+                              ? (language === 'th' ? '📤 รายการส่ง (รับแล้ว)' : '📤 Sent (Received)') 
+                              : (language === 'th' ? '📤 รายการส่ง' : '📤 Outgoing')}
                         </span>
                         <span className="text-xs text-slate-400">{rec.timeStr || rec.timestamp}</span>
                       </div>
@@ -368,7 +377,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                           <span className="font-mono text-xs font-bold px-2 py-0.5 rounded border text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700 flex items-center gap-1 shadow-2xs">
                             <span className="font-black">{rec.trackingCode}</span>
                             <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1 py-0.2 rounded font-bold">
-                              รับแล้ว
+                              {language === 'th' ? 'รับแล้ว' : 'Received'}
                             </span>
                           </span>
                         ) : (
@@ -415,14 +424,14 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base sm:text-lg font-black text-white">
-                      รายการวันที่ {selectedDay} {language === 'th' ? `${thaiMonths[currentMonth]} ${currentYear + 543}` : monthLabel}
+                      {language === 'th' ? `รายการวันที่ ${selectedDay} ${thaiMonths[currentMonth]} ${currentYear + 543}` : `Items for ${selectedDay} ${monthLabel}`}
                     </h3>
                     <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-xs font-bold border border-white/30">
-                      {selectedDayRecords.length} รายการ
+                      {language === 'th' ? `${selectedDayRecords.length} รายการ` : `${selectedDayRecords.length} items`}
                     </span>
                   </div>
                   <p className="text-xs text-pink-100/90 mt-0.5">
-                    รับ-ส่ง เอกสาร / พัสดุ
+                    {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document / Parcel'}
                   </p>
                 </div>
               </div>
@@ -431,7 +440,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 type="button"
                 onClick={() => setIsDayModalOpen(false)}
                 className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-                title="ปิดหน้าต่าง"
+                title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -442,7 +451,9 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
               {selectedDayRecords.length === 0 ? (
                 <div className="text-center py-12 text-slate-400">
                   <Package className="w-12 h-12 mx-auto mb-2 opacity-30 text-pink-500" />
-                  <p className="text-sm font-semibold">ไม่มีบันทึกรับ-ส่ง เอกสาร / พัสดุ ในวันที่เลือก</p>
+                  <p className="text-sm font-semibold">
+                    {language === 'th' ? 'ไม่มีบันทึกรับ-ส่ง เอกสาร / พัสดุ ในวันที่เลือก' : 'No document or parcel records for this date'}
+                  </p>
                 </div>
               ) : (
                 selectedDayRecords.map((rec, index) => {
@@ -468,7 +479,11 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                                 : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-200 dark:border-rose-800' 
                           }`}>
                             {!isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
-                            {!isSent ? 'รายการรับ' : isConfirmedReceived ? 'รายการส่ง (รับแล้ว)' : 'รายการส่ง'}
+                            {!isSent 
+                              ? (language === 'th' ? 'รายการรับ' : 'Incoming') 
+                              : isConfirmedReceived 
+                                ? (language === 'th' ? 'รายการส่ง (รับแล้ว)' : 'Sent (Received)') 
+                                : (language === 'th' ? 'รายการส่ง' : 'Outgoing')}
                           </span>
                           <span className="text-xs text-slate-400 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -481,7 +496,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                             <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md border text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700/80 flex items-center gap-1 shadow-2xs">
                               <span>{rec.trackingCode}</span>
                               <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                                รับแล้ว
+                                {language === 'th' ? 'รับแล้ว' : 'Received'}
                               </span>
                             </span>
                           ) : (
@@ -500,12 +515,12 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                       {/* Sender -> Recipient */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-600 dark:text-slate-300 pt-1.5 border-t border-slate-100 dark:border-slate-700/60">
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-slate-400">ผู้ส่ง:</span>
+                          <span className="text-slate-400">{language === 'th' ? 'ผู้ส่ง:' : 'Sender:'}</span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{rec.senderName}</span>
                           <span className="text-slate-400">({rec.senderDepartment})</span>
                         </div>
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-slate-400">ผู้รับ:</span>
+                          <span className="text-slate-400">{language === 'th' ? 'ผู้รับ:' : 'Recipient:'}</span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{rec.recipientName}</span>
                           <span className="text-slate-400">({rec.recipientDepartment})</span>
                         </div>
@@ -513,7 +528,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
 
                       {/* View Details Prompt */}
                       <div className="flex items-center justify-end text-xs text-pink-600 dark:text-pink-400 font-bold group-hover:translate-x-0.5 transition-transform pt-1">
-                        ดูรายละเอียด <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                        {language === 'th' ? 'ดูรายละเอียด' : 'View details'} <ArrowRight className="w-3.5 h-3.5 ml-1" />
                       </div>
                     </div>
                   );
@@ -528,7 +543,7 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                 onClick={() => setIsDayModalOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
               >
-                ปิด
+                {language === 'th' ? 'ปิด' : 'Close'}
               </button>
             </div>
           </div>

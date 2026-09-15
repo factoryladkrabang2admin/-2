@@ -14,6 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ParcelAnalyticsModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
   onClose,
   records,
 }) => {
+  const { language } = useLanguage();
   if (!isOpen) return null;
 
   const stats = useMemo(() => {
@@ -88,17 +90,18 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/20 text-pink-50 border border-white/20">
-                  Analytics & Overview
+                  {language === 'th' ? 'สถิติและภาพรวม' : 'Analytics & Overview'}
                 </span>
               </div>
               <h3 className="text-xl sm:text-2xl font-black mt-0.5">
-                สถิติและการวิเคราะห์การรับ-ส่ง เอกสาร / พัสดุ
+                {language === 'th' ? 'สถิติและการวิเคราะห์การรับ-ส่ง เอกสาร / พัสดุ' : 'Document / Parcel Statistics & Analytics'}
               </h3>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
           >
             <X className="w-5 h-5" />
           </button>
@@ -112,7 +115,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div className="p-4 rounded-2xl bg-pink-50/70 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-900/50">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-pink-700 dark:text-pink-300 uppercase tracking-wider">
-                  รายการทั้งหมด
+                  {language === 'th' ? 'รายการทั้งหมด' : 'Total Items'}
                 </span>
                 <Package className="w-4 h-4 text-pink-500" />
               </div>
@@ -120,7 +123,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                 {stats.total.toLocaleString()}
               </div>
               <div className="text-xs text-pink-600 dark:text-pink-400 mt-1">
-                บันทึกสะสมในระบบ
+                {language === 'th' ? 'บันทึกสะสมในระบบ' : 'Total records in system'}
               </div>
             </div>
 
@@ -128,7 +131,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div className="p-4 rounded-2xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">
-                  รายการส่ง (Outgoing)
+                  {language === 'th' ? 'รายการส่ง (Outgoing)' : 'Outgoing (Sent)'}
                 </span>
                 <Send className="w-4 h-4 text-rose-500" />
               </div>
@@ -139,7 +142,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                 </span>
               </div>
               <div className="text-xs text-rose-600 dark:text-rose-400 mt-1">
-                พัสดุ/เอกสารขาออก
+                {language === 'th' ? 'พัสดุ/เอกสารขาออก' : 'Outbound packages/documents'}
               </div>
             </div>
 
@@ -147,7 +150,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
-                  รายการรับ (Incoming)
+                  {language === 'th' ? 'รายการรับ (Incoming)' : 'Incoming (Received)'}
                 </span>
                 <Inbox className="w-4 h-4 text-emerald-500" />
               </div>
@@ -158,7 +161,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                 </span>
               </div>
               <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                พัสดุ/เอกสารขาเข้า
+                {language === 'th' ? 'พัสดุ/เอกสารขาเข้า' : 'Inbound packages/documents'}
               </div>
             </div>
           </div>
@@ -167,10 +170,10 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
           <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700">
             <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300 mb-2">
               <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                <Send className="w-3.5 h-3.5" /> รายการส่ง ({stats.sentPct}%)
+                <Send className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการส่ง' : 'Outgoing'} ({stats.sentPct}%)
               </span>
               <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                <Inbox className="w-3.5 h-3.5" /> รายการรับ ({stats.receivedPct}%)
+                <Inbox className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการรับ' : 'Incoming'} ({stats.receivedPct}%)
               </span>
             </div>
             <div className="h-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
@@ -191,7 +194,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700">
               <div className="flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-300 mb-3">
                 <Building2 className="w-4 h-4 text-rose-500" />
-                5 อันดับแผนกผู้ส่งสูงสุด
+                {language === 'th' ? '5 อันดับแผนกผู้ส่งสูงสุด' : 'Top 5 Sending Departments'}
               </div>
               {stats.topSenderDepts.length > 0 ? (
                 <div className="space-y-2.5">
@@ -204,13 +207,15 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                         <span className="truncate">{dept}</span>
                       </div>
                       <span className="font-bold text-rose-600 dark:text-rose-400">
-                        {count} รายการ
+                        {count} {language === 'th' ? 'รายการ' : 'items'}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400 italic py-2">ไม่มีข้อมูลแผนก</div>
+                <div className="text-xs text-slate-400 italic py-2">
+                  {language === 'th' ? 'ไม่มีข้อมูลแผนก' : 'No department data'}
+                </div>
               )}
             </div>
 
@@ -218,7 +223,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700">
               <div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-3">
                 <Building2 className="w-4 h-4 text-emerald-500" />
-                5 อันดับแผนกผู้รับสูงสุด
+                {language === 'th' ? '5 อันดับแผนกผู้รับสูงสุด' : 'Top 5 Receiving Departments'}
               </div>
               {stats.topRecipientDepts.length > 0 ? (
                 <div className="space-y-2.5">
@@ -231,13 +236,15 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
                         <span className="truncate">{dept}</span>
                       </div>
                       <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                        {count} รายการ
+                        {count} {language === 'th' ? 'รายการ' : 'items'}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400 italic py-2">ไม่มีข้อมูลแผนก</div>
+                <div className="text-xs text-slate-400 italic py-2">
+                  {language === 'th' ? 'ไม่มีข้อมูลแผนก' : 'No department data'}
+                </div>
               )}
             </div>
           </div>
@@ -249,7 +256,7 @@ export const ParcelAnalyticsModal: React.FC<ParcelAnalyticsModalProps> = ({
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold transition-colors cursor-pointer"
           >
-            ปิดหน้าต่าง
+            {language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
           </button>
         </div>
       </div>

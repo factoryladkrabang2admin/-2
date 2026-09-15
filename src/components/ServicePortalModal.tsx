@@ -1,6 +1,7 @@
 import React from 'react';
 import { Shirt, Package, X, Sparkles } from 'lucide-react';
 import { NavigationTab } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ServicePortalModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
   onSelectService,
   currentTab,
 }) => {
+  const { language } = useLanguage();
   if (!isOpen) return null;
 
   return (
@@ -41,13 +43,13 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-              <span>ระบบงานธุรการลาดกระบัง 2</span>
+              <span>{language === 'th' ? 'ระบบงานธุรการลาดกระบัง 2' : 'Admin Services Lat Krabang 2'}</span>
             </div>
             <h2
               id="portal-title"
               className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight"
             >
-              เลือกบริการ
+              {language === 'th' ? 'เลือกบริการ' : 'Select Service'}
             </h2>
           </div>
 
@@ -56,8 +58,8 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
             id="portal-close-button"
             onClick={onClose}
             className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-            aria-label="ปิดหน้าต่าง"
-            title="ปิดหน้าต่าง"
+            aria-label={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+            title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
           >
             <X className="w-5 h-5" />
           </button>
@@ -73,7 +75,7 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
               onClick={() => onSelectService('laundry')}
               className={`group flex flex-col items-center justify-center text-center p-6 sm:p-8 rounded-2xl border transition-all duration-200 cursor-pointer shadow-xs hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
                 currentTab === 'laundry'
-                  ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-blue-500/10'
+                  ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-pink-500/10'
                   : 'bg-slate-50/90 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:bg-blue-50/60 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700'
               }`}
             >
@@ -81,7 +83,7 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
                 <Shirt className="w-8 h-8 sm:w-10 sm:h-10" />
               </div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                ข้อมูลการซักผ้า
+                {language === 'th' ? 'ข้อมูลการซักผ้า' : 'Laundry Service'}
               </h3>
             </button>
 
@@ -100,7 +102,7 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
                 <Package className="w-8 h-8 sm:w-10 sm:h-10" />
               </div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
-                รับ-ส่ง เอกสาร / พัสดุ
+                {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document / Parcel'}
               </h3>
             </button>
           </div>
@@ -114,7 +116,7 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
           >
-            ปิด
+            {language === 'th' ? 'ปิด' : 'Close'}
           </button>
         </div>
       </div>

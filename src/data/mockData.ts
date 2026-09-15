@@ -257,6 +257,20 @@ export function canCreateLaundryOrder(user?: AdminUserAccount | null, isAuthenti
   return false;
 }
 
+/**
+ * ตรวจสอบสิทธิ์การมองเห็นและทำรายการเพิ่ม/กดรับรายการเอกสารและพัสดุ (Parcel Delivery)
+ * ข้อกำหนด: จำกัดสิทธิ์ให้มองเห็นและทำรายการได้เฉพาะ:
+ * 1. ผู้ดูแล (Super Administrator / Administrator / ผู้ดูแลระบบ)
+ * 2. แอดมินเพจ (Page Admin / Supervisor)
+ * 3. พนักงานตำแหน่งธุรการเท่านั้น (Administrative staff / ธุรการ)
+ */
+export function canCreateParcelOrder(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
+  return canCreateLaundryOrder(user, isAuthenticated);
+}
+
+export const canCreateParcelRecord = canCreateParcelOrder;
+
+
 export interface StaffEmployeeInfo {
   employeeId: string;
   name: string;

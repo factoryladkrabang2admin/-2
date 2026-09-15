@@ -425,7 +425,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     // Latest active department & update details (newest record first)
     const latestRecord = targetRecords.length > 0 ? targetRecords[0] : (isFiltered ? null : (records.length > 0 ? records[0] : null));
     let latestDept = '-';
-    let latestActivityText = isFiltered ? 'ไม่มีข้อมูลตามตัวกรองที่เลือก' : 'ยังไม่มีข้อมูลเคลื่อนไหว';
+    let latestActivityText = isFiltered 
+      ? (language === 'th' ? 'ไม่มีข้อมูลตามตัวกรองที่เลือก' : 'No records match filter') 
+      : (language === 'th' ? 'ยังไม่มีข้อมูลเคลื่อนไหว' : 'No recent activity');
 
     if (latestRecord) {
       if (latestRecord.actionType === 'ส่ง') {
@@ -443,8 +445,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       }
 
       const timeOrDate = latestRecord.timeStr || latestRecord.dateStr || (latestRecord.timestamp ? latestRecord.timestamp.split(/[\s,]+/)[0] : '');
-      const actionType = latestRecord.actionType || 'รายการ';
-      const itemTitle = latestRecord.itemTitle || 'ไม่มีชื่อรายการ';
+      const actionType = latestRecord.actionType === 'ส่ง'
+        ? (language === 'th' ? 'ส่ง' : 'Send')
+        : latestRecord.actionType === 'รับ'
+          ? (language === 'th' ? 'รับ' : 'Receive')
+          : (language === 'th' ? 'รายการ' : 'Item');
+      const itemTitle = latestRecord.itemTitle || (language === 'th' ? 'ไม่มีชื่อรายการ' : 'Untitled');
       latestActivityText = `${actionType}: ${itemTitle} (${timeOrDate})`;
     }
 
@@ -461,7 +467,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       allTimeSent: records.filter(r => r.actionType === 'ส่ง').length,
       allTimeReceived: records.filter(r => r.actionType === 'รับ').length,
     };
-  }, [records, filteredRecords, isFiltered]);
+  }, [records, filteredRecords, isFiltered, language]);
 
   // Table pagination
   const totalPagesTable = Math.ceil(filteredRecords.length / itemsPerPageTable) || 1;
@@ -523,7 +529,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                  รับ-ส่ง เอกสาร / พัสดุ
+                  {language === 'th' ? 'รับ-ส่ง เอกสาร / พัสดุ' : 'Document / Parcel'}
                 </h1>
 
                 {/* Sparkling Prominent Action Button for Form Submission (Opens Create Modal) */}
@@ -534,7 +540,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     setIsCreateModalOpen(true);
                   }}
                   className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:via-rose-600 hover:to-amber-600 shadow-md hover:shadow-xl hover:shadow-pink-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 dark:border-white/20 cursor-pointer overflow-hidden"
-                  title="คลิกเพื่อสร้างรายการ รับ - ส่งเอกสาร / พัสดุ ใหม่ (บันทึกลง Google Sheet)"
+                  title={language === 'th' ? 'คลิกเพื่อสร้างรายการ รับ-ส่ง เอกสาร / พัสดุ ใหม่ (บันทึกลง Google Sheet)' : 'Click to create a new Document / Parcel record'}
                 >
                   {/* Shimmer sweep animation */}
                   <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
@@ -547,7 +553,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                   <Sparkles className="w-4 h-4 text-amber-200 animate-pulse shrink-0" />
                   <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
-                    เพิ่มรายการรับ-ส่ง เอกสาร / พัสดุ
+                    {language === 'th' ? 'เพิ่มรายการรับ-ส่ง เอกสาร / พัสดุ' : 'New Document / Parcel'}
                   </span>
                 </button>
               </div>
@@ -561,7 +567,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               onClick={() => loadData(true)}
               disabled={refreshing}
               className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-pink-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs transition-all cursor-pointer flex items-center justify-center"
-              title={lastSyncedAt ? `รีเฟรชข้อมูล (อัปเดตล่าสุด: ${lastSyncedAt.toLocaleTimeString('th-TH')})` : "รีเฟรชข้อมูลจาก Google Sheet"}
+              title={lastSyncedAt ? (language === 'th' ? `รีเฟรชข้อมูล (อัปเดตล่าสุด: ${lastSyncedAt.toLocaleTimeString('th-TH')})` : `Refresh data (Last updated: ${lastSyncedAt.toLocaleTimeString('en-US')})`) : (language === 'th' ? 'รีเฟรชข้อมูลจาก Google Sheet' : 'Refresh from Google Sheet')}
             >
               <RefreshCw className={`w-4 h-4 text-pink-600 dark:text-pink-400 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
@@ -571,7 +577,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               <button
                 onClick={() => setIsAnalyticsOpen(true)}
                 className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-pink-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs transition-all cursor-pointer flex items-center justify-center"
-                title="ดูสถิติและภาพรวม (เฉพาะผู้ดูแลและแอดมิน)"
+                title={language === 'th' ? 'ดูสถิติและภาพรวม (เฉพาะผู้ดูแลและแอดมิน)' : 'Analytics & Overview (Admin & Supervisor)'}
               >
                 <BarChart3 className="w-4 h-4 text-pink-600 dark:text-pink-400" />
               </button>
@@ -584,7 +590,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer flex items-center justify-center"
-                title="เปิด Google Sheet ต้นทาง (เฉพาะผู้ดูแลและแอดมิน)"
+                title={language === 'th' ? 'เปิด Google Sheet ต้นทาง (เฉพาะผู้ดูแลและแอดมิน)' : 'Open Google Sheet (Admin & Supervisor)'}
               >
                 <FileSpreadsheet className="w-4 h-4" />
               </a>
@@ -598,7 +604,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   ? 'bg-pink-600 text-white border-pink-600 shadow-xs'
                   : 'bg-white/80 dark:bg-slate-800/80 border-pink-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-white'
               }`}
-              title="ตัวกรองข้อมูล"
+              title={language === 'th' ? 'ตัวกรองข้อมูล' : 'Filters'}
             >
               <Filter className="w-4 h-4" />
               {activeFiltersCount > 0 && (
@@ -617,7 +623,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     ? 'bg-pink-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
-                title="มุมมองรายการ (ตาราง)"
+                title={language === 'th' ? 'มุมมองรายการ (ตาราง)' : 'Table View'}
               >
                 <LayoutList className="w-4 h-4" />
               </button>
@@ -628,7 +634,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     ? 'bg-pink-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
-                title="มุมมองการ์ด (ตารางย่อย)"
+                title={language === 'th' ? 'มุมมองการ์ด (ตารางย่อย)' : 'Cards View'}
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
@@ -639,7 +645,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     ? 'bg-pink-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
-                title="มุมมองกระดานแยกประเภท (ส่ง/รับ)"
+                title={language === 'th' ? 'มุมมองกระดานแยกประเภท (ส่ง/รับ)' : 'Board View (Send / Receive)'}
               >
                 <Kanban className="w-4 h-4" />
               </button>
@@ -650,7 +656,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     ? 'bg-pink-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
-                title="มุมมองปฏิทิน (ตามวัน)"
+                title={language === 'th' ? 'มุมมองปฏิทิน (ตามวัน)' : 'Calendar View'}
               >
                 <CalendarDays className="w-4 h-4" />
               </button>
@@ -664,21 +670,23 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-pink-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                รายการทั้งหมด
+                {language === 'th' ? 'รายการทั้งหมด' : 'Total Records'}
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                 metrics.isFiltered
                   ? 'text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200/80 dark:border-purple-800'
                   : 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60'
               }`}>
-                {metrics.isFiltered ? 'ตามตัวกรอง' : 'วันนี้'}
+                {metrics.isFiltered ? (language === 'th' ? 'ตามตัวกรอง' : 'Filtered') : (language === 'th' ? 'วันนี้' : 'Today')}
               </span>
             </div>
             <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1.5">
               {metrics.total.toLocaleString()}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {metrics.isFiltered ? 'ตามเงื่อนไขที่เลือกกรอง' : 'พัสดุและเอกสารประจำวันนี้'}
+              {metrics.isFiltered 
+                ? (language === 'th' ? 'ตามเงื่อนไขที่เลือกกรอง' : 'Filtered results') 
+                : (language === 'th' ? 'พัสดุและเอกสารประจำวันนี้' : "Today's items")}
             </div>
           </div>
 
@@ -686,7 +694,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-rose-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <Send className="w-3.5 h-3.5" /> รายการส่ง
+                <Send className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
               </span>
               <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded-full">
                 {metrics.sentPct}%
@@ -696,7 +704,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               {metrics.sent.toLocaleString()}
             </div>
             <div className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5 truncate">
-              {metrics.isFiltered ? 'เอกสาร/พัสดุขาออกตามตัวกรอง' : 'เอกสาร/พัสดุขาออกวันนี้'}
+              {metrics.isFiltered 
+                ? (language === 'th' ? 'เอกสาร/พัสดุขาออกตามตัวกรอง' : 'Filtered outgoing items') 
+                : (language === 'th' ? 'เอกสาร/พัสดุขาออกวันนี้' : 'Outgoing items today')}
             </div>
           </div>
 
@@ -704,7 +714,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-emerald-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <Inbox className="w-3.5 h-3.5" /> รายการรับ
+                <Inbox className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการรับ' : 'Incoming'}
               </span>
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
                 {metrics.receivedPct}%
@@ -714,7 +724,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               {metrics.received.toLocaleString()}
             </div>
             <div className="text-[11px] text-emerald-500 dark:text-emerald-400 mt-0.5 truncate">
-              {metrics.isFiltered ? 'เอกสาร/พัสดุขาเข้าตามตัวกรอง' : 'เอกสาร/พัสดุขาเข้าวันนี้'}
+              {metrics.isFiltered 
+                ? (language === 'th' ? 'เอกสาร/พัสดุขาเข้าตามตัวกรอง' : 'Filtered incoming items') 
+                : (language === 'th' ? 'เอกสาร/พัสดุขาเข้าวันนี้' : 'Incoming items today')}
             </div>
           </div>
 
@@ -723,7 +735,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {metrics.isFiltered ? 'แผนกล่าสุดในตัวกรอง' : 'แผนกเคลื่อนไหวล่าสุด'}
+                  {metrics.isFiltered 
+                    ? (language === 'th' ? 'แผนกล่าสุดในตัวกรอง' : 'Latest Dept in Filter') 
+                    : (language === 'th' ? 'แผนกเคลื่อนไหวล่าสุด' : 'Latest Active Dept')}
                 </span>
                 <Building2 className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
               </div>
@@ -744,7 +758,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก, รหัสติดตาม..."
+              placeholder={language === 'th' ? 'ค้นหาชื่อเอกสาร, ผู้ส่ง, ผู้รับ, แผนก, รหัสติดตาม...' : 'Search title, sender, recipient, department, tracking code...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-8 py-2 bg-white/90 dark:bg-slate-800/90 border border-pink-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-pink-500"
@@ -755,7 +769,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                  title="ล้างคำค้นหา"
+                  title={language === 'th' ? 'ล้างคำค้นหา' : 'Clear search'}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -773,7 +787,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   : 'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-pink-200 dark:border-slate-700 hover:bg-white'
               }`}
             >
-              ทั้งหมด ({records.length})
+              {language === 'th' ? `ทั้งหมด (${records.length})` : `All (${records.length})`}
             </button>
             <button
               onClick={() => setQuickFilter('ส่ง')}
@@ -784,7 +798,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               }`}
             >
               <Send className="w-3 h-3" />
-              รายการส่ง ({metrics.allTimeSent})
+              {language === 'th' ? `รายการส่ง (${metrics.allTimeSent})` : `Outgoing (${metrics.allTimeSent})`}
             </button>
             <button
               onClick={() => setQuickFilter('รับ')}
@@ -795,7 +809,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               }`}
             >
               <Inbox className="w-3 h-3" />
-              รายการรับ ({metrics.allTimeReceived})
+              {language === 'th' ? `รายการรับ (${metrics.allTimeReceived})` : `Incoming (${metrics.allTimeReceived})`}
             </button>
             <button
               onClick={() => setQuickFilter('today')}
@@ -806,7 +820,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               }`}
             >
               <Calendar className="w-3 h-3" />
-              วันนี้
+              {language === 'th' ? 'วันนี้' : 'Today'}
             </button>
           </div>
         </div>
@@ -814,34 +828,34 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         {/* Active Filters Display bar */}
         {(activeFiltersCount > 0 || searchQuery || quickFilter !== 'all') && (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-pink-200/60 dark:border-slate-700/60 text-xs">
-            <span className="text-slate-500 dark:text-slate-400 font-medium">ตัวกรองที่เลือก:</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">{language === 'th' ? 'ตัวกรองที่เลือก:' : 'Active filters:'}</span>
             {quickFilter !== 'all' && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                ด่วน: {quickFilter === 'today' ? 'วันนี้' : quickFilter}
+                {language === 'th' ? 'ด่วน:' : 'Quick:'} {quickFilter === 'today' ? (language === 'th' ? 'วันนี้' : 'Today') : quickFilter === 'ส่ง' ? (language === 'th' ? 'ส่ง' : 'Send') : (language === 'th' ? 'รับ' : 'Receive')}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setQuickFilter('all')} />
               </span>
             )}
             {searchQuery && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                ค้นหา: "{searchQuery}"
+                {language === 'th' ? 'ค้นหา:' : 'Search:'} "{searchQuery}"
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setSearchQuery('')} />
               </span>
             )}
             {filters.actionType !== 'all' && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                ประเภท: {filters.actionType}
+                {language === 'th' ? 'ประเภท:' : 'Type:'} {filters.actionType === 'ส่ง' ? (language === 'th' ? 'ส่ง' : 'Send') : (language === 'th' ? 'รับ' : 'Receive')}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setFilters({ ...filters, actionType: 'all' })} />
               </span>
             )}
             {filters.senderDepartment !== 'all' && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                ผู้ส่ง: {filters.senderDepartment}
+                {language === 'th' ? 'ผู้ส่ง:' : 'Sender:'} {filters.senderDepartment}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setFilters({ ...filters, senderDepartment: 'all' })} />
               </span>
             )}
             {filters.recipientDepartment !== 'all' && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                ผู้รับ: {filters.recipientDepartment}
+                {language === 'th' ? 'ผู้รับ:' : 'Recipient:'} {filters.recipientDepartment}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setFilters({ ...filters, recipientDepartment: 'all' })} />
               </span>
             )}
@@ -850,7 +864,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               className="text-pink-700 dark:text-pink-300 hover:underline font-bold ml-auto flex items-center gap-1 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
-              ล้างทั้งหมด
+              {language === 'th' ? 'ล้างทั้งหมด' : 'Clear All'}
             </button>
           </div>
         )}
@@ -861,7 +875,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-pink-100 dark:border-slate-800 space-y-3">
           <RefreshCw className="w-8 h-8 text-pink-600 animate-spin" />
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-            กำลังโหลดข้อมูลรับ-ส่ง เอกสาร / พัสดุ จาก Google Sheet...
+            {language === 'th' ? 'กำลังโหลดข้อมูลรับ-ส่ง เอกสาร / พัสดุ จาก Google Sheet...' : 'Loading Document / Parcel records from Google Sheet...'}
           </p>
         </div>
       ) : filteredRecords.length === 0 ? (
@@ -870,16 +884,16 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <Package className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-            ไม่พบข้อมูลเอกสารหรือพัสดุ
+            {language === 'th' ? 'ไม่พบข้อมูลเอกสารหรือพัสดุ' : 'No document or parcel records found'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
-            ลองปรับเปลี่ยนคำค้นหา หรือกดล้างตัวกรองเพื่อดูข้อมูลทั้งหมด
+            {language === 'th' ? 'ลองปรับเปลี่ยนคำค้นหา หรือกดล้างตัวกรองเพื่อดูข้อมูลทั้งหมด' : 'Try adjusting your search terms or clear filters to view all records.'}
           </p>
           <button
             onClick={clearAllFilters}
             className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-semibold transition-colors cursor-pointer"
           >
-            ล้างตัวกรองทั้งหมด
+            {language === 'th' ? 'ล้างตัวกรองทั้งหมด' : 'Clear All Filters'}
           </button>
         </div>
       ) : viewMode === 'table' ? (
@@ -889,12 +903,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-pink-50/80 dark:bg-slate-800/80 border-b border-pink-100 dark:border-slate-700 text-[11px] font-bold text-pink-900 dark:text-pink-200 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">วันที่เวลา</th>
-                  <th className="py-3.5 px-4 text-center">ประเภท</th>
-                  <th className="py-3.5 px-4">ชื่อเอกสาร / พัสดุ</th>
-                  <th className="py-3.5 px-4">ผู้ส่งตามหน้าซอง</th>
-                  <th className="py-3.5 px-4">ผู้รับตามหน้าซอง</th>
-                  <th className="py-3.5 px-4">รหัสติดตาม</th>
+                  <th className="py-3.5 px-4">{language === 'th' ? 'วันที่เวลา' : 'Date / Time'}</th>
+                  <th className="py-3.5 px-4 text-center">{language === 'th' ? 'ประเภท' : 'Type'}</th>
+                  <th className="py-3.5 px-4">{language === 'th' ? 'ชื่อเอกสาร / พัสดุ' : 'Document / Parcel'}</th>
+                  <th className="py-3.5 px-4">{language === 'th' ? 'ผู้ส่งตามหน้าซอง' : 'Sender'}</th>
+                  <th className="py-3.5 px-4">{language === 'th' ? 'ผู้รับตามหน้าซอง' : 'Recipient'}</th>
+                  <th className="py-3.5 px-4">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
@@ -905,7 +919,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     <tr 
                       key={`${record.id}-${record.seq || index}`}
                       onClick={() => handleOpenDetail(record)}
-                      title="คลิกเพื่อดูรายละเอียด"
+                      title={language === 'th' ? 'คลิกเพื่อดูรายละเอียด' : 'Click to view details'}
                       className="hover:bg-pink-50/40 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
                     >
                       {/* Timestamp */}
@@ -931,7 +945,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                             : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
                         }`}>
                           {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
-                          {isSent ? (isConfirmedReceived ? 'ส่ง (รับแล้ว)' : 'ส่ง') : 'รับ'}
+                          {isSent 
+                            ? (isConfirmedReceived 
+                                ? (language === 'th' ? 'ส่ง (รับแล้ว)' : 'Sent (Received)') 
+                                : (language === 'th' ? 'ส่ง' : 'Send')) 
+                            : (language === 'th' ? 'รับ' : 'Receive')}
                         </span>
                       </td>
 
@@ -973,7 +991,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                                 {record.trackingCode}
                               </span>
                               <span className="font-sans font-bold text-[11px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900/90 px-1.5 py-0.5 rounded-md">
-                                รับแล้ว
+                                {language === 'th' ? 'รับแล้ว' : 'Received'}
                               </span>
                             </span>
                           ) : (
@@ -988,17 +1006,17 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                                   handleQuickReceive(record);
                                 }}
                                 className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                                title="กดรับเอกสารหรือพัสดุนี้"
+                                title={language === 'th' ? 'กดรับเอกสารหรือพัสดุนี้' : 'Receive this document or parcel'}
                               >
                                 <Inbox className="w-3 h-3" />
-                                <span>กดรับ</span>
+                                <span>{language === 'th' ? 'กดรับ' : 'Receive'}</span>
                               </button>
                             </div>
                           )
                         ) : (
                           isConfirmedReceived ? (
                             <span className="inline-flex items-center gap-1 font-sans text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-300">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> รับแล้ว
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {language === 'th' ? 'รับแล้ว' : 'Received'}
                             </span>
                           ) : (
                             <button
@@ -1008,10 +1026,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                                 handleQuickReceive(record);
                               }}
                               className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                              title="กดรับเอกสารหรือพัสดุนี้"
+                              title={language === 'th' ? 'กดรับเอกสารหรือพัสดุนี้' : 'Receive this document or parcel'}
                             >
                               <Inbox className="w-3 h-3" />
-                              <span>กดรับ</span>
+                              <span>{language === 'th' ? 'กดรับ' : 'Receive'}</span>
                             </button>
                           )
                         )}
@@ -1026,7 +1044,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           {/* Table Pagination Controls */}
           <div className="p-4 bg-slate-50/70 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
             <div>
-              แสดง {(currentPageTable - 1) * itemsPerPageTable + 1} - {Math.min(currentPageTable * itemsPerPageTable, filteredRecords.length)} จากทั้งหมด {filteredRecords.length} รายการ
+              {language === 'th' 
+                ? `แสดง ${(currentPageTable - 1) * itemsPerPageTable + 1} - ${Math.min(currentPageTable * itemsPerPageTable, filteredRecords.length)} จากทั้งหมด ${filteredRecords.length} รายการ`
+                : `Showing ${(currentPageTable - 1) * itemsPerPageTable + 1} - ${Math.min(currentPageTable * itemsPerPageTable, filteredRecords.length)} of ${filteredRecords.length} records`}
             </div>
 
             <div className="flex items-center gap-1">
@@ -1102,7 +1122,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                             : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300'
                       }`}>
                         {!isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
-                        {!isSent ? 'รายการรับ' : isConfirmedReceived ? 'รายการส่ง (รับแล้ว)' : 'รายการส่ง'}
+                        {!isSent 
+                          ? (language === 'th' ? 'รายการรับ' : 'Incoming') 
+                          : isConfirmedReceived 
+                            ? (language === 'th' ? 'รายการส่ง (รับแล้ว)' : 'Sent (Received)') 
+                            : (language === 'th' ? 'รายการส่ง' : 'Outgoing')}
                       </span>
 
                       {record.trackingCode && (
@@ -1110,7 +1134,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                           <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 shadow-2xs flex items-center gap-1.5">
                             <span className="font-black text-emerald-700 dark:text-emerald-300">{record.trackingCode}</span>
                             <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.5 rounded-md">
-                              รับแล้ว
+                              {language === 'th' ? 'รับแล้ว' : 'Received'}
                             </span>
                           </span>
                         ) : (
@@ -1135,7 +1159,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/80 space-y-2 text-xs">
                     {/* Sender */}
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">ผู้ส่ง:</span>
+                      <span className="text-slate-400">{language === 'th' ? 'ผู้ส่ง:' : 'Sender:'}</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate">
                         {record.senderName} ({record.senderDepartment})
                       </span>
@@ -1143,7 +1167,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
                     {/* Recipient */}
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">ผู้รับ:</span>
+                      <span className="text-slate-400">{language === 'th' ? 'ผู้รับ:' : 'Recipient:'}</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200 text-right truncate">
                         {record.recipientName} ({record.recipientDepartment})
                       </span>
@@ -1158,7 +1182,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         {record.trackingCode ? (
                           <span className="font-mono font-black">{record.trackingCode}</span>
                         ) : null}
-                        <span>รับแล้ว</span>
+                        <span>{language === 'th' ? 'รับแล้ว' : 'Received'}</span>
                       </span>
                     ) : (
                       <button
@@ -1168,14 +1192,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                           handleQuickReceive(record);
                         }}
                         className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                        title="กดรับพัสดุนี้เอกสาร / พัสดุ"
+                        title={language === 'th' ? 'กดรับเอกสาร / พัสดุนี้' : 'Receive Document / Parcel'}
                       >
                         <Inbox className="w-3.5 h-3.5" />
-                        <span>กดรับพัสดุนี้เอกสาร / พัสดุ</span>
+                        <span>{language === 'th' ? 'กดรับเอกสาร / พัสดุนี้' : 'Receive Document / Parcel'}</span>
                       </button>
                     )}
                     <span className="text-pink-600 dark:text-pink-400 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                      รายละเอียด <ArrowRight className="w-3 h-3" />
+                      {language === 'th' ? 'รายละเอียด' : 'Details'} <ArrowRight className="w-3 h-3" />
                     </span>
                   </div>
                 </div>
@@ -1187,7 +1211,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           {totalPagesCards > 1 && (
             <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-pink-100 dark:border-slate-800 flex items-center justify-between text-xs">
               <span className="text-slate-500 dark:text-slate-400">
-                หน้า {currentPageCards} จาก {totalPagesCards} (ทั้งหมด {filteredRecords.length} รายการ)
+                {language === 'th' 
+                  ? `หน้า ${currentPageCards} จาก ${totalPagesCards} (ทั้งหมด ${filteredRecords.length} รายการ)`
+                  : `Page ${currentPageCards} of ${totalPagesCards} (${filteredRecords.length} items)`}
               </span>
 
               <div className="flex items-center gap-1">
@@ -1196,14 +1222,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   disabled={currentPageCards === 1}
                   className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                 >
-                  ก่อนหน้า
+                  {language === 'th' ? 'ก่อนหน้า' : 'Previous'}
                 </button>
                 <button
                   onClick={() => setCurrentPageCards(prev => Math.min(prev + 1, totalPagesCards))}
                   disabled={currentPageCards === totalPagesCards}
                   className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                 >
-                  ถัดไป
+                  {language === 'th' ? 'ถัดไป' : 'Next'}
                 </button>
               </div>
             </div>
@@ -1221,13 +1247,17 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    รายการส่ง (Outgoing)
+                    {language === 'th' ? 'รายการส่ง (Outgoing)' : 'Outgoing (Send)'}
                   </h3>
-                  <p className="text-[11px] text-slate-500">เอกสารและพัสดุขาออก</p>
+                  <p className="text-[11px] text-slate-500">
+                    {language === 'th' ? 'เอกสารและพัสดุขาออก' : 'Outgoing documents and parcels'}
+                  </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold text-xs">
-                {filteredRecords.filter(r => r.actionType === 'ส่ง').length} รายการ
+                {language === 'th' 
+                  ? `${filteredRecords.filter(r => r.actionType === 'ส่ง').length} รายการ`
+                  : `${filteredRecords.filter(r => r.actionType === 'ส่ง').length} items`}
               </span>
             </div>
 
@@ -1252,7 +1282,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                                 {record.trackingCode}
                               </span>
                               <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                                รับแล้ว
+                                {language === 'th' ? 'รับแล้ว' : 'Received'}
                               </span>
                             </span>
                           ) : (
@@ -1275,10 +1305,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       </div>
 
                       <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                        <span>แผนก: {record.recipientDepartment}</span>
+                        <span>{language === 'th' ? 'แผนก:' : 'Dept:'} {record.recipientDepartment}</span>
                         {isReceived ? (
                           <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 text-[11px]">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> รับแล้ว
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {language === 'th' ? 'รับแล้ว' : 'Received'}
                           </span>
                         ) : (
                           <button
@@ -1288,10 +1318,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                               handleQuickReceive(record);
                             }}
                             className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                            title="กดรับเอกสารหรือพัสดุนี้"
+                            title={language === 'th' ? 'กดรับเอกสารหรือพัสดุนี้' : 'Receive this document or parcel'}
                           >
                             <Inbox className="w-3 h-3" />
-                            <span>กดรับ</span>
+                            <span>{language === 'th' ? 'กดรับ' : 'Receive'}</span>
                           </button>
                         )}
                       </div>
@@ -1310,13 +1340,17 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    รายการรับ (Incoming)
+                    {language === 'th' ? 'รายการรับ (Incoming)' : 'Incoming (Receive)'}
                   </h3>
-                  <p className="text-[11px] text-slate-500">เอกสารและพัสดุขาเข้า</p>
+                  <p className="text-[11px] text-slate-500">
+                    {language === 'th' ? 'เอกสารและพัสดุขาเข้า' : 'Incoming documents and parcels'}
+                  </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
-                {filteredRecords.filter(r => r.actionType === 'รับ').length} รายการ
+                {language === 'th' 
+                  ? `${filteredRecords.filter(r => r.actionType === 'รับ').length} รายการ`
+                  : `${filteredRecords.filter(r => r.actionType === 'รับ').length} items`}
               </span>
             </div>
 
@@ -1336,12 +1370,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                             {record.trackingCode}
                           </span>
                           <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                            รับแล้ว
+                            {language === 'th' ? 'รับแล้ว' : 'Received'}
                           </span>
                         </span>
                       ) : (
                         <span className="font-sans text-[11px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300">
-                          รับแล้ว
+                          {language === 'th' ? 'รับแล้ว' : 'Received'}
                         </span>
                       )}
                       <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
@@ -1358,9 +1392,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                     </div>
 
                     <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                      <span>แผนก: {record.recipientDepartment}</span>
+                      <span>{language === 'th' ? 'แผนก:' : 'Dept:'} {record.recipientDepartment}</span>
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> รับแล้ว
+                        <CheckCircle2 className="w-3 h-3" /> {language === 'th' ? 'รับแล้ว' : 'Received'}
                       </span>
                     </div>
                   </div>

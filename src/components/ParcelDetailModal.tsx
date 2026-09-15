@@ -8,14 +8,14 @@ import {
   Inbox, 
   Copy, 
   Check, 
-  Sparkles,
-  FileText,
-  ArrowRight,
-  CheckCircle2
+  Sparkles, 
+  FileText, 
+  ArrowRight, 
+  CheckCircle2 
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { AdminUserAccount } from '../data/mockData';
+import { AdminUserAccount, canCreateParcelOrder } from '../data/mockData';
 import { isParcelConfirmedReceived } from '../utils/parcelTrackingUtils';
 
 interface ParcelDetailModalProps {
@@ -45,9 +45,10 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
 
   const isSending = parcel.actionType === 'ส่ง';
   const isConfirmedReceived = isParcelConfirmedReceived(parcel, allRecords);
+  const canReceive = canCreateParcelOrder(currentUser, isAuthenticated);
 
   const handleCopy = () => {
-    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ผู้ส่ง: ${parcel.senderName} (${parcel.senderDepartment}) -> ผู้รับ: ${parcel.recipientName} (${parcel.recipientDepartment}) | วันที่เวลา: ${parcel.timestamp}${parcel.trackingCode ? ` | รหัสติดตาม: ${parcel.trackingCode}` : ''}`;
+    const textToCopy = `[${parcel.actionType}] ${parcel.itemTitle} | ${language === 'th' ? 'ผู้ส่ง' : 'Sender'}: ${parcel.senderName} (${parcel.senderDepartment}) -> ${language === 'th' ? 'ผู้รับ' : 'Recipient'}: ${parcel.recipientName} (${parcel.recipientDepartment}) | ${language === 'th' ? 'วันที่เวลา' : 'Date/Time'}: ${parcel.timestamp}${parcel.trackingCode ? ` | ${language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}: ${parcel.trackingCode}` : ''}`;
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -85,7 +86,11 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                         ? 'bg-emerald-900/40 text-emerald-100 border-emerald-400/60 shadow-xs'
                         : 'bg-rose-900/30 text-rose-100 border-white/30'
                   }`}>
-                    {!isSending ? '📥 รายการรับ' : isConfirmedReceived ? '📤 รายการส่ง (รับแล้ว)' : '📤 รายการส่ง'}
+                    {!isSending 
+                      ? (language === 'th' ? '📥 รายการรับ' : '📥 Incoming') 
+                      : isConfirmedReceived 
+                        ? (language === 'th' ? '📤 รายการส่ง (รับแล้ว)' : '📤 Sent (Received)') 
+                        : (language === 'th' ? '📤 รายการส่ง' : '📤 Outgoing')}
                   </span>
                   {parcel.trackingCode && (
                     <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border backdrop-blur-xs ${
@@ -93,20 +98,26 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                         ? 'bg-emerald-950/70 text-emerald-100 border-emerald-400/70 shadow-xs'
                         : 'bg-white/20 text-white border-white/30'
                     }`}>
-                      <span>{isConfirmedReceived ? (isSending ? 'รหัสติดตาม (รับแล้ว):' : 'รหัสติดตามที่รับ:') : 'รหัสติดตาม:'}</span>
+                      <span>
+                        {isConfirmedReceived 
+                          ? (isSending 
+                              ? (language === 'th' ? 'รหัสติดตาม (รับแล้ว):' : 'Tracking Code (Received):') 
+                              : (language === 'th' ? 'รหัสติดตามที่รับ:' : 'Received Tracking:')) 
+                          : (language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:')}
+                      </span>
                       <span className={`tracking-wider font-black ${isConfirmedReceived ? 'text-emerald-300' : ''}`}>
                         {parcel.trackingCode}
                       </span>
                       {isConfirmedReceived && (
                         <span className="font-sans font-bold text-[11px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-md">
-                          รับแล้ว
+                          {language === 'th' ? 'รับแล้ว' : 'Received'}
                         </span>
                       )}
                       <button
                         type="button"
                         onClick={handleCopyTrackingCode}
                         className="ml-1 p-0.5 hover:bg-white/20 rounded cursor-pointer transition-colors"
-                        title="คัดลอกรหัสติดตาม"
+                        title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
                       >
                         {copiedTracking ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3 text-white" />}
                       </button>
@@ -122,7 +133,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             <button
               onClick={onClose}
               className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title="ปิดหน้าต่าง"
+              title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
             >
               <X className="w-5 h-5" />
             </button>
@@ -135,7 +146,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
           <div className="bg-pink-50/70 dark:bg-pink-950/20 rounded-2xl p-4 sm:p-5 border border-pink-100 dark:border-pink-900/40">
             <div className="text-xs font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              เส้นทางการจัดส่ง (Dispatch Flow)
+              {language === 'th' ? 'เส้นทางการจัดส่ง (Dispatch Flow)' : 'Dispatch Flow'}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-11 gap-3 items-center">
@@ -143,7 +154,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               <div className="sm:col-span-5 bg-white dark:bg-slate-800/90 rounded-xl p-3.5 border border-pink-100/80 dark:border-slate-700 shadow-xs">
                 <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-1">
                   <Send className="w-3.5 h-3.5" />
-                  ผู้ส่งตามหน้าซอง
+                  {language === 'th' ? 'ผู้ส่งตามหน้าซอง' : 'Sender (On Parcel)'}
                 </div>
                 <div className="font-bold text-base text-slate-900 dark:text-white">
                   {parcel.senderName}
@@ -157,14 +168,16 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               {/* Arrow */}
               <div className="sm:col-span-1 flex justify-center text-pink-400 dark:text-pink-500">
                 <ArrowRight className="w-6 h-6 hidden sm:block" />
-                <div className="text-xs font-bold sm:hidden text-pink-500">▼ ส่งต่อไปยัง</div>
+                <div className="text-xs font-bold sm:hidden text-pink-500">
+                  {language === 'th' ? '▼ ส่งต่อไปยัง' : '▼ Forward to'}
+                </div>
               </div>
 
               {/* Recipient Box */}
               <div className="sm:col-span-5 bg-white dark:bg-slate-800/90 rounded-xl p-3.5 border border-pink-100/80 dark:border-slate-700 shadow-xs">
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
                   <Inbox className="w-3.5 h-3.5" />
-                  ผู้รับตามหน้าซอง
+                  {language === 'th' ? 'ผู้รับตามหน้าซอง' : 'Recipient (On Parcel)'}
                 </div>
                 <div className="font-bold text-base text-slate-900 dark:text-white">
                   {parcel.recipientName}
@@ -186,15 +199,19 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                    สถานะการรับเอกสาร / พัสดุ
+                    {language === 'th' ? 'สถานะการรับเอกสาร / พัสดุ' : 'Document / Parcel Status'}
                   </div>
                   <div className="font-bold text-sm text-emerald-900 dark:text-emerald-100 flex items-center gap-2 flex-wrap">
-                    <span>{isSending ? 'เอกสาร / พัสดุขาส่งนี้ ปลายทางได้กดรับเรียบร้อยแล้ว' : 'รับเอกสาร / พัสดุแล้ว'}</span>
+                    <span>
+                      {isSending 
+                        ? (language === 'th' ? 'เอกสาร / พัสดุขาส่งนี้ ปลายทางได้กดรับเรียบร้อยแล้ว' : 'This outgoing document/parcel has been confirmed received by the recipient.') 
+                        : (language === 'th' ? 'รับเอกสาร / พัสดุแล้ว' : 'Document / parcel received')}
+                    </span>
                     {parcel.trackingCode && (
                       <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 shadow-2xs">
                         <span className="font-black text-emerald-700 dark:text-emerald-300">{parcel.trackingCode}</span>
                         <span className="font-sans text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900 px-1.5 py-0.2 rounded font-bold">
-                          รับแล้ว
+                          {language === 'th' ? 'รับแล้ว' : 'Received'}
                         </span>
                       </span>
                     )}
@@ -210,7 +227,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
               <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                 <FileText className="w-4 h-4 text-pink-500" />
-                ชื่อเอกสาร / พัสดุ
+                {language === 'th' ? 'ชื่อเอกสาร / พัสดุ' : 'Document / Parcel Item'}
               </div>
               <div className="text-base font-bold text-slate-900 dark:text-white">
                 {parcel.itemTitle}
@@ -221,7 +238,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
               <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                 <Clock className="w-4 h-4 text-pink-500" />
-                วันและเวลาที่บันทึก
+                {language === 'th' ? 'วันและเวลาที่บันทึก' : 'Recorded Date & Time'}
               </div>
               <div className="text-base font-bold text-slate-900 dark:text-white">
                 {parcel.timestamp}
@@ -239,12 +256,12 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             {copied ? (
               <>
                 <Check className="w-4 h-4 text-emerald-600" />
-                <span>คัดลอกแล้ว</span>
+                <span>{language === 'th' ? 'คัดลอกแล้ว' : 'Copied'}</span>
               </>
             ) : (
               <>
                 <Copy className="w-4 h-4 text-slate-500" />
-                <span>คัดลอกข้อมูล</span>
+                <span>{language === 'th' ? 'คัดลอกข้อมูล' : 'Copy Details'}</span>
               </>
             )}
           </button>
@@ -254,9 +271,9 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               isConfirmedReceived ? (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>ปลายทางได้รับแล้ว</span>
+                  <span>{language === 'th' ? 'ปลายทางได้รับแล้ว' : 'Confirmed Received'}</span>
                 </div>
-              ) : onQuickReceive ? (
+              ) : onQuickReceive && canReceive ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -264,10 +281,10 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                     onQuickReceive(parcel);
                   }}
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  title="กดรับพัสดุนี้เอกสาร / พัสดุ"
+                  title={language === 'th' ? 'กดรับเอกสาร / พัสดุนี้' : 'Receive Document / Parcel'}
                 >
                   <Inbox className="w-4 h-4" />
-                  <span>กดรับพัสดุนี้เอกสาร / พัสดุ</span>
+                  <span>{language === 'th' ? 'กดรับเอกสาร / พัสดุนี้' : 'Receive Document / Parcel'}</span>
                 </button>
               ) : null
             )}
@@ -275,7 +292,7 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               onClick={onClose}
               className="px-6 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
             >
-              ปิด
+              {language === 'th' ? 'ปิด' : 'Close'}
             </button>
           </div>
         </div>
@@ -283,3 +300,4 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
     </div>
   );
 };
+

@@ -50,8 +50,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Floating Service Portal Window on Page Load: offers 'laundry' and 'document_delivery'
-  const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(true);
+  // Floating Service Portal Window: hidden by user request
+  const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(false);
 
   // Authentication State - Security Policy: Start unauthenticated when page is opened
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
