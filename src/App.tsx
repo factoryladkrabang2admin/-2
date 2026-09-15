@@ -50,8 +50,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Floating Service Portal Window: hidden by user request
-  const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(false);
+  // Floating Service Portal Window: Show on page load per user request
+  const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(true);
 
   // Authentication State - Security Policy: Start unauthenticated when page is opened
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -179,6 +179,9 @@ export default function App() {
   // Handler for Service Portal floating selector: directs immediately to chosen service
   const handleSelectServiceFromPortal = (service: 'laundry' | 'document_delivery') => {
     setCurrentTab(service);
+    if (service === 'laundry') {
+      setLaundrySubTab('pipeline');
+    }
     setServicePortalOpen(false);
     try {
       const url = new URL(window.location.href);

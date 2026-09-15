@@ -21,7 +21,8 @@ import {
   Moon,
   Sun,
   CloudSun,
-  FileSignature
+  FileSignature,
+  Sparkles
 } from 'lucide-react';
 import { WeatherData } from '../services/weatherService';
 import { NavigationTab, LaundryOrder } from '../types';
