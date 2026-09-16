@@ -27,10 +27,10 @@ export const LAUNDRY_FORM_ENTRIES = {
 export const LAUNDRY_FORM_OPTIONS = {
   actionTypes: ['อยู่ระหว่างการซัก', 'ซักเสร็จแล้ว'] as const,
   departments: [
-    '2/1', '2/2', '2/3', '3/1', '3/2', '3/3', '3/4', '3/5',
     'A/2', 'A/3', 'A/4', 'A/6', 'B/1', 'B/5',
+    '2/1', '2/2', '2/3', '3/1', '3/2', '3/3', '3/4', '3/5',
     'ธุรการลาดกระบัง 1', 'ธุรการลาดกระบัง 2', 'สรรหาลาดกระบัง 1',
-    'การตลาด (ขาย 1)', 'การตลาด (ขาย 2)'
+    'การตลาด (ขาย 1)', 'การตลาด (ขาย 2)', 'สต๊อก 2'
   ],
   garmentTypes: [
     'เสื้อกาวน์สีเขียว',
@@ -42,7 +42,7 @@ export const LAUNDRY_FORM_OPTIONS = {
     'ชุด Visitor',
     'ผ้าคลุมไส้',
     'เอี๊ยม/หมวก',
-    'เสื้อแขนยาว'
+    'เสื้อแขนยาวสีขาว'
   ],
   deliveryTimes: [
     '10.35',
@@ -54,6 +54,69 @@ export const LAUNDRY_FORM_OPTIONS = {
     'วันถัดไป 12.35'
   ]
 };
+
+export interface LaundryFormSchema {
+  departments: string[];
+  garmentTypes: string[];
+  deliveryTimes: string[];
+  actionTypes: string[];
+  updatedAt?: string;
+  source?: 'google_form' | 'cached' | 'fallback';
+}
+
+const LAUNDRY_SCHEMA_STORAGE_KEY = 'lkb2_laundry_form_schema_v1';
+
+export function getCachedLaundryFormOptions(): LaundryFormSchema {
+  try {
+    const raw = localStorage.getItem(LAUNDRY_SCHEMA_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.departments) && parsed.departments.length > 0) {
+        return {
+          ...parsed,
+          source: 'cached',
+        };
+      }
+    }
+  } catch (e) {
+    // Ignore localStorage parse error
+  }
+  return {
+    departments: [...LAUNDRY_FORM_OPTIONS.departments],
+    garmentTypes: [...LAUNDRY_FORM_OPTIONS.garmentTypes],
+    deliveryTimes: [...LAUNDRY_FORM_OPTIONS.deliveryTimes],
+    actionTypes: [...LAUNDRY_FORM_OPTIONS.actionTypes],
+    source: 'fallback',
+  };
+}
+
+export async function fetchLaundryFormOptions(forceRefresh: boolean = false): Promise<LaundryFormSchema> {
+  try {
+    const url = `/api/laundry-form-schema${forceRefresh ? '?refresh=true' : ''}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.departments) && data.departments.length > 0) {
+        const schema: LaundryFormSchema = {
+          departments: data.departments,
+          garmentTypes: data.garmentTypes || LAUNDRY_FORM_OPTIONS.garmentTypes,
+          deliveryTimes: data.deliveryTimes || LAUNDRY_FORM_OPTIONS.deliveryTimes,
+          actionTypes: data.actionTypes || LAUNDRY_FORM_OPTIONS.actionTypes,
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          source: data.source || 'google_form',
+        };
+        try {
+          localStorage.setItem(LAUNDRY_SCHEMA_STORAGE_KEY, JSON.stringify(schema));
+        } catch (_) {}
+        return schema;
+      }
+    }
+  } catch (err) {
+    console.warn('[Laundry] Failed to fetch form schema from server, using cached/fallback:', err);
+  }
+
+  return getCachedLaundryFormOptions();
+}
 
 export interface LaundryLineItem {
   garmentType: string;

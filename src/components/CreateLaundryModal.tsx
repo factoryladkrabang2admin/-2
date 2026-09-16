@@ -26,7 +26,10 @@ import {
   buildPrefilledGoogleFormUrl, 
   GOOGLE_LAUNDRY_FORM_PREFILL_URL, 
   GOOGLE_LAUNDRY_SHEET_URL, 
-  LAUNDRY_FORM_OPTIONS 
+  LAUNDRY_FORM_OPTIONS,
+  fetchLaundryFormOptions,
+  getCachedLaundryFormOptions,
+  LaundryFormSchema
 } from '../services/laundrySubmitService';
 
 interface CreateLaundryModalProps {
@@ -128,7 +131,7 @@ const COMMON_PRESETS = [
   { name: 'ชุด Visitor', category: 'Clothing' as const, price: 18 },
   { name: 'ผ้าคลุมไส้', category: 'Specialty' as const, price: 20 },
   { name: 'เอี๊ยม/หมวก', category: 'Clothing' as const, price: 10 },
-  { name: 'เสื้อแขนยาว', category: 'Clothing' as const, price: 15 },
+  { name: 'เสื้อแขนยาวสีขาว', category: 'Clothing' as const, price: 15 },
 ];
 
 interface FormLaundryItem {
@@ -168,6 +171,61 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
   // Status choice from Google Form: "อยู่ระหว่างการซัก" vs "ซักเสร็จแล้ว"
   const [actionType, setActionType] = useState<'อยู่ระหว่างการซัก' | 'ซักเสร็จแล้ว'>('อยู่ระหว่างการซัก');
+
+  // Google Form dynamic schema for Department, Garment Type, Delivery Time
+  const [formSchema, setFormSchema] = useState<LaundryFormSchema>(getCachedLaundryFormOptions);
+  const [isRefreshingSchema, setIsRefreshingSchema] = useState(false);
+  const [schemaSyncedFeedback, setSchemaSyncedFeedback] = useState<string | null>(null);
+
+  // Sync with Google Form options
+  const handleRefreshSchema = async (force: boolean = false) => {
+    setIsRefreshingSchema(true);
+    try {
+      const updated = await fetchLaundryFormOptions(force);
+      setFormSchema(updated);
+      if (force) {
+        setSchemaSyncedFeedback(
+          language === 'th'
+            ? 'อัปเดตแผนกและประเภทผ้าตาม Google Form สำเร็จ'
+            : 'Department & Garment types synced from Google Form'
+        );
+        setTimeout(() => setSchemaSyncedFeedback(null), 4000);
+      }
+    } finally {
+      setIsRefreshingSchema(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      handleRefreshSchema(false);
+    }
+  }, [isOpen]);
+
+  // Categorize departments for structured display while keeping all Google Form items dynamic
+  const categorizedDepts = useMemo(() => {
+    const list = formSchema.departments || LAUNDRY_FORM_OPTIONS.departments;
+    const productionAndBuildings: string[] = [];
+    const officeAndMarketing: string[] = [];
+    const otherFormDepts: string[] = [];
+
+    list.forEach(dept => {
+      if (/^[0-9A-Za-z]/i.test(dept)) {
+        productionAndBuildings.push(dept);
+      } else if (
+        dept.includes('ธุรการ') ||
+        dept.includes('สรรหา') ||
+        dept.includes('การตลาด') ||
+        dept.includes('สต๊อก')
+      ) {
+        officeAndMarketing.push(dept);
+      } else {
+        otherFormDepts.push(dept);
+      }
+    });
+
+    return { productionAndBuildings, officeAndMarketing, otherFormDepts };
+  }, [formSchema.departments]);
 
   const [orderDate, setOrderDate] = useState<string>(getTodayDateStr);
   const [trackingCode, setTrackingCode] = useState<string>(() => generateTrackingCode(getTodayDateStr(), existingOrders));
@@ -222,9 +280,10 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     setCustomerName(op || loggedInOperatorName);
 
     // 3. Department
+    const currentDepts = formSchema.departments || LAUNDRY_FORM_OPTIONS.departments;
     const dept = (order.customerRoomOrDept || '').trim();
     if (dept) {
-      if (LAUNDRY_FORM_OPTIONS.departments.includes(dept)) {
+      if (currentDepts.includes(dept)) {
         setSelectedDept(dept);
         setCustomDept('');
       } else {
@@ -609,6 +668,16 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           <div className="flex items-center gap-1.5">
             <button
               type="button"
+              onClick={() => handleRefreshSchema(true)}
+              disabled={isRefreshingSchema}
+              title={language === 'th' ? 'อัปเดตแผนกและประเภทผ้าจาก Google Form' : 'Update departments & garment types from Google Form'}
+              className="px-2.5 py-1.5 text-[11px] font-medium text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingSchema ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{language === 'th' ? 'อัปเดตจาก Google Form' : 'Sync Form'}</span>
+            </button>
+            <button
+              type="button"
               onClick={onClose}
               className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
             >
@@ -616,6 +685,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Dynamic Schema Synced Notification */}
+        {schemaSyncedFeedback && (
+          <div className="px-5 py-2 bg-blue-50 text-blue-900 border-b border-blue-200 text-xs flex items-center gap-2 font-medium">
+            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>{schemaSyncedFeedback}</span>
+          </div>
+        )}
 
         {/* Feedback Alert if applicable */}
         {submitFeedback && (
@@ -816,9 +893,15 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
 
               {/* Department Dropdown (แผนก) */}
               <div>
-                <label className="block text-xs font-semibold text-[#002045] mb-1">
-                  {language === 'th' ? 'แผนก *' : 'Department *'}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-[#002045]">
+                    {language === 'th' ? 'แผนก *' : 'Department *'}
+                  </label>
+                  <span className="text-[10px] text-sky-700 font-medium flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {language === 'th' ? 'ตรงตาม Google Form' : 'Synced with Form'}
+                  </span>
+                </div>
                 <select
                   required
                   value={selectedDept}
@@ -828,29 +911,27 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                   <option value="" disabled>
                     {language === 'th' ? '-- กรุณาเลือกแผนก --' : '-- Select Department --'}
                   </option>
-                  <optgroup label={language === 'th' ? '--- แผนกการผลิต / อาคาร ---' : '--- Production & Building ---'}>
-                    <option value="2/1">2/1</option>
-                    <option value="2/2">2/2</option>
-                    <option value="2/3">2/3</option>
-                    <option value="3/1">3/1</option>
-                    <option value="3/2">3/2</option>
-                    <option value="3/3">3/3</option>
-                    <option value="3/4">3/4</option>
-                    <option value="3/5">3/5</option>
-                    <option value="A/2">A/2</option>
-                    <option value="A/3">A/3</option>
-                    <option value="A/4">A/4</option>
-                    <option value="A/6">A/6</option>
-                    <option value="B/1">B/1</option>
-                    <option value="B/5">B/5</option>
-                  </optgroup>
-                  <optgroup label={language === 'th' ? '--- แผนกสำนักงาน & การตลาด ---' : '--- Admin & Marketing ---'}>
-                    <option value="ธุรการลาดกระบัง 1">ธุรการลาดกระบัง 1</option>
-                    <option value="ธุรการลาดกระบัง 2">ธุรการลาดกระบัง 2</option>
-                    <option value="สรรหาลาดกระบัง 1">สรรหาลาดกระบัง 1</option>
-                    <option value="การตลาด (ขาย 1)">การตลาด (ขาย 1)</option>
-                    <option value="การตลาด (ขาย 2)">การตลาด (ขาย 2)</option>
-                  </optgroup>
+                  {categorizedDepts.productionAndBuildings.length > 0 && (
+                    <optgroup label={language === 'th' ? '--- แผนกการผลิต / อาคาร ---' : '--- Production & Building ---'}>
+                      {categorizedDepts.productionAndBuildings.map((deptName) => (
+                        <option key={deptName} value={deptName}>{deptName}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {categorizedDepts.officeAndMarketing.length > 0 && (
+                    <optgroup label={language === 'th' ? '--- แผนกสำนักงาน & คลัง & การตลาด ---' : '--- Admin, Stock & Marketing ---'}>
+                      {categorizedDepts.officeAndMarketing.map((deptName) => (
+                        <option key={deptName} value={deptName}>{deptName}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {categorizedDepts.otherFormDepts.length > 0 && (
+                    <optgroup label={language === 'th' ? '--- แผนกอื่น ๆ (จาก Google Form) ---' : '--- Other Form Depts ---'}>
+                      {categorizedDepts.otherFormDepts.map((deptName) => (
+                        <option key={deptName} value={deptName}>{deptName}</option>
+                      ))}
+                    </optgroup>
+                  )}
                   <option value="other">{language === 'th' ? 'ระบุแผนกอื่น ๆ...' : 'Other...'}</option>
                 </select>
 
@@ -881,7 +962,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                   <option value="" disabled>
                     {language === 'th' ? '-- กรุณาเลือกเวลาที่จัดส่ง --' : '-- Select Delivery Time --'}
                   </option>
-                  {LAUNDRY_FORM_OPTIONS.deliveryTimes.map((timeOpt) => (
+                  {(formSchema.deliveryTimes || LAUNDRY_FORM_OPTIONS.deliveryTimes).map((timeOpt) => (
                     <option key={timeOpt} value={timeOpt}>
                       {timeOpt}
                     </option>
@@ -960,9 +1041,13 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
           {/* Section 2: Garment Itemization (ประเภทผ้า และ จำนวน) */}
           <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-xs font-bold text-[#002045] uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="text-xs font-bold text-[#002045] uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
                 <Shirt className="w-4 h-4 text-[#0061a5]" />
-                {language === 'th' ? '3. ประเภทผ้าและจำนวน' : '3. Garment Item & Quantity'}
+                <span>{language === 'th' ? '3. ประเภทผ้าและจำนวน' : '3. Garment Item & Quantity'}</span>
+                <span className="text-[10px] text-sky-700 font-medium normal-case flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  {language === 'th' ? 'ตรงตาม Google Form' : 'Synced with Form'}
+                </span>
               </h3>
               <span className="text-[11px] text-slate-500 font-semibold">
                 {language === 'th' ? 'รวมทั้งสิ้น:' : 'Total:'} <strong className="text-sky-700">{totalPieces}</strong> {language === 'th' ? 'ชิ้น' : 'pcs'}
@@ -972,7 +1057,8 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             {/* Item Rows */}
             <div className="space-y-2.5">
               {items.map((item, index) => {
-                const isPreset = LAUNDRY_FORM_OPTIONS.garmentTypes.includes(item.name);
+                const currentGarmentTypes = formSchema.garmentTypes || LAUNDRY_FORM_OPTIONS.garmentTypes;
+                const isPreset = currentGarmentTypes.includes(item.name);
                 return (
                   <div
                     key={item.id}
@@ -996,7 +1082,7 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                         }}
                         className="w-full px-3 py-2 bg-[#f9f9f9] border border-[#c4c6cf] rounded-lg font-semibold text-[#002045] focus:bg-white focus:outline-hidden focus:border-[#0061a5] cursor-pointer text-xs"
                       >
-                        {LAUNDRY_FORM_OPTIONS.garmentTypes.map((gName) => (
+                        {currentGarmentTypes.map((gName) => (
                           <option key={gName} value={gName}>{gName}</option>
                         ))}
                         <option value="custom">{language === 'th' ? '✏️ ระบุประเภทอื่น ๆ...' : '✏️ Other...'}</option>

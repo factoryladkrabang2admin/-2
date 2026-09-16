@@ -278,6 +278,124 @@ function normalizeText(text: string): string {
   return (text || "").replace(/\s+/g, "").trim().toLowerCase();
 }
 
+interface DetectedLaundryFormSchema {
+  departments: string[];
+  garmentTypes: string[];
+  deliveryTimes: string[];
+  actionTypes: string[];
+  updatedAt: string;
+  source: "google_form" | "fallback";
+}
+
+const DEFAULT_LAUNDRY_DEPARTMENTS = [
+  "A/2", "A/3", "A/4", "A/6", "B/1", "B/5",
+  "2/1", "2/2", "2/3", "3/1", "3/2", "3/3", "3/4", "3/5",
+  "ธุรการลาดกระบัง 1", "ธุรการลาดกระบัง 2", "สรรหาลาดกระบัง 1",
+  "การตลาด (ขาย 1)", "การตลาด (ขาย 2)", "สต๊อก 2"
+];
+
+const DEFAULT_LAUNDRY_GARMENT_TYPES = [
+  "เสื้อกาวน์สีเขียว",
+  "เสื้อกาวน์สีกรมท่า",
+  "ผ้ากรองแอร์",
+  "ผ้าปูเตียงพยาบาล",
+  "ผ้าปูโต๊ะ",
+  "ผ้ารองปูโต๊ะ",
+  "ชุด Visitor",
+  "ผ้าคลุมไส้",
+  "เอี๊ยม/หมวก",
+  "เสื้อแขนยาวสีขาว"
+];
+
+const DEFAULT_LAUNDRY_DELIVERY_TIMES = [
+  "10.35",
+  "12.35",
+  "14.35",
+  "16.35",
+  "วันถัดไป 08.10",
+  "วันถัดไป 10.35",
+  "วันถัดไป 12.35"
+];
+
+let cachedLaundryFormSchema: DetectedLaundryFormSchema = {
+  departments: DEFAULT_LAUNDRY_DEPARTMENTS,
+  garmentTypes: DEFAULT_LAUNDRY_GARMENT_TYPES,
+  deliveryTimes: DEFAULT_LAUNDRY_DELIVERY_TIMES,
+  actionTypes: ["อยู่ระหว่างการซัก", "ซักเสร็จแล้ว"],
+  updatedAt: new Date().toISOString(),
+  source: "fallback",
+};
+let lastLaundryFormCheckTime = 0;
+
+async function getOrDetectLaundryFormSchema(
+  formId: string = "1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ",
+  forceRefresh: boolean = false
+): Promise<DetectedLaundryFormSchema> {
+  const now = Date.now();
+  if (!forceRefresh && now - lastLaundryFormCheckTime < 60000 && cachedLaundryFormSchema.source === "google_form") {
+    return cachedLaundryFormSchema;
+  }
+
+  try {
+    const res = await fetch(`https://docs.google.com/forms/d/e/${formId}/viewform`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const match = html.match(/FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);\s*<\/script>/s);
+      if (match) {
+        const data = JSON.parse(match[1]);
+        const items = data[1]?.[1];
+        if (Array.isArray(items)) {
+          let detectedDepts: string[] = [];
+          let detectedGarments: string[] = [];
+          let detectedTimes: string[] = [];
+          let detectedActions: string[] = [];
+
+          for (const item of items) {
+            const title = (item[1] || "").trim();
+            const options = (item[4]?.[0]?.[1] || [])
+              .map((o: any) => o?.[0])
+              .filter((val: any) => typeof val === "string" && val.trim().length > 0);
+
+            if (/แผนก/i.test(title) && options.length > 0) {
+              detectedDepts = options;
+            } else if (/ประเภทผ้า/i.test(title) && options.length > 0) {
+              detectedGarments = options;
+            } else if (/เวลาที่จัดส่ง/i.test(title) && options.length > 0) {
+              detectedTimes = options;
+            } else if (/เลือกข้อมูล/i.test(title) && options.length > 0) {
+              detectedActions = options;
+            }
+          }
+
+          if (detectedDepts.length > 0 || detectedGarments.length > 0) {
+            cachedLaundryFormSchema = {
+              departments: detectedDepts.length > 0 ? detectedDepts : cachedLaundryFormSchema.departments,
+              garmentTypes: detectedGarments.length > 0 ? detectedGarments : cachedLaundryFormSchema.garmentTypes,
+              deliveryTimes: detectedTimes.length > 0 ? detectedTimes : cachedLaundryFormSchema.deliveryTimes,
+              actionTypes: detectedActions.length > 0 ? detectedActions : cachedLaundryFormSchema.actionTypes,
+              updatedAt: new Date().toISOString(),
+              source: "google_form",
+            };
+            lastLaundryFormCheckTime = now;
+            console.log(
+              `[Google Form] Successfully detected laundry form schema (${cachedLaundryFormSchema.departments.length} departments, ${cachedLaundryFormSchema.garmentTypes.length} garment types)`
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Google Form] Error detecting laundry form schema:", err);
+  }
+
+  return cachedLaundryFormSchema;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -657,6 +775,25 @@ async function startServer() {
       submissions: inMemoryLaundrySubmissions,
       count: inMemoryLaundrySubmissions.length,
     });
+  });
+
+  // Dynamic Google Form schema for laundry (Departments, Garment Types, Delivery Times)
+  app.get("/api/laundry-form-schema", async (req, res) => {
+    try {
+      const forceRefresh = req.query.refresh === "true";
+      const schema = await getOrDetectLaundryFormSchema(
+        "1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ",
+        forceRefresh
+      );
+      res.json({
+        success: true,
+        ...schema,
+        formId: "1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ",
+        formViewUrl: "https://docs.google.com/forms/d/e/1FAIpQLSfD1D5CgGbhL94VP2kePtM7fw5jxI7Nk8YA6_oDqsdxzkSZFQ/viewform",
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   app.post("/api/laundry-submit", async (req, res) => {
