@@ -263,6 +263,11 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
   // Scoped orders (Default to Current Day - วันปัจจุบัน, or Month, or custom date filter)
   const scopedOrders = useMemo(() => {
     return orders.filter((order) => {
+      // 0. If user is searching by query or tracking code, search across all records
+      if (searchQuery.trim() || advancedFilters.trackingCode.trim()) {
+        return true;
+      }
+
       // If user specified custom start/end date range or year, prioritize that
       if (advancedFilters.startDate || advancedFilters.endDate || advancedFilters.year !== 'all') {
         let matches = true;
@@ -281,6 +286,9 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
 
       // 1. Default: Today (วันปัจจุบัน)
       if (advancedFilters.dateScope === 'today') {
+        // ALWAYS keep open/unfinished orders ('washing' / in progress) visible on active board, even if received on previous days!
+        const isStillPending = order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered');
+        if (isStillPending) return true;
         if (!orderDateStr) return false;
         return orderDateStr === currentDateStr;
       }
@@ -304,7 +312,7 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
 
       return true;
     });
-  }, [orders, advancedFilters.dateScope, advancedFilters.month, advancedFilters.year, advancedFilters.startDate, advancedFilters.endDate, currentDateStr, currentYearMonthStr]);
+  }, [orders, advancedFilters.dateScope, advancedFilters.month, advancedFilters.year, advancedFilters.startDate, advancedFilters.endDate, currentDateStr, currentYearMonthStr, searchQuery, advancedFilters.trackingCode]);
 
   // Base filtered orders incorporating search query, tracking code, and department filter
   const baseFilteredOrders = useMemo(() => {
@@ -1119,8 +1127,13 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                           className="bg-white p-4 rounded-2xl border border-amber-200/80 hover:shadow-md hover:border-amber-400 transition-all cursor-pointer space-y-2.5 group relative"
                         >
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-mono font-bold text-[#002045] group-hover:text-emerald-700 transition-colors">
-                              {order.trackingCode}
+                            <span className="font-mono font-bold text-[#002045] group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                              <span>{order.trackingCode}</span>
+                              {getOrderDateString(order) && getOrderDateString(order)! < currentDateStr && (order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered')) && (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded">
+                                  {language === 'th' ? 'ข้ามวัน' : 'Cross-day'}
+                                </span>
+                              )}
                             </span>
                             <span className="text-[11px] text-slate-500 flex items-center gap-1">
                               <Calendar className="w-3 h-3 text-slate-400" />
@@ -1352,6 +1365,11 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                             <span className="font-mono text-xs font-bold text-[#002045] bg-[#f3f3f4] px-2.5 py-1 rounded border border-[#e2e8f0]">
                               {order.trackingCode}
                             </span>
+                            {getOrderDateString(order) && getOrderDateString(order)! < currentDateStr && (order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered')) && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                {language === 'th' ? 'ข้ามวัน' : 'Cross-day'}
+                              </span>
+                            )}
                             {isSheetOrder && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                 <FileSpreadsheet className="w-3 h-3" />
@@ -1553,6 +1571,11 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                             <td className="py-3.5 px-4 font-mono font-bold text-[#002045]">
                               <div className="flex items-center gap-1.5">
                                 <span>{order.trackingCode}</span>
+                                {getOrderDateString(order) && getOrderDateString(order)! < currentDateStr && (order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered')) && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                                    {language === 'th' ? 'ข้ามวัน' : 'Cross-day'}
+                                  </span>
+                                )}
                                 {isSheetOrder && (
                                   <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                     <FileSpreadsheet className="w-3 h-3" />

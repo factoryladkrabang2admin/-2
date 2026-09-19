@@ -453,6 +453,40 @@ export function convertSheetRowsToOrders(csvText: string): LaundryOrder[] {
       return;
     }
 
+    // 2.1 CROSS-DAY MATCHING: If completed and no match found on same date, search across ALL pending dates for department and garment
+    if (isCompleted && matchedPendingIdx === -1) {
+      for (const [pKey, pList] of Object.entries(pendingWashingOrders)) {
+        if (!pList || pList.length === 0) continue;
+        const [, pDept, pGarment] = pKey.split('|');
+        if (pDept === dept.toUpperCase() && pGarment === (garment || '').trim().toLowerCase()) {
+          const idx = pList.findIndex((o) => {
+            const orderQty = o.items[0]?.quantity ?? 1;
+            return orderQty === finalQty;
+          });
+          if (idx !== -1) {
+            const targetOrder = pList.splice(idx, 1)[0];
+            targetOrder.stage = 'ready';
+            targetOrder.completedAt =
+              timestamp || `${thaiDateStr} ${formattedDelivery || '12:35 น.'}`;
+            if (rawTrackingCode) {
+              targetOrder.trackingCode = rawTrackingCode;
+            }
+            if (formattedDelivery) {
+              targetOrder.estimatedCompletion = `${thaiDateStr}, ${formattedDelivery}`;
+            }
+            targetOrder.historyTimeline.push({
+              stage: 'ready',
+              label: 'ซักเสร็จแล้ว',
+              timestamp: timestamp || (formattedDelivery ? formattedDelivery : '12:35 น.'),
+              note: `อัปเดตสถานะ: ซักเสร็จแล้ว (ข้ามวัน: แผนก ${dept} • ${garment} • จำนวน ${finalQty} ชิ้น)${formattedDelivery ? ` [เวลาจัดส่ง: ${formattedDelivery}]` : ''}`,
+              operator: operator || targetOrder.customerName || 'ระบบอัตโนมัติ Google Sheet',
+            });
+            return;
+          }
+        }
+      }
+    }
+
     // 3. Otherwise, create a new order ticket
     if (!dailySeqMap[normalizedDate]) {
       dailySeqMap[normalizedDate] = 1;
@@ -2564,16 +2598,251 @@ export async function fetchGoogleSheetMeetingRoomBookings(): Promise<{
 // ==========================================
 // ANNOUNCEMENTS & PR (ข่าวประชาสัมพันธ์) GOOGLE SHEET INTEGRATION
 // ==========================================
-export const ANNOUNCEMENTS_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1V-AQVw3JIhfYCtRo1ShH1Wyb-QFlBhz5R1KznOh_qRg/edit?gid=0#gid=0';
-export const ANNOUNCEMENTS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1V-AQVw3JIhfYCtRo1ShH1Wyb-QFlBhz5R1KznOh_qRg/export?format=csv&gid=0';
+export const ANNOUNCEMENTS_SHEET_ID = '1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU';
+export const ANNOUNCEMENTS_SHEET_GID = '1228686844';
+export const ANNOUNCEMENTS_SHEET_URL = `https://docs.google.com/spreadsheets/d/${ANNOUNCEMENTS_SHEET_ID}/edit?resourcekey=&gid=${ANNOUNCEMENTS_SHEET_GID}#gid=${ANNOUNCEMENTS_SHEET_GID}`;
+export const ANNOUNCEMENTS_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${ANNOUNCEMENTS_SHEET_ID}/export?format=csv&gid=${ANNOUNCEMENTS_SHEET_GID}`;
+export const ANNOUNCEMENTS_FORM_VIEW_URL = 'https://docs.google.com/forms/d/1Uh0zczpX4pVSST9xlNCKAFZBsja8CyeiGCto6Nkhgkg/viewform';
+export const ANNOUNCEMENTS_FORM_EDIT_URL = 'https://docs.google.com/forms/d/1Uh0zczpX4pVSST9xlNCKAFZBsja8CyeiGCto6Nkhgkg/edit';
+// Target Google Drive Folder: รูปภาพประกอบ (File responses)
+export const ANNOUNCEMENTS_DRIVE_FOLDER_ID = '1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb';
+export const ANNOUNCEMENTS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb?usp=sharing';
 
-export const FALLBACK_ANNOUNCEMENTS_CSV = `หัวข้อ,เนื้อหา,แผนก / ฝ่าย,วันเริ่มต้น,วันสิ้นสุด,รูปภาพประกอบ
-"ระบบการบริหารจัดการความเสี่ยงที่มีประสิทธิภาพ","ระบบการบริหารจัดการความเสี่ยงที่มีประสิทธิภาพ และเพื่อทบทวนความรู้ ความเข้าใจ รวมทั้งสร้างความตระหนักให้พนักงานสามารถนำนโยบายไป พิเศษ! พนักงานที่มีคะแนนผ่านเกณฑ์การทดสอบ จะได้รับ Farmhouse Activity Points +1 Point",แผนกฝึกอบรมและสนับสนุนกิจกรรม,10/8/2026,31/8/2026,https://drive.google.com/file/d/1TxqnTYl_u5VSfRr4CunP_k82nKRu9YJm/view?usp=drive_link
-"Farmhouse Activity Points"" รอบเดือนกรกฎาคม 2569","ประชาสัมพันธ์ ประมวลภาพกิจกรรม "" Farmhouse Activity Points"" รอบเดือนกรกฎาคม 2569",แผนกฝึกอบรมและสนับสนุนกิจกรรม,10/8/2026,,https://drive.google.com/file/d/1zpZd1deq5P71HXuQG4fTDMzqZ3TwXFlZ/view?usp=drive_link
-"การบริหารจัดการขยะ"" ครั้งที่ 8/2569","ประชาสัมพันธ์ : ความรู้เกี่ยวกับ ""การบริหารจัดการขยะ""  ครั้งที่ 8/2569 ",แผนกสนับสนุนและประสานงาน,11/8/2026,31/8/2026,https://drive.google.com/file/d/1sitUZbYMsi4gHBAZjLQSgbCD9TBuwbUN/view?usp=drive_link
-"การอนุรักษ์พลังงาน รอบเดือน สิงหาคม 2569","ประชาสัมพันธ์ประจำเดือน สิงหาคม 2569 เกี่ยวกับ เรื่อง ""เปลี่ยนอนาคตสู่ความยั่งยืนด้วยเทคโนโลยี  Carbon Capture Utilization and Storage (CCUS)""",แผนกวิศวกรรมพลังงาน,17/8/2026,31/8/2026,https://drive.google.com/file/d/1oKFrCmaDYInaHomJod_zVuE6nYhdwAD_/view?usp=drive_link
-"Healthy Minds at Work","ฝ่ายทรัพยากรบุคคล ใคร่ขอประชาสัมพันธ์ ฟาร์มเฮ้าส์ ได้รับรางวัล สถานประกอบการกับการดูแลใจพนักงาน  “Healthy Minds at Work” ระดับประเทศ  ประจำปี  2569",แผนกฝึกอบรมและสนับสนุนกิจกรรม,27/8/2026,,https://drive.google.com/file/d/1CM6DguIt2tMCmxlze4LAvKU9ALkQGwKs/view?usp=drive_link
-"สลิปเงินเดือนออนไลน์ (E-Pay Slip)","ขอประชาสัมพันธ์การเปลี่ยนแปลงรูปแบบการรับสลิปเงินเดือนของพนักงาน เดิม : รูปแบบกระดาษ ใหม่ : รูปแบบสลิปเงินเดือนออนไลน์ (E-Pay Slip)",แผนกเงินเดือนและค่าจ้าง,31/8/2026,,https://drive.google.com/file/d/1EcB3WZSYDfrPnG7YeilB9KBOfQzwf4zk/view?usp=drive_link`;
+export const ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY = 'proworkflow_announcements_webhook_url_v1';
+
+export function getAnnouncementsWebhookUrl(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const saved = localStorage.getItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY);
+    if (saved && saved.trim().startsWith('http')) {
+      return saved.trim();
+    }
+  } catch (err) {
+    console.warn('Could not read announcements webhook from localStorage:', err);
+  }
+  return '';
+}
+
+export function setAnnouncementsWebhookUrl(url: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!url || !url.trim()) {
+      localStorage.removeItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY);
+    } else {
+      localStorage.setItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY, url.trim());
+    }
+  } catch (err) {
+    console.error('Could not save announcements webhook to localStorage:', err);
+  }
+}
+
+const LOCAL_ANNOUNCEMENTS_STORAGE_KEY = 'proworkflow_created_announcements_v1';
+
+export function getLocalAnnouncements(): AnnouncementItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_ANNOUNCEMENTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalAnnouncement(announcement: AnnouncementItem): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const list = getLocalAnnouncements();
+    const filtered = list.filter(item => item.id !== announcement.id && item.title !== announcement.title);
+    filtered.unshift(announcement);
+    localStorage.setItem(LOCAL_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(filtered.slice(0, 100)));
+  } catch (err) {
+    console.warn('Failed to save local announcement:', err);
+  }
+}
+
+export interface NewAnnouncementPayload {
+  title: string;
+  content: string;
+  department: string;
+  startDate: string;
+  endDate?: string;
+  imageUrl?: string;
+  operatorName?: string;
+  webhookUrl?: string;
+  imageBase64?: string;
+  imageFileName?: string;
+  imageMimeType?: string;
+  driveFolderId?: string;
+}
+
+export interface AnnouncementSubmitResult {
+  success: boolean;
+  announcement?: AnnouncementItem;
+  googleSheetSynced: boolean;
+  driveUploaded?: boolean;
+  driveUrl?: string;
+  imageUrl?: string;
+  syncMethod?: 'webhook' | 'local_prepared' | 'form';
+  sheetRowTsv?: string;
+  googleFormRowTsv?: string;
+  driveFolderUrl?: string;
+  driveFolderId?: string;
+  message?: string;
+  error?: string;
+  formViewUrl?: string;
+  formEditUrl?: string;
+  sheetUrl?: string;
+}
+
+export async function submitAnnouncementRecord(
+  payload: NewAnnouncementPayload
+): Promise<AnnouncementSubmitResult> {
+  if (!payload.title?.trim()) {
+    return {
+      success: false,
+      googleSheetSynced: false,
+      error: 'กรุณากรอกหัวข้อข่าวประชาสัมพันธ์',
+    };
+  }
+  if (!payload.content?.trim()) {
+    return {
+      success: false,
+      googleSheetSynced: false,
+      error: 'กรุณากรอกเนื้อหาข่าวประชาสัมพันธ์',
+    };
+  }
+  if (!payload.department?.trim()) {
+    return {
+      success: false,
+      googleSheetSynced: false,
+      error: 'กรุณาระบุแผนก / ฝ่าย',
+    };
+  }
+
+  const initialImageUrl = payload.imageUrl?.trim() || (payload.imageBase64 ? payload.imageBase64 : '');
+  const imageInfo = extractGoogleDriveDirectImageUrl(initialImageUrl);
+  const now = new Date();
+  const dateStr = payload.startDate?.trim() || `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+  const timestampStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  const category = getAnnouncementCategory(payload.department, payload.title);
+  const status = calculateAnnouncementStatus(dateStr, payload.endDate);
+  const webhookUrl = payload.webhookUrl || getAnnouncementsWebhookUrl();
+  const targetDriveFolderId = payload.driveFolderId || ANNOUNCEMENTS_DRIVE_FOLDER_ID;
+
+  const localItem: AnnouncementItem = {
+    id: `ann-local-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    seq: Date.now(),
+    title: payload.title.trim(),
+    content: payload.content.trim(),
+    department: payload.department.trim(),
+    startDate: dateStr,
+    endDate: payload.endDate?.trim() || undefined,
+    rawImageUrl: initialImageUrl || undefined,
+    imageUrl: imageInfo.previewUrl || initialImageUrl || undefined,
+    category,
+    status,
+    isPinned: false,
+  };
+
+  // 7-Column TSV matching Google Form Response format (Starts with Timestamp, Col B is Title)
+  const clientFallbackGoogleFormTsv = [
+    timestampStr,
+    localItem.title,
+    localItem.content.replace(/\n/g, ' '),
+    localItem.department,
+    localItem.startDate,
+    localItem.endDate || '',
+    localItem.rawImageUrl || localItem.imageUrl || '',
+  ].join('\t');
+
+  // 6-Column TSV for manual sheets (Starts with Title)
+  const clientFallbackTsv = [
+    localItem.title,
+    localItem.content.replace(/\n/g, ' '),
+    localItem.department,
+    localItem.startDate,
+    localItem.endDate || '',
+    localItem.rawImageUrl || localItem.imageUrl || '',
+  ].join('\t');
+
+  try {
+    const res = await fetch('/api/announcement-submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...payload,
+        driveFolderId: targetDriveFolderId,
+        webhookUrl: webhookUrl || undefined,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const serverImageUrl = data.driveUrl || data.imageUrl;
+      if (serverImageUrl && typeof serverImageUrl === 'string') {
+        const driveImageInfo = extractGoogleDriveDirectImageUrl(serverImageUrl);
+        localItem.rawImageUrl = serverImageUrl;
+        localItem.imageUrl = driveImageInfo.previewUrl || serverImageUrl;
+      }
+      saveLocalAnnouncement(localItem);
+
+      return {
+        success: true,
+        announcement: localItem,
+        googleSheetSynced: !!data.googleSheetSynced,
+        driveUploaded: !!data.driveUploaded,
+        driveUrl: data.driveUrl,
+        imageUrl: data.imageUrl,
+        syncMethod: data.syncMethod || (data.googleSheetSynced ? 'webhook' : 'local_prepared'),
+        sheetRowTsv: data.sheetRowTsv || clientFallbackTsv,
+        googleFormRowTsv: data.googleFormRowTsv || clientFallbackGoogleFormTsv,
+        driveFolderUrl: data.driveFolderUrl || ANNOUNCEMENTS_DRIVE_FOLDER_URL,
+        driveFolderId: targetDriveFolderId,
+        message: data.message || 'บันทึกข้อมูลข่าวประชาสัมพันธ์เรียบร้อยแล้ว',
+        formViewUrl: data.formViewUrl || ANNOUNCEMENTS_FORM_VIEW_URL,
+        formEditUrl: data.formEditUrl || ANNOUNCEMENTS_FORM_EDIT_URL,
+        sheetUrl: data.sheetUrl || ANNOUNCEMENTS_SHEET_URL,
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      saveLocalAnnouncement(localItem);
+      return {
+        success: true,
+        announcement: localItem,
+        googleSheetSynced: false,
+        syncMethod: 'local_prepared',
+        sheetRowTsv: clientFallbackTsv,
+        googleFormRowTsv: clientFallbackGoogleFormTsv,
+        driveFolderUrl: ANNOUNCEMENTS_DRIVE_FOLDER_URL,
+        driveFolderId: targetDriveFolderId,
+        message: errData.error || 'บันทึกในระบบเรียบร้อยแล้ว',
+        formViewUrl: ANNOUNCEMENTS_FORM_VIEW_URL,
+        formEditUrl: ANNOUNCEMENTS_FORM_EDIT_URL,
+        sheetUrl: ANNOUNCEMENTS_SHEET_URL,
+      };
+    }
+  } catch (netErr: any) {
+    saveLocalAnnouncement(localItem);
+    return {
+      success: true,
+      announcement: localItem,
+      googleSheetSynced: false,
+      syncMethod: 'local_prepared',
+      sheetRowTsv: clientFallbackTsv,
+      googleFormRowTsv: clientFallbackGoogleFormTsv,
+      driveFolderUrl: ANNOUNCEMENTS_DRIVE_FOLDER_URL,
+      driveFolderId: targetDriveFolderId,
+      message: 'บันทึกข้อมูลในระบบเรียบร้อยแล้ว (ออฟไลน์)',
+      formViewUrl: ANNOUNCEMENTS_FORM_VIEW_URL,
+      formEditUrl: ANNOUNCEMENTS_FORM_EDIT_URL,
+      sheetUrl: ANNOUNCEMENTS_SHEET_URL,
+    };
+  }
+}
+
+export const FALLBACK_ANNOUNCEMENTS_CSV = ``;
 
 export interface AnnouncementsSyncResult {
   success: boolean;
@@ -2590,6 +2859,14 @@ export function extractGoogleDriveDirectImageUrl(driveUrl?: string): { previewUr
   if (!driveUrl) return {};
   const trimmed = driveUrl.trim();
   if (!trimmed) return {};
+
+  // If local upload path or relative path (e.g. /uploads/announcements/...)
+  if (trimmed.startsWith('/')) {
+    return {
+      previewUrl: trimmed,
+      thumbnailLargeUrl: trimmed,
+    };
+  }
 
   // Try extracting file ID from various Google Drive URL formats:
   // 1. https://drive.google.com/file/d/FILE_ID/view...
@@ -2780,18 +3057,51 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
   for (let i = 0; i < Math.min(rows.length, 5); i++) {
     const row = rows[i];
     const joined = row.join(' ').toLowerCase();
-    if (joined.includes('หัวข้อ') || joined.includes('เนื้อหา') || joined.includes('แผนก')) {
+    if (joined.includes('หัวข้อ') || joined.includes('เนื้อหา') || joined.includes('แผนก') || joined.includes('ประทับเวลา') || joined.includes('timestamp')) {
       headerIndex = i;
+      let hasTimestampCol = false;
       row.forEach((col, colIdx) => {
         const c = col.trim().toLowerCase();
-        if (c.includes('หัวข้อ') || c.includes('เรื่อง')) titleIdx = colIdx;
-        else if (c.includes('เนื้อหา') || c.includes('รายละเอียด')) contentIdx = colIdx;
-        else if (c.includes('แผนก') || c.includes('ฝ่าย')) deptIdx = colIdx;
-        else if (c.includes('เริ่มต้น') || c.includes('เริ่ม')) startIdx = colIdx;
-        else if (c.includes('สิ้นสุด') || c.includes('จบ')) endIdx = colIdx;
-        else if (c.includes('รูปภาพ') || c.includes('ภาพ') || c.includes('ลิงก์') || c.includes('link') || c.includes('drive')) imgIdx = colIdx;
+        if (c.includes('เวลา') || c.includes('timestamp') || c.includes('ประทับ')) {
+          hasTimestampCol = true;
+        } else if (c.includes('หัวข้อ') || c.includes('เรื่อง') || c.includes('title')) {
+          titleIdx = colIdx;
+        } else if (c.includes('เนื้อหา') || c.includes('รายละเอียด') || c.includes('content')) {
+          contentIdx = colIdx;
+        } else if (c.includes('แผนก') || c.includes('ฝ่าย') || c.includes('department')) {
+          deptIdx = colIdx;
+        } else if (c.includes('เริ่มต้น') || c.includes('เริ่ม') || c.includes('start')) {
+          startIdx = colIdx;
+        } else if (c.includes('สิ้นสุด') || c.includes('จบ') || c.includes('end')) {
+          endIdx = colIdx;
+        } else if (c.includes('รูปภาพ') || c.includes('ภาพ') || c.includes('image') || c.includes('ลิงก์') || c.includes('link') || c.includes('drive')) {
+          imgIdx = colIdx;
+        }
       });
+
+      // If Google Form response sheet (has Timestamp at col 0, but titleIdx was not detected or defaulted to 0):
+      if (hasTimestampCol && titleIdx === 0 && row.length > 1) {
+        titleIdx = 1;
+        if (contentIdx <= 1 && row.length > 2) contentIdx = 2;
+        if (deptIdx <= 2 && row.length > 3) deptIdx = 3;
+        if (startIdx <= 3 && row.length > 4) startIdx = 4;
+        if (endIdx <= 4 && row.length > 5) endIdx = 5;
+        if (imgIdx <= 5 && row.length > 6) imgIdx = 6;
+      }
       break;
+    }
+  }
+
+  // Fallback: If no header found, check if first cell is a date/timestamp like in Google Form
+  if (headerIndex === -1 && rows.length > 0 && rows[0].length >= 6) {
+    const firstCell = String(rows[0][0] || '').trim();
+    if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/.test(firstCell)) {
+      titleIdx = 1;
+      contentIdx = 2;
+      deptIdx = 3;
+      startIdx = 4;
+      endIdx = 5;
+      imgIdx = 6;
     }
   }
 
@@ -2871,8 +3181,8 @@ let lastSuccessfulAnnouncementsCsvText: string | null = null;
 
 try {
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem('proworkflow_announcements_csv_cache_v1');
-    if (cached && cached.includes('เนื้อหา')) {
+    const cached = localStorage.getItem('proworkflow_announcements_csv_cache_v2');
+    if (cached && (cached.includes('เนื้อหา') || cached.includes('หัวข้อ'))) {
       lastSuccessfulAnnouncementsCsvText = cached;
     }
   }
@@ -2891,11 +3201,11 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
   const executeFetch = async (): Promise<AnnouncementsSyncResult> => {
     const candidateUrls = [
       // 1. Backend Proxy (direct fetch from Google Sheets with raw format and no CORS issues)
-      '/api/sheet-csv?sheetId=1V-AQVw3JIhfYCtRo1ShH1Wyb-QFlBhz5R1KznOh_qRg&gid=0',
+      `/api/sheet-csv?sheetId=${ANNOUNCEMENTS_SHEET_ID}&gid=${ANNOUNCEMENTS_SHEET_GID}`,
       // 2. Direct CSV export URL
-      'https://docs.google.com/spreadsheets/d/1V-AQVw3JIhfYCtRo1ShH1Wyb-QFlBhz5R1KznOh_qRg/export?format=csv&gid=0',
+      `https://docs.google.com/spreadsheets/d/${ANNOUNCEMENTS_SHEET_ID}/export?format=csv&gid=${ANNOUNCEMENTS_SHEET_GID}`,
       // 3. gviz table query URL
-      'https://docs.google.com/spreadsheets/d/1V-AQVw3JIhfYCtRo1ShH1Wyb-QFlBhz5R1KznOh_qRg/gviz/tq?tqx=out:csv&gid=0',
+      `https://docs.google.com/spreadsheets/d/${ANNOUNCEMENTS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ANNOUNCEMENTS_SHEET_GID}`,
     ];
 
     let csvText: string | null = null;
@@ -2918,12 +3228,12 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
 
         if (response.ok) {
           const text = await response.text();
-          if (text && (text.includes('เนื้อหา') || text.includes('หัวข้อ') || text.includes('แผนก')) && text.length > 50) {
+          if (text && (text.includes('เนื้อหา') || text.includes('หัวข้อ') || text.includes('แผนก') || text.includes('ประทับ')) && text.length > 30) {
             csvText = text;
             lastSuccessfulAnnouncementsCsvText = text;
             try {
               if (typeof window !== 'undefined') {
-                localStorage.setItem('proworkflow_announcements_csv_cache_v1', text);
+                localStorage.setItem('proworkflow_announcements_csv_cache_v2', text);
               }
             } catch {
               // ignore
@@ -2936,21 +3246,11 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
       }
     }
 
-    if (!csvText) {
-      try {
-        if (typeof window !== 'undefined') {
-          const cached = localStorage.getItem('proworkflow_announcements_csv_cache_v1');
-          if (cached && cached.includes('เนื้อหา')) {
-            csvText = cached;
-          }
-        }
-      } catch {
-        // ignore
-      }
+    if (!csvText && lastSuccessfulAnnouncementsCsvText) {
+      csvText = lastSuccessfulAnnouncementsCsvText;
     }
 
-    const finalText = csvText || lastSuccessfulAnnouncementsCsvText || FALLBACK_ANNOUNCEMENTS_CSV;
-    const announcements = convertSheetRowsToAnnouncements(finalText);
+    const announcements = csvText ? convertSheetRowsToAnnouncements(csvText) : [];
 
     return {
       success: true,

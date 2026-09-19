@@ -21,6 +21,7 @@ interface ParcelSubmissionRecord {
 const DATA_DIR = path.join(process.cwd(), "data");
 const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
 const LAUNDRY_DATA_FILE = path.join(DATA_DIR, "laundry_submissions.json");
+const ANNOUNCEMENTS_DATA_FILE = path.join(DATA_DIR, "announcements_submissions.json");
 
 // Helper to generate running tracking code identical to Laundry QR code
 function extractServerDateTag(input?: string): string {
@@ -117,6 +118,42 @@ function saveLaundrySubmission(record: any) {
     fs.writeFileSync(LAUNDRY_DATA_FILE, JSON.stringify(inMemoryLaundrySubmissions, null, 2), "utf-8");
   } catch (err) {
     console.warn("Could not persist laundry submission to disk:", err);
+  }
+}
+
+interface AnnouncementSubmissionRecord {
+  id: string;
+  title: string;
+  content: string;
+  department: string;
+  startDate: string;
+  endDate?: string;
+  imageUrl?: string;
+  operatorName?: string;
+  createdAt: number;
+  syncedToGoogle?: boolean;
+}
+
+let inMemoryAnnouncementSubmissions: AnnouncementSubmissionRecord[] = [];
+try {
+  if (fs.existsSync(ANNOUNCEMENTS_DATA_FILE)) {
+    const raw = fs.readFileSync(ANNOUNCEMENTS_DATA_FILE, "utf-8");
+    inMemoryAnnouncementSubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemoryAnnouncementSubmissions.length} saved announcement submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load announcement submissions from file:", e);
+}
+
+function saveAnnouncementSubmission(record: AnnouncementSubmissionRecord) {
+  inMemoryAnnouncementSubmissions.unshift(record);
+  if (inMemoryAnnouncementSubmissions.length > 500) {
+    inMemoryAnnouncementSubmissions = inMemoryAnnouncementSubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(ANNOUNCEMENTS_DATA_FILE, JSON.stringify(inMemoryAnnouncementSubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist announcement submission to disk:", err);
   }
 }
 
@@ -400,7 +437,19 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+  // Ensure local uploads directory for announcements and assets
+  const uploadsDir = path.join(process.cwd(), "data", "uploads", "announcements");
+  if (!fs.existsSync(uploadsDir)) {
+    try {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    } catch (mkdirErr) {
+      console.warn("Could not create uploads directory:", mkdirErr);
+    }
+  }
+  app.use("/uploads", express.static(path.join(process.cwd(), "data", "uploads")));
 
   // Google Sheet proxy endpoint for streaming raw CSV with intelligent parcel itemTitle enrichment
   app.get("/api/sheet-csv", async (req, res) => {
@@ -543,6 +592,15 @@ async function startServer() {
     } catch (err: any) {
       return res.status(500).json({ error: err.message || "Failed to fetch sheet proxy" });
     }
+  });
+
+  // Get list of saved announcement submissions
+  app.get("/api/announcement-submissions", (_req, res) => {
+    res.json({
+      success: true,
+      submissions: inMemoryAnnouncementSubmissions,
+      count: inMemoryAnnouncementSubmissions.length,
+    });
   });
 
   // Get list of saved parcel submissions
@@ -1071,6 +1129,289 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during rags & gloves submission",
+      });
+    }
+  });
+
+  // Announcements Google Form & Google Sheet direct submission endpoint
+  app.post("/api/announcement-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const title = (payload.title || payload["หัวข้อ"] || payload.subject || "").trim();
+      const content = (payload.content || payload["เนื้อหา"] || payload.detail || "").trim();
+      const department = (payload.department || payload["แผนก / ฝ่าย"] || payload["แผนก"] || "").trim();
+      const rawStartDate = (payload.startDate || payload["วันเริ่มต้น"] || "").trim();
+      const rawEndDate = (payload.endDate || payload["วันสิ้นสุด"] || "").trim();
+      let imageUrl = (payload.imageUrl || payload["รูปภาพประกอบ"] || payload["รูปภาพ"] || "").trim();
+      const operatorName = (payload.operatorName || payload["ผู้บันทึก"] || "").trim();
+      const imageBase64 = (payload.imageBase64 || "").trim();
+      const imageFileName = (payload.imageFileName || "").trim();
+      const imageMimeType = (payload.imageMimeType || "image/jpeg").trim();
+      const driveFolderId = (payload.driveFolderId || "1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb").trim();
+
+      if (!title) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุหัวข้อข่าวประชาสัมพันธ์",
+        });
+      }
+      if (!content) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุเนื้อหาข่าวประชาสัมพันธ์",
+        });
+      }
+      if (!department) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุแผนก / ฝ่าย",
+        });
+      }
+
+      // Handle local image attachment if provided
+      let localSavedImageUrl = "";
+      let cleanBase64 = "";
+      if (imageBase64) {
+        try {
+          cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+          let ext = "jpg";
+          if (imageMimeType.includes("png")) ext = "png";
+          else if (imageMimeType.includes("webp")) ext = "webp";
+          else if (imageMimeType.includes("gif")) ext = "gif";
+          else if (imageFileName.includes(".")) {
+            ext = imageFileName.split(".").pop() || "jpg";
+          }
+
+          const safeFileName = `ann_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+          const savePath = path.join(process.cwd(), "data", "uploads", "announcements", safeFileName);
+          const buffer = Buffer.from(cleanBase64, "base64");
+          fs.writeFileSync(savePath, buffer);
+          localSavedImageUrl = `/uploads/announcements/${safeFileName}`;
+          if (!imageUrl) {
+            imageUrl = localSavedImageUrl;
+          }
+        } catch (imgErr: any) {
+          console.warn("Could not save local image attachment:", imgErr.message);
+        }
+      }
+
+      // Format date to DD/MM/YYYY matching Google Sheet
+      const formatToSheetDate = (dStr: string) => {
+        if (!dStr) return "";
+        const clean = dStr.replace(/[\s]+/g, "");
+        if (clean.includes("-")) {
+          const parts = clean.split("-");
+          if (parts.length === 3) {
+            return `${parseInt(parts[2], 10)}/${parseInt(parts[1], 10)}/${parts[0]}`;
+          }
+        }
+        return clean;
+      };
+
+      const now = new Date();
+      const defaultDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const startDate = formatToSheetDate(rawStartDate) || defaultDate;
+      const endDate = formatToSheetDate(rawEndDate) || "";
+
+      // Try Google Apps Script Webhook or Google Form Submission if accessible
+      const webhookUrl = (payload.webhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      let syncedToGoogle = false;
+      let driveUploaded = false;
+      let resolvedImageUrl = imageUrl;
+      let webhookErrorDetails: string | null = null;
+
+      // 1. If an Apps Script Webhook URL is provided, send direct POST to upload image to Drive & append row in Google Sheet
+      if (webhookUrl && webhookUrl.startsWith("http")) {
+        try {
+          const webhookPayload = {
+            title,
+            หัวข้อ: title,
+            subject: title,
+            topic: title,
+            ชื่อเรื่อง: title,
+            content,
+            เนื้อหา: content,
+            detail: content,
+            department,
+            "แผนก / ฝ่าย": department,
+            แผนก: department,
+            ฝ่าย: department,
+            startDate,
+            วันเริ่มต้น: startDate,
+            endDate: endDate || "",
+            วันสิ้นสุด: endDate || "",
+            imageUrl: imageUrl || "",
+            รูปภาพประกอบ: imageUrl || "",
+            รูปภาพ: imageUrl || "",
+            imageBase64: cleanBase64,
+            imageFileName: imageFileName || `announcement_${Date.now()}.${imageMimeType.includes("png") ? "png" : "jpg"}`,
+            imageMimeType,
+            driveFolderId,
+            operatorName: operatorName || "",
+            ผู้บันทึก: operatorName || "",
+            sheetId: "1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU",
+            gid: "1228686844",
+          };
+
+          const webhookRes = await fetch(webhookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+            },
+            body: JSON.stringify(webhookPayload),
+            redirect: "follow",
+          });
+
+          if (webhookRes.ok || webhookRes.status === 200 || webhookRes.status === 302) {
+            syncedToGoogle = true;
+            try {
+              const text = await webhookRes.text();
+              let resData: any = null;
+              try {
+                resData = JSON.parse(text);
+              } catch {
+                resData = null;
+              }
+
+              if (resData) {
+                const driveLink = resData.imageUrl || resData.driveUrl || resData.fileUrl || resData.url;
+                if (driveLink && typeof driveLink === "string" && driveLink.startsWith("http")) {
+                  resolvedImageUrl = driveLink;
+                  driveUploaded = true;
+                } else if (resData.fileId || resData.driveFileId) {
+                  const id = resData.fileId || resData.driveFileId;
+                  resolvedImageUrl = `https://drive.google.com/file/d/${id}/view?usp=sharing`;
+                  driveUploaded = true;
+                }
+              }
+            } catch (parseErr) {
+              console.warn("Could not parse Apps Script response body:", parseErr);
+            }
+          } else {
+            webhookErrorDetails = `Webhook returned HTTP ${webhookRes.status}`;
+          }
+        } catch (wbErr: any) {
+          console.warn("Error calling announcements Apps Script webhook:", wbErr.message);
+          webhookErrorDetails = wbErr.message;
+        }
+      }
+
+      // If the image URL provided by the user is already a Google Drive link, mark driveUploaded as true
+      if (resolvedImageUrl && (resolvedImageUrl.includes("drive.google.com") || resolvedImageUrl.includes("docs.google.com"))) {
+        driveUploaded = true;
+      }
+
+      // 2. Format TSVs for 1-click clipboard paste
+      const finalImageLink = resolvedImageUrl || imageUrl || "";
+      const timestampStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+      // Google Form Response Sheet (7 columns: [A] ประทับเวลา, [B] หัวข้อ, [C] เนื้อหา, [D] แผนก / ฝ่าย, [E] วันเริ่มต้น, [F] วันสิ้นสุด, [G] รูปภาพประกอบ)
+      const googleFormRowTsv = [
+        timestampStr,
+        title,
+        content.replace(/\n/g, " "),
+        department,
+        startDate,
+        endDate || "",
+        finalImageLink,
+      ].join("\t");
+
+      // Standard / Manual Sheet (6 columns: [A] หัวข้อ, [B] เนื้อหา, [C] แผนก / ฝ่าย, [D] วันเริ่มต้น, [E] วันสิ้นสุด, [F] รูปภาพประกอบ)
+      const sheetRowTsv = [
+        title,
+        content.replace(/\n/g, " "),
+        department,
+        startDate,
+        endDate || "",
+        finalImageLink,
+      ].join("\t");
+
+      const record: AnnouncementSubmissionRecord = {
+        id: `ann-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        title,
+        content,
+        department,
+        startDate,
+        endDate: endDate || undefined,
+        imageUrl: finalImageLink || undefined,
+        operatorName: operatorName || undefined,
+        createdAt: Date.now(),
+        syncedToGoogle,
+      };
+
+      saveAnnouncementSubmission(record);
+
+      return res.json({
+        success: true,
+        googleSheetSynced: syncedToGoogle,
+        driveUploaded,
+        driveUrl: driveUploaded ? resolvedImageUrl : undefined,
+        imageUrl: finalImageLink,
+        syncMethod: syncedToGoogle ? "webhook" : "local_prepared",
+        sheetRowTsv,
+        googleFormRowTsv,
+        driveFolderId,
+        driveFolderUrl: "https://drive.google.com/drive/folders/1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb?usp=sharing",
+        webhookError: webhookErrorDetails,
+        message: syncedToGoogle
+          ? (driveUploaded
+              ? "บันทึกข้อมูลและอัปโหลดรูปภาพลง Google Drive และ Google Sheet สำเร็จเรียบร้อยแล้ว"
+              : "บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จเรียบร้อยแล้ว")
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว พร้อมแถวข้อมูลสำหรับนำไปวางลง Google Sheet ได้ทันที",
+        sheetUrl: "https://docs.google.com/spreadsheets/d/1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU/edit?resourcekey=&gid=1228686844#gid=1228686844",
+        record,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/announcement-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during announcement submission",
+      });
+    }
+  });
+
+  // Test endpoint for Announcements Google Apps Script Webhook
+  app.post("/api/announcement-webhook-test", async (req, res) => {
+    try {
+      const { webhookUrl } = req.body || {};
+      if (!webhookUrl || typeof webhookUrl !== "string" || !webhookUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุ URL ของ Google Apps Script Webhook ให้ถูกต้อง (ขึ้นต้นด้วย https://)",
+        });
+      }
+
+      const testPayload = {
+        test: true,
+        action: "ping",
+        title: "[ทดสอบระบบ] ทดสอบการเชื่อมต่อ Google Sheet",
+        content: "ทดสอบการเชื่อมต่อจากระบบ PR Workflow",
+        department: "ระบบทดสอบ",
+        startDate: new Date().toLocaleDateString("th-TH"),
+      };
+
+      const testRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testPayload),
+        redirect: "follow",
+      });
+
+      if (testRes.ok || testRes.status === 200 || testRes.status === 302) {
+        return res.json({
+          success: true,
+          message: "เชื่อมต่อกับ Google Apps Script สำเร็จเรียบร้อย",
+        });
+      } else {
+        return res.status(testRes.status).json({
+          success: false,
+          error: `Webhook ตอบกลับด้วยสถานะ HTTP ${testRes.status}`,
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err.message || "ไม่สามารถเชื่อมต่อกับ Webhook URL ได้",
       });
     }
   });

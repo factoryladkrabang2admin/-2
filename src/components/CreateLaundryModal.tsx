@@ -107,15 +107,43 @@ export function extractOrderDate(order: LaundryOrder): string {
 
 export function extractDeliveryTime(order: LaundryOrder): string {
   if ((order as any).deliveryTime) {
-    const dt = String((order as any).deliveryTime).replace(/[^\d.]/g, '');
-    if (dt) return dt;
+    const raw = String((order as any).deliveryTime).trim();
+    if (raw) {
+      if (raw.includes('วันถัดไป')) {
+        const timeMatch = raw.match(/([0-9]{1,2}[.:][0-9]{2})/);
+        if (timeMatch) return `วันถัดไป ${timeMatch[1].replace(':', '.')}`;
+      }
+      const timeMatch = raw.match(/([0-9]{1,2}[.:][0-9]{2})/);
+      if (timeMatch) return timeMatch[1].replace(':', '.');
+      return raw;
+    }
   }
   if (order.notes) {
-    const match = order.notes.match(/เวลาจัดส่ง:\s*([0-9.]+)/i);
-    if (match) return match[1];
+    const match = order.notes.match(/เวลาจัดส่ง:\s*([^|]+)/i);
+    if (match) {
+      const raw = match[1].trim();
+      if (raw.includes('วันถัดไป')) {
+        const timeMatch = raw.match(/([0-9]{1,2}[.:][0-9]{2})/);
+        if (timeMatch) return `วันถัดไป ${timeMatch[1].replace(':', '.')}`;
+      }
+      const timeMatch = raw.match(/([0-9]{1,2}[.:][0-9]{2})/);
+      if (timeMatch) return timeMatch[1].replace(':', '.');
+      return raw;
+    }
   }
   if (order.estimatedCompletion) {
-    const match = order.estimatedCompletion.match(/([0-9]{1,2}[.:][0-9]{2})/);
+    const clean = order.estimatedCompletion.trim();
+    if (clean.includes('วันถัดไป')) {
+      const match = clean.match(/วันถัดไป\s*([0-9]{1,2}[.:][0-9]{2})/);
+      if (match) {
+        return `วันถัดไป ${match[1].replace(':', '.')}`;
+      }
+      const timeOnly = clean.match(/([0-9]{1,2}[.:][0-9]{2})/);
+      if (timeOnly) {
+        return `วันถัดไป ${timeOnly[1].replace(':', '.')}`;
+      }
+    }
+    const match = clean.match(/([0-9]{1,2}[.:][0-9]{2})/);
     if (match) return match[1].replace(':', '.');
   }
   return '12.35';
@@ -272,8 +300,14 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
     setTrackingCode(order.trackingCode);
 
     // 1. Date
+    const todayStr = getTodayDateStr();
     const d = extractOrderDate(order);
-    setOrderDate(d);
+    // When completing a wash, the activity takes place today, but operator can toggle back to intake date if needed
+    if (actionType === 'ซักเสร็จแล้ว' || initialOrderToComplete) {
+      setOrderDate(todayStr);
+    } else {
+      setOrderDate(d);
+    }
 
     // 2. Operator Name
     const op = order.customerName || order.assignedStaff || '';
@@ -770,10 +804,52 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                 )}
               </div>
 
+              {/* Quick Picker for In-Progress Orders (ผ้าที่กำลังซัก) */}
+              {washingOrders.length > 0 && (
+                <div>
+                  <label className="block text-[11px] font-bold text-emerald-900 mb-1 flex items-center justify-between">
+                    <span>{language === 'th' ? 'เลือกจากรายการผ้าที่กำลังซัก (คลิกเพื่อดึงข้อมูลทันที):' : 'Select from in-progress orders:'}</span>
+                    <span className="text-[10px] text-emerald-700 font-medium">({washingOrders.length} รายการ)</span>
+                  </label>
+                  <select
+                    value={matchedOrder ? matchedOrder.trackingCode : ''}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      if (!code) {
+                        setTrackingCode('');
+                        setMatchedOrder(null);
+                        return;
+                      }
+                      const selected = washingOrders.find(o => o.trackingCode === code);
+                      if (selected) {
+                        autoPopulateFromOrder(selected);
+                      } else {
+                        handleTrackingCodeChange(code);
+                      }
+                    }}
+                    className="w-full text-xs bg-white text-emerald-950 font-medium border border-emerald-300 rounded-xl px-3 py-2 outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="">
+                      {language === 'th' ? '-- เลือกรายการผ้าที่กำลังซักที่ต้องการเปลี่ยนสถานะ --' : '-- Choose an in-progress order to complete --'}
+                    </option>
+                    {washingOrders.map((wo) => {
+                      const dStr = extractOrderDate(wo);
+                      const isPast = dStr < getTodayDateStr();
+                      const firstItem = wo.items[0];
+                      return (
+                        <option key={wo.id} value={wo.trackingCode}>
+                          {wo.trackingCode} | {wo.customerRoomOrDept || 'ไม่ระบุแผนก'} - {firstItem ? `${firstItem.name} (${firstItem.quantity} ชิ้น)` : 'ไม่ระบุผ้า'} {isPast ? `[รับผ้า ${dStr} • ข้ามวัน]` : `[รับผ้า ${dStr}]`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+
               {/* Input Box: กรอกรหัสติดตาม หรือพิมพ์รหัส */}
               <div>
                 <label className="block text-[11px] font-bold text-emerald-900 mb-1">
-                  {language === 'th' ? 'กรอกรหัสติดตาม (Tracking Code):' : 'Enter Tracking Code:'}
+                  {language === 'th' ? 'หรือระบุรหัสติดตาม (Tracking Code):' : 'Or enter Tracking Code:'}
                 </label>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <div className="relative flex-1">
@@ -856,10 +932,32 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {/* Order Date (กรุณาระบุวันที่) */}
               <div>
-                <label className="block text-xs font-semibold text-[#002045] mb-1 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-[#0061a5]" />
-                  {language === 'th' ? 'วันที่ดำเนินการ *' : 'Date *'}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-[#002045] flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#0061a5]" />
+                    {language === 'th' ? 'วันที่ดำเนินการ *' : 'Date *'}
+                  </label>
+                  {matchedOrder && extractOrderDate(matchedOrder) !== orderDate && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderDate(extractOrderDate(matchedOrder))}
+                      className="text-[10px] text-sky-700 hover:text-sky-900 underline font-semibold cursor-pointer"
+                      title="ใช้วันที่รับผ้า"
+                    >
+                      {language === 'th' ? `ใช้วันรับผ้า (${extractOrderDate(matchedOrder)})` : `Use intake date (${extractOrderDate(matchedOrder)})`}
+                    </button>
+                  )}
+                  {matchedOrder && extractOrderDate(matchedOrder) === orderDate && orderDate !== getTodayDateStr() && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderDate(getTodayDateStr())}
+                      className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-semibold cursor-pointer"
+                      title="ใช้วันนี้ (วันซักเสร็จ)"
+                    >
+                      {language === 'th' ? `ใช้วันนี้ (${getTodayDateStr()})` : `Use today (${getTodayDateStr()})`}
+                    </button>
+                  )}
+                </div>
                 <input
                   type="date"
                   required
@@ -967,6 +1065,10 @@ export const CreateLaundryModal: React.FC<CreateLaundryModalProps> = ({
                       {timeOpt}
                     </option>
                   ))}
+                  {/* Ensure dynamic next-day or custom delivery time is selectable and never dropped */}
+                  {deliveryTime && !(formSchema.deliveryTimes || LAUNDRY_FORM_OPTIONS.deliveryTimes).includes(deliveryTime) && (
+                    <option value={deliveryTime}>{deliveryTime}</option>
+                  )}
                 </select>
               </div>
 

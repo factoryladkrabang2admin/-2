@@ -132,7 +132,7 @@ export default function App() {
   const [selectedMaintenanceWorkOrder, setSelectedMaintenanceWorkOrder] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(() => {
     try {
-      const cached = localStorage.getItem('proworkflow_announcements_cache_v1');
+      const cached = localStorage.getItem('proworkflow_announcements_cache_v3');
       if (cached) return JSON.parse(cached);
     } catch {
       // ignore
@@ -288,8 +288,37 @@ export default function App() {
         // Google Sheet is the SINGLE SOURCE OF TRUTH for laundry orders
         // Check for any newly submitted manual order in this session that hasn't appeared in Google Sheet yet
         const currentStored = realtimeHub.getStoredLaundryOrders();
+
+        // Build local stage override map for orders marked as ready/delivered recently so they don't revert to washing
+        const localStatusOverrides = new Map<string, LaundryOrder>();
+        currentStored.forEach((o) => {
+          if (o.stage === 'ready' || o.stage === 'delivered') {
+            const code = (o.trackingCode || o.id).replace(/[\s\-_]/g, '').toLowerCase();
+            if (code) {
+              localStatusOverrides.set(code, o);
+            }
+          }
+        });
+
+        const syncedOrders = result.orders.map((sheetOrder) => {
+          const code = (sheetOrder.trackingCode || sheetOrder.id).replace(/[\s\-_]/g, '').toLowerCase();
+          const localOverride = localStatusOverrides.get(code);
+          if (localOverride && sheetOrder.stage === 'washing') {
+            return {
+              ...sheetOrder,
+              stage: localOverride.stage,
+              completedAt: localOverride.completedAt || sheetOrder.completedAt,
+              historyTimeline:
+                localOverride.historyTimeline && localOverride.historyTimeline.length > sheetOrder.historyTimeline.length
+                  ? localOverride.historyTimeline
+                  : sheetOrder.historyTimeline,
+            };
+          }
+          return sheetOrder;
+        });
+
         const cleanSheetCodes = new Set(
-          result.orders.map((o) => (o.trackingCode || o.id).replace(/[\s\-_]/g, '').toLowerCase())
+          syncedOrders.map((o) => (o.trackingCode || o.id).replace(/[\s\-_]/g, '').toLowerCase())
         );
 
         const pendingLocalOrders = currentStored.filter((o) => {
@@ -300,7 +329,7 @@ export default function App() {
           return (o as any).createdAt && Date.now() - (o as any).createdAt < 45000;
         });
 
-        const finalOrders = [...result.orders, ...pendingLocalOrders];
+        const finalOrders = [...syncedOrders, ...pendingLocalOrders];
 
         // Update known orders map
         const newMap = new Map<string, LaundryStage>();
@@ -404,13 +433,13 @@ export default function App() {
   const syncGoogleSheetAnnouncements = async () => {
     try {
       const result = await fetchGoogleSheetAnnouncements();
-      if (result.success && result.announcements.length > 0) {
+      if (result.success) {
         setAnnouncements((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(result.announcements)) {
             return prev;
           }
           try {
-            localStorage.setItem('proworkflow_announcements_cache_v1', JSON.stringify(result.announcements));
+            localStorage.setItem('proworkflow_announcements_cache_v3', JSON.stringify(result.announcements));
           } catch {
             // ignore
           }
@@ -827,6 +856,12 @@ export default function App() {
                 searchQuery={searchQuery}
                 currentUser={currentUser}
                 isAuthenticated={isAuthenticated}
+                onAnnouncementCreated={(newAnn) => {
+                  setAnnouncements((prev) => [newAnn, ...prev]);
+                }}
+                onRefreshAnnouncements={async () => {
+                  await syncGoogleSheetAnnouncements();
+                }}
               />
             ) : (
               <RestrictedAccessView

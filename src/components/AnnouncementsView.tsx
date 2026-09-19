@@ -23,18 +23,32 @@ import {
   ShieldCheck,
   Check,
   FileSpreadsheet,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
+import { CreateAnnouncementModal } from './CreateAnnouncementModal';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { realtimeHub } from '../services/realtimeService';
-import { parseAnnouncementDate, sortAnnouncementsLatestFirst, ANNOUNCEMENTS_SHEET_URL } from '../services/googleSheetSyncService';
+import { 
+  parseAnnouncementDate, 
+  sortAnnouncementsLatestFirst, 
+  ANNOUNCEMENTS_SHEET_URL,
+  ANNOUNCEMENTS_FORM_VIEW_URL,
+  ANNOUNCEMENTS_FORM_EDIT_URL,
+  getLocalAnnouncements,
+  getAnnouncementsWebhookUrl
+} from '../services/googleSheetSyncService';
 
 interface AnnouncementsViewProps {
   announcements: AnnouncementItem[];
   searchQuery?: string;
   onSelectAnnouncement?: (item: AnnouncementItem) => void;
+  onAnnouncementCreated?: (newAnnouncement: AnnouncementItem) => void;
+  onRefreshAnnouncements?: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
 }
@@ -97,6 +111,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   announcements: rawAnnouncements = [],
   searchQuery: externalSearchQuery = '',
   onSelectAnnouncement,
+  onAnnouncementCreated,
+  onRefreshAnnouncements,
   currentUser,
   isAuthenticated = false,
 }) => {
@@ -108,6 +124,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [activeModalAnnouncement, setActiveModalAnnouncement] = useState<AnnouncementItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [localCreatedList, setLocalCreatedList] = useState<AnnouncementItem[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Realtime pin updates trigger
   const [pinRevision, setPinRevision] = useState(0);
@@ -116,6 +135,36 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   const isAdmin = useMemo(() => {
     return isUserAdminOrSupervisor(currentUser, isAuthenticated);
   }, [currentUser, isAuthenticated]);
+
+  const handleAnnouncementCreated = (newItem: AnnouncementItem) => {
+    setLocalCreatedList((prev) => [newItem, ...prev]);
+    setToastMessage(`เพิ่มข่าวประชาสัมพันธ์ "${newItem.title}" เรียบร้อยแล้ว`);
+    if (onAnnouncementCreated) {
+      onAnnouncementCreated(newItem);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      if (onRefreshAnnouncements) {
+        await onRefreshAnnouncements();
+      }
+      setToastMessage('อัปเดตข้อมูลจาก Google Sheet เรียบร้อยแล้ว');
+    } catch {
+      setToastMessage('เกิดข้อผิดพลาดในการรีเฟรชข้อมูล');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Auto-dismiss toast message
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   // Subscribe to real-time hub updates for pinned announcements
   useEffect(() => {
@@ -137,7 +186,18 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
 
   // Merge announcements with live pin status and sort latest first
   const processedAnnouncements = useMemo(() => {
-    const list = rawAnnouncements.map((item) => {
+    // Combine locally created items with incoming announcements, deduplicating by title
+    const combined = [...localCreatedList];
+    const existingTitles = new Set(combined.map((c) => (c.title || '').trim().toLowerCase()));
+    for (const raw of rawAnnouncements) {
+      const normTitle = (raw.title || '').trim().toLowerCase();
+      if (!existingTitles.has(normTitle)) {
+        combined.push(raw);
+        existingTitles.add(normTitle);
+      }
+    }
+
+    const list = combined.map((item) => {
       const pinInfo = realtimeHub.getAnnouncementPinInfo(item);
       return {
         ...item,
@@ -148,7 +208,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
     });
 
     return sortAnnouncementsLatestFirst(list);
-  }, [rawAnnouncements, pinRevision]);
+  }, [rawAnnouncements, localCreatedList, pinRevision]);
 
   // Extract unique departments
   const departments = useMemo(() => {
@@ -307,9 +367,35 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
               <Megaphone className="w-7 h-7 sm:w-8 sm:h-8 text-slate-900" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900 drop-shadow-xs flex items-center gap-3">
-                <span>{t.announcementsTitle}</span>
-              </h1>
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900 drop-shadow-xs flex items-center gap-3">
+                  <span>{t.announcementsTitle}</span>
+                </h1>
+
+                {/* Sparkling Prominent Action Button for Announcement Form Submission */}
+                <button
+                  type="button"
+                  id="btn-create-announcement-prominent"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="relative group inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl font-black text-white text-xs sm:text-sm bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 shadow-md hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-white/40 cursor-pointer overflow-hidden"
+                  title={language === 'th' ? 'คลิกเพื่อเพิ่มข่าวประชาสัมพันธ์ใหม่ (ทำรายการผ่าน Google Form / บันทึกลง Google Sheet)' : 'Click to create a new Announcement record'}
+                >
+                  {/* Shimmer sweep animation */}
+                  <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
+
+                  {/* Pulsing beacon */}
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-200 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-100"></span>
+                  </span>
+
+                  <Sparkles className="w-4 h-4 text-amber-200 animate-pulse shrink-0" />
+                  <span className="tracking-tight whitespace-nowrap drop-shadow-xs">
+                    {language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'New Announcement'}
+                  </span>
+                </button>
+              </div>
+
               {pinnedCount > 0 && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs font-bold text-amber-900 bg-amber-300/80 px-2.5 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs">
@@ -321,9 +407,47 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             </div>
           </div>
 
-          {/* Google Sheets Link Button (เฉพาะผู้ดูแลและแอดมินเพจ - แสดงเฉพาะไอคอน) */}
-          {isAdmin && (
-            <div className="flex items-center gap-2 self-start sm:self-center">
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+            {/* Refresh Button (Icon-only) */}
+            <button
+              type="button"
+              id="btn-refresh-announcements-header"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-slate-700 hover:text-slate-900 shadow-md hover:shadow-lg transition-all border border-slate-300/80 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group disabled:opacity-50"
+              title={language === 'th' ? 'รีเฟรชข้อมูลจาก Google Sheet' : 'Refresh from Google Sheet'}
+              aria-label="Refresh Announcements"
+            >
+              <RefreshCw className={`w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Add Announcement Icon Button */}
+            <button
+              type="button"
+              id="btn-create-announcement-icon"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg hover:shadow-indigo-500/30 transition-all border border-indigo-300/60 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group"
+              title={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์ (ทำรายการผ่าน Google Form / บันทึกลง Google Sheet)' : 'Add Announcement (Google Form / Google Sheet)'}
+              aria-label="Add Announcement"
+            >
+              <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+            </button>
+
+            {/* Google Form Link Button (เปิดไปยัง Google Form ทางการ) */}
+            <a
+              href={ANNOUNCEMENTS_FORM_EDIT_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-purple-700 hover:text-purple-900 shadow-md hover:shadow-lg transition-all border border-purple-300/80 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group"
+              title={language === 'th' ? 'เปิดแบบฟอร์ม Google Form ข่าวประชาสัมพันธ์' : 'Open Announcements Google Form'}
+              aria-label="Open Announcements Google Form"
+            >
+              <ExternalLink className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </a>
+
+            {/* Google Sheets Link Button (เฉพาะผู้ดูแลและแอดมินเพจ - แสดงเฉพาะไอคอน) */}
+            {isAdmin && (
               <a
                 href={ANNOUNCEMENTS_SHEET_URL}
                 target="_blank"
@@ -334,8 +458,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
               >
                 <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
               </a>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -595,6 +719,24 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
         onClose={() => setActiveModalAnnouncement(null)}
         isAdmin={isAdmin}
         onTogglePin={handleTogglePin}
+      />
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900/90 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700/80 flex items-center gap-2.5 text-xs sm:text-sm font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Create Announcement Modal (เหมือนปุ่ม รับ-ส่ง เอกสาร / พัสดุ) */}
+      <CreateAnnouncementModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onAnnouncementCreated={handleAnnouncementCreated}
+        onRefreshFromSheet={onRefreshAnnouncements}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
       />
     </div>
   );
