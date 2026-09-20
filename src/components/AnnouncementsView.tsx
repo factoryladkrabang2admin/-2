@@ -674,6 +674,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
           onRefreshFromSheet={onRefreshAnnouncements}
           currentUser={currentUser}
           isAuthenticated={isAuthenticated}
+          existingAnnouncements={rawAnnouncements}
         />
       )}
     </div>

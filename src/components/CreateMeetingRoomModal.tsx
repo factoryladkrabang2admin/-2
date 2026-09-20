@@ -20,6 +20,7 @@ import { MeetingRoomBooking } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { submitMeetingRoomBooking } from '../services/googleSheetSyncService';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
+import { SuggestiveInput } from './SuggestiveInput';
 
 interface CreateMeetingRoomModalProps {
   isOpen: boolean;
@@ -55,6 +56,91 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
   const [department, setDepartment] = useState<string>('');
   const [attendeesCount, setAttendeesCount] = useState<string>('');
   const [phoneNumber, setPhoneNumber] = useState<string>('');
+
+  // Suggestions for Department & Phone Number
+  const [savedDepartments, setSavedDepartments] = useState<string[]>([]);
+  const [savedPhoneNumbers, setSavedPhoneNumbers] = useState<string[]>([]);
+
+  // Load remembered departments and phone numbers from localStorage & existing bookings
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // 1. Departments
+    const deptSet = new Set<string>();
+    const defaultDepts = [
+      'แผนกเทคนิคการผลิต 4',
+      'ฝ่ายทรัพยากรบุคคล',
+      'แผนกฝึกอบรมและสนับสนุนกิจกรรม',
+      'แผนกสนับสนุนและประสานงาน',
+      'แผนกวิศวกรรมพลังงาน',
+      'ธุรการลาดกระบัง 2',
+      'ความปลอดภัยและอาชีวอนามัย (SHE)',
+      'ฝ่ายเทคโนโลยีสารสนเทศ (IT)',
+      'ฝ่ายผลิต',
+      'ฝ่ายประกันคุณภาพ (QA/QC)',
+      'แผนกเงินเดือนและค่าจ้าง',
+      'แผนกซ่อมบำรุง',
+      'คลังสินค้าและโลจิสติกส์',
+    ];
+    defaultDepts.forEach((d) => deptSet.add(d));
+
+    // From existing bookings
+    if (existingBookings && Array.isArray(existingBookings)) {
+      existingBookings.forEach((b) => {
+        const d = (b.department || '').trim();
+        if (d && d.length >= 2) deptSet.add(d);
+      });
+    }
+
+    // From localStorage
+    try {
+      const saved = localStorage.getItem('proworkflow_meeting_departments');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((d) => {
+            if (typeof d === 'string' && d.trim()) deptSet.add(d.trim());
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    setSavedDepartments(Array.from(deptSet));
+
+    // 2. Phone Numbers / Extensions
+    const phoneSet = new Set<string>();
+    const defaultPhones = ['4510', '4520', '2201', '2202', '1101', '1102', '3301'];
+    defaultPhones.forEach((p) => phoneSet.add(p));
+
+    if (existingBookings && Array.isArray(existingBookings)) {
+      existingBookings.forEach((b) => {
+        const p = (b.phoneNumber || '').trim();
+        if (p && p !== '-' && p !== 'ไม่ระบุ' && p.length >= 2) {
+          phoneSet.add(p);
+        }
+      });
+    }
+
+    try {
+      const savedP = localStorage.getItem('proworkflow_meeting_phone_numbers');
+      if (savedP) {
+        const parsedP = JSON.parse(savedP);
+        if (Array.isArray(parsedP)) {
+          parsedP.forEach((p) => {
+            if (typeof p === 'string' && p.trim() && p.trim() !== '-') {
+              phoneSet.add(p.trim());
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    setSavedPhoneNumbers(Array.from(phoneSet));
+  }, [isOpen, existingBookings]);
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -178,6 +264,34 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
       if (result.success && result.booking) {
         setIsSuccess(true);
         setLastCreatedBooking(result.booking);
+
+        // Remember department and phone number in localStorage for future sessions
+        try {
+          const cleanDept = department.trim();
+          if (cleanDept) {
+            const saved = localStorage.getItem('proworkflow_meeting_departments');
+            const list: string[] = saved ? JSON.parse(saved) : [];
+            if (!list.includes(cleanDept)) {
+              list.unshift(cleanDept);
+              localStorage.setItem('proworkflow_meeting_departments', JSON.stringify(list.slice(0, 100)));
+            }
+            setSavedDepartments((prev) => Array.from(new Set([cleanDept, ...prev])));
+          }
+
+          const cleanPhone = phoneNumber.trim();
+          if (cleanPhone && cleanPhone !== '-') {
+            const savedPhone = localStorage.getItem('proworkflow_meeting_phone_numbers');
+            const phoneList: string[] = savedPhone ? JSON.parse(savedPhone) : [];
+            if (!phoneList.includes(cleanPhone)) {
+              phoneList.unshift(cleanPhone);
+              localStorage.setItem('proworkflow_meeting_phone_numbers', JSON.stringify(phoneList.slice(0, 100)));
+            }
+            setSavedPhoneNumbers((prev) => Array.from(new Set([cleanPhone, ...prev])));
+          }
+        } catch {
+          // ignore
+        }
+
         if (onBookingCreated) {
           onBookingCreated(result.booking);
         }
@@ -482,19 +596,23 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
 
               {/* 5. Department & Attendees & Phone Row */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Department */}
+                {/* Department with Autocomplete Memory */}
                 <div className="sm:col-span-1">
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Building className="w-3.5 h-3.5 text-purple-600" />
-                    <span>{language === 'th' ? 'แผนก/ฝ่าย' : 'Department'}</span> <span className="text-rose-500">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Building className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{language === 'th' ? 'แผนก/ฝ่าย' : 'Department'}</span> <span className="text-rose-500">*</span>
+                    </span>
                   </label>
-                  <input
-                    type="text"
+                  <SuggestiveInput
+                    id="meeting-department-input"
                     value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    placeholder={language === 'th' ? 'ระบุแผนก/ฝ่าย' : 'Department'}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    onChange={(val) => setDepartment(val)}
+                    suggestions={savedDepartments}
+                    placeholder={language === 'th' ? 'ระบุแผนก / เลือกจากที่จำไว้' : 'Type or select department'}
+                    accentColor="purple"
                     required
+                    inputClassName="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 pr-16 transition-all"
                   />
                 </div>
 
@@ -511,22 +629,26 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                     value={attendeesCount}
                     onChange={(e) => setAttendeesCount(e.target.value)}
                     placeholder={language === 'th' ? 'ระบุจำนวนคน' : 'No. of attendees'}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
                   />
                 </div>
 
-                {/* Phone Number / Extension */}
+                {/* Phone Number / Extension with Autocomplete Memory */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5 text-purple-600" />
-                    <span>{language === 'th' ? 'เบอร์โทร/ภายใน' : 'Phone/Ext'}</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{language === 'th' ? 'เบอร์โทร/ภายใน' : 'Phone/Ext'}</span>
+                    </span>
                   </label>
-                  <input
-                    type="text"
+                  <SuggestiveInput
+                    id="meeting-phone-input"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    onChange={(val) => setPhoneNumber(val)}
+                    suggestions={savedPhoneNumbers}
                     placeholder={language === 'th' ? 'ระบุเบอร์โทร / ภายใน' : 'Phone / Ext.'}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    accentColor="purple"
+                    inputClassName="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 pr-16 transition-all"
                   />
                 </div>
               </div>

@@ -171,7 +171,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   const [qrCopied, setQrCopied] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
-  const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser);
+  const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
 
   // Load Data for active subcategory
   const loadData = async (sub: EquipmentSubCategory, force = false) => {
@@ -241,6 +241,75 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       }
     });
     return Array.from(set).sort().reverse();
+  }, [records]);
+
+  // Helper to validate and exclude action types like 'คืนเสื้อกาวน์', 'เบิกเสื้อกาวน์' from person names
+  const isInvalidGownName = (name: string) => {
+    const n = (name || '').trim();
+    if (!n || n.length < 2) return true;
+    if (n === 'ไม่ระบุชื่อ' || n === 'ไม่ระบุชื่อผู้เบิก' || n === 'ชื่อผู้เบิก-คืน') return true;
+    if (n === 'คืนเสื้อกาวน์' || n === 'เบิกเสื้อกาวน์') return true;
+    if (n.includes('คืนเสื้อกาวน์') || n.includes('เบิกเสื้อกาวน์') || n.includes('เสื้อกาวน์')) return true;
+    if (n === 'เบิก' || n === 'คืน' || n === 'เบิกกาวน์' || n === 'คืนกาวน์') return true;
+    return false;
+  };
+
+  // List of borrower/returner names extracted from gown records and Google Sheet column
+  const { gownRequesterNames, gownRequesterDeptMap } = useMemo(() => {
+    const nameSet = new Set<string>();
+    const deptMap: Record<string, string> = {};
+
+    // 1. Current active records (contains requesterName from Google Sheet column)
+    records.forEach((r) => {
+      const name = (r.requesterName || '').trim();
+      if (!isInvalidGownName(name)) {
+        nameSet.add(name);
+        if (r.department && !deptMap[name]) {
+          deptMap[name] = r.department;
+        }
+      }
+    });
+
+    // 2. Cached gown records in localStorage
+    try {
+      const cached = localStorage.getItem('proworkflow_equipment_cache_gown');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((r: any) => {
+            const name = (r?.requesterName || '').trim();
+            if (!isInvalidGownName(name)) {
+              nameSet.add(name);
+              if (r.department && !deptMap[name]) {
+                deptMap[name] = r.department;
+              }
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3. User submission history in localStorage (also cleans invalid action names)
+    try {
+      const savedNames = localStorage.getItem('proworkflow_gown_requester_names');
+      if (savedNames) {
+        const arr = JSON.parse(savedNames);
+        if (Array.isArray(arr)) {
+          const cleaned = arr.filter((n: any) => typeof n === 'string' && !isInvalidGownName(n));
+          localStorage.setItem('proworkflow_gown_requester_names', JSON.stringify(cleaned));
+          cleaned.forEach((n: string) => {
+            nameSet.add(n.trim());
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const sortedNames = Array.from(nameSet).sort((a, b) => a.localeCompare(b, 'th'));
+    return { gownRequesterNames: sortedNames, gownRequesterDeptMap: deptMap };
   }, [records]);
 
   // Filtered Records
@@ -501,8 +570,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               <BarChart3 className="w-5 h-5 text-rose-600 stroke-[2]" />
             </button>
 
-            {/* Google Sheet Link - Available for Gown and Admin/Supervisor */}
-            {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
+            {/* Google Sheet Link - จำกัดการมองเห็นเฉพาะผู้ดูแลและแอดมินเพจเท่านั้น (Admin & Supervisor Only) */}
+            {canAccessGoogleSheet && (
               <a
                 href={currentSheetUrl}
                 target="_blank"
@@ -1382,6 +1451,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           activeSubCategory={activeSubCategory}
           formUrl={currentFormUrl}
           sheetUrl={currentSheetUrl}
+          canAccessGoogleSheet={canAccessGoogleSheet}
+          existingRequesterNames={gownRequesterNames}
+          requesterNameToDept={gownRequesterDeptMap}
         />
       )}
     </div>

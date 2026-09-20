@@ -8,12 +8,14 @@ interface SuggestiveInputProps {
   suggestions: string[];
   placeholder?: string;
   icon?: React.ReactNode;
-  accentColor?: 'rose' | 'emerald' | 'blue';
+  accentColor?: 'rose' | 'emerald' | 'blue' | 'purple' | 'indigo';
   required?: boolean;
   hasError?: boolean;
   errorMessage?: string;
   helperText?: string;
   disabled?: boolean;
+  inputClassName?: string;
+  maxLength?: number;
 }
 
 export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
@@ -29,6 +31,8 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
   errorMessage,
   helperText,
   disabled = false,
+  inputClassName,
+  maxLength,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
@@ -52,16 +56,21 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
 
   // Filter & rank suggestions based on typed query (even a single character / consonant)
   const filteredSuggestions = useMemo(() => {
+    // Deduplicate suggestions list first
+    const uniqueSuggestions = Array.from(
+      new Set(suggestions.map((s) => (s || '').trim()).filter(Boolean))
+    );
+
     const trimmed = value.trim().toLowerCase();
     if (!trimmed) {
       // If empty and opened, show top recent 8 suggestions
-      return suggestions.slice(0, 8);
+      return uniqueSuggestions.slice(0, 8);
     }
 
     const startsWith: string[] = [];
     const contains: string[] = [];
 
-    for (const item of suggestions) {
+    for (const item of uniqueSuggestions) {
       const lower = item.toLowerCase();
       if (lower === trimmed) {
         // exact match can still be shown
@@ -73,7 +82,7 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
       }
     }
 
-    return [...startsWith, ...contains].slice(0, 10);
+    return [...startsWith, ...contains].slice(0, 12);
   }, [value, suggestions]);
 
   // Handle keyboard navigation
@@ -116,6 +125,10 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
       ? 'focus:ring-2 focus:ring-emerald-500'
       : accentColor === 'blue'
       ? 'focus:ring-2 focus:ring-blue-500'
+      : accentColor === 'purple'
+      ? 'focus:ring-2 focus:ring-purple-500'
+      : accentColor === 'indigo'
+      ? 'focus:ring-2 focus:ring-indigo-500'
       : 'focus:ring-2 focus:ring-rose-500';
 
   const itemActiveClass =
@@ -123,6 +136,10 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
       ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
       : accentColor === 'blue'
       ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200'
+      : accentColor === 'purple'
+      ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-200'
+      : accentColor === 'indigo'
+      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200'
       : 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200';
 
   const badgeClass =
@@ -130,6 +147,10 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
       ? 'text-emerald-600 bg-emerald-100/70 dark:bg-emerald-900/40'
       : accentColor === 'blue'
       ? 'text-blue-600 bg-blue-100/70 dark:bg-blue-900/40'
+      : accentColor === 'purple'
+      ? 'text-purple-600 bg-purple-100/70 dark:bg-purple-900/40'
+      : accentColor === 'indigo'
+      ? 'text-indigo-600 bg-indigo-100/70 dark:bg-indigo-900/40'
       : 'text-rose-600 bg-rose-100/70 dark:bg-rose-900/40';
 
   // Highlight matching part of text
@@ -167,6 +188,7 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
           id={id}
           value={value}
           disabled={disabled}
+          maxLength={maxLength}
           onChange={(e) => {
             onChange(e.target.value);
             setIsOpen(true);
@@ -181,11 +203,14 @@ export const SuggestiveInput: React.FC<SuggestiveInputProps> = ({
           placeholder={placeholder}
           autoComplete="off"
           required={required}
-          className={`w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all pr-16 ${
-            hasError
-              ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
-              : `border-slate-300 dark:border-slate-700 ${ringFocusClass}`
-          }`}
+          className={
+            inputClassName ||
+            `w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none transition-all pr-16 ${
+              hasError
+                ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/30'
+                : `border-slate-300 dark:border-slate-700 ${ringFocusClass}`
+            }`
+          }
         />
 
         {/* Action icons inside the input */}

@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { AnnouncementItem } from '../types';
 import { AdminUserAccount } from '../data/mockData';
+import { SuggestiveInput } from './SuggestiveInput';
 import {
   ANNOUNCEMENTS_SHEET_URL,
   ANNOUNCEMENTS_FORM_VIEW_URL,
@@ -58,6 +59,7 @@ interface CreateAnnouncementModalProps {
   onRefreshFromSheet?: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
+  existingAnnouncements?: AnnouncementItem[];
 }
 
 // Popular department tags for quick selection
@@ -267,6 +269,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   onAnnouncementCreated,
   onRefreshFromSheet,
   currentUser,
+  existingAnnouncements = [],
 }) => {
   const { language } = useLanguage();
 
@@ -277,6 +280,43 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   const [title, setTitle] = useState('');
   const [department, setDepartment] = useState('');
   const [content, setContent] = useState('');
+
+  // Department Memory & Autocomplete Suggestions
+  const [savedAnnouncementDepartments, setSavedAnnouncementDepartments] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const deptSet = new Set<string>();
+
+    // 1. Initial known departments
+    POPULAR_DEPARTMENTS.forEach((d) => deptSet.add(d));
+
+    // 2. Historical departments from existing announcements
+    if (existingAnnouncements && Array.isArray(existingAnnouncements)) {
+      existingAnnouncements.forEach((a) => {
+        const d = (a.department || '').trim();
+        if (d && d.length >= 2) deptSet.add(d);
+      });
+    }
+
+    // 3. Departments from localStorage
+    try {
+      const saved = localStorage.getItem('proworkflow_announcement_departments');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((d) => {
+            if (typeof d === 'string' && d.trim()) deptSet.add(d.trim());
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    setSavedAnnouncementDepartments(Array.from(deptSet));
+  }, [isOpen, existingAnnouncements]);
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -494,6 +534,23 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
 
       if (result.success && result.announcement) {
         setCreatedItem(result.announcement);
+
+        // Remember department for autocomplete memory
+        try {
+          const cleanDept = department.trim();
+          if (cleanDept) {
+            const saved = localStorage.getItem('proworkflow_announcement_departments');
+            const list: string[] = saved ? JSON.parse(saved) : [];
+            if (!list.includes(cleanDept)) {
+              list.unshift(cleanDept);
+              localStorage.setItem('proworkflow_announcement_departments', JSON.stringify(list.slice(0, 100)));
+            }
+            setSavedAnnouncementDepartments((prev) => Array.from(new Set([cleanDept, ...prev])));
+          }
+        } catch {
+          // ignore
+        }
+
         if (onAnnouncementCreated) {
           onAnnouncementCreated(result.announcement);
         }
@@ -1110,7 +1167,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                     />
                   </div>
 
-                  {/* Department Field with quick chips */}
+                  {/* Department Field with Autocomplete Memory */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-black text-slate-800 tracking-wide uppercase flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
@@ -1118,35 +1175,17 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                         <span>แผนก / ฝ่ายที่ออกประกาศ</span>
                         <span className="text-rose-500 font-bold">*</span>
                       </span>
-                      <span className="text-[11px] font-normal text-slate-400">เลือกจากตัวเลือกด่วนหรือพิมพ์เอง</span>
                     </label>
-                    <input
-                      type="text"
+                    <SuggestiveInput
                       id="input-announcement-department"
                       value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="เช่น ฝ่ายทรัพยากรบุคคล, แผนกฝึกอบรมและสนับสนุนกิจกรรม..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm font-medium text-slate-900 transition-all outline-hidden"
+                      onChange={(val) => setDepartment(val)}
+                      suggestions={savedAnnouncementDepartments}
+                      placeholder="พิมพ์พยัญชนะ/ตัวอักษรเพื่อค้นหา หรือเลือกจากแผนกที่บันทึกไว้"
+                      accentColor="indigo"
                       required
+                      inputClassName="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm font-medium text-slate-900 transition-all outline-hidden pr-16 bg-white"
                     />
-
-                    {/* Quick department selection chips */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {POPULAR_DEPARTMENTS.slice(0, 6).map((dept) => (
-                        <button
-                          key={dept}
-                          type="button"
-                          onClick={() => setDepartment(dept)}
-                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                            department === dept
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border-slate-200'
-                          }`}
-                        >
-                          {dept}
-                        </button>
-                      ))}
-                    </div>
                   </div>
 
                   {/* Content Field */}
