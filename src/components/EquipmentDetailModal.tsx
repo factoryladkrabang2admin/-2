@@ -15,6 +15,7 @@ import {
   Layers,
   Shirt
 } from 'lucide-react';
+import { Ladder } from './LadderIcon';
 import { EquipmentRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -72,6 +73,8 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
                 <Shirt className="w-6 h-6" />
               ) : record.subCategory === 'keys' ? (
                 <Key className="w-6 h-6" />
+              ) : record.subCategory === 'ladder' ? (
+                <Ladder className="w-6 h-6 stroke-[2.2]" />
               ) : (
                 <Package className="w-6 h-6" />
               )}

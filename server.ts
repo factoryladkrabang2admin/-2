@@ -232,6 +232,42 @@ function saveKeysSubmission(record: KeySubmissionRecord) {
   }
 }
 
+const LADDER_DATA_FILE = path.join(process.cwd(), "ladder-submissions.json");
+
+interface LadderSubmissionRecord {
+  id: string;
+  actionType: string;
+  date: string;
+  personName: string;
+  department: string;
+  ladderType: string;
+  syncedToGoogle: boolean;
+  createdAt: number;
+}
+
+let inMemoryLadderSubmissions: LadderSubmissionRecord[] = [];
+try {
+  if (fs.existsSync(LADDER_DATA_FILE)) {
+    const raw = fs.readFileSync(LADDER_DATA_FILE, "utf-8");
+    inMemoryLadderSubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemoryLadderSubmissions.length} saved ladder submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load ladder submissions from file:", e);
+}
+
+function saveLadderSubmission(record: LadderSubmissionRecord) {
+  inMemoryLadderSubmissions.unshift(record);
+  if (inMemoryLadderSubmissions.length > 500) {
+    inMemoryLadderSubmissions = inMemoryLadderSubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(LADDER_DATA_FILE, JSON.stringify(inMemoryLadderSubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist ladder submission to disk:", err);
+  }
+}
+
 // RFC-4180 compliant CSV parser and stringifier
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -1442,11 +1478,41 @@ async function startServer() {
         });
       }
 
-      const department = (payload.department || payload.dept || "").trim();
-      if (!department) {
+      const GOOGLE_KEYS_DEPARTMENTS = [
+        "แผนกความปลอดภัย",
+        "แผนกธุรการลาดกระบัง 1",
+        "แผนกธุรการลาดกระบัง 2",
+        "แผนกเทคนิคบริการ",
+        "แผนกไฟฟ้าและสื่อสาร",
+        "แผนกปรับอากาศ",
+        "แผนกสุขาภิบาล",
+        "แผนกวิศกรรมเครื่องกล",
+        "แผนก Lab",
+        "แผนกสารสนเทศ",
+        "ฝ่ายผลิตลาดกระบัง 2",
+      ];
+
+      const rawDept = (payload.department || payload.dept || "").trim();
+      if (!rawDept) {
         return res.status(400).json({
           success: false,
           error: "กรุณาระบุแผนก",
+        });
+      }
+
+      // Check if department matches Google Form options
+      let matchedDepartment = GOOGLE_KEYS_DEPARTMENTS.find(
+        (d) => d.toLowerCase() === rawDept.toLowerCase()
+      );
+      if (!matchedDepartment) {
+        matchedDepartment = GOOGLE_KEYS_DEPARTMENTS.find((d) =>
+          d.includes(rawDept) || rawDept.includes(d)
+        );
+      }
+      if (!matchedDepartment) {
+        return res.status(400).json({
+          success: false,
+          error: `แผนก "${rawDept}" ไม่ตรงกับตัวเลือกใน Google Form กรุณาเลือกจากรายการที่กำหนด`,
         });
       }
 
@@ -1466,15 +1532,15 @@ async function startServer() {
       // 1. วันที่
       const dateFormatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       formParams.append("entry.2018293025_year", year);
-      formParams.append("entry.2018293025_month", month.padStart(2, "0"));
-      formParams.append("entry.2018293025_day", day.padStart(2, "0"));
+      formParams.append("entry.2018293025_month", month);
+      formParams.append("entry.2018293025_day", day);
       formParams.append("entry.2018293025", dateFormatted);
 
       // 2. ชื่อ
       formParams.append("entry.1526694336", personName);
 
-      // 3. แผนก
-      formParams.append("entry.1276429706", department);
+      // 3. แผนก (ตรงตามตัวเลือกใน Google Form)
+      formParams.append("entry.1276429706", matchedDepartment);
 
       // 4. เลือกรูปแบบ
       formParams.append("entry.396433262", actionType);
@@ -1493,43 +1559,60 @@ async function startServer() {
       formParams.append("fvv", "1");
       formParams.append("pageHistory", "0");
 
-      // Fetch dynamic fbzx
-      let fbzx = "";
-      try {
-        const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url", {
-          signal: AbortSignal.timeout(3500),
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      // Helper to fetch fresh fbzx token from Google Form viewform
+      const fetchFbzx = async (): Promise<string> => {
+        try {
+          const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform", {
+            signal: AbortSignal.timeout(8000),
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            }
+          });
+          if (viewRes.ok) {
+            const viewHtml = await viewRes.text();
+            const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
           }
-        });
-        if (viewRes.ok) {
-          const viewHtml = await viewRes.text();
-          const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
-          if (fbzxMatch) fbzx = fbzxMatch[1];
+        } catch (e: any) {
+          console.warn("Could not fetch fbzx token:", e?.message);
         }
-      } catch {
-        // Fallback
-      }
+        return "";
+      };
 
-      if (fbzx) {
-        formParams.append("fbzx", fbzx);
-      }
-
-      let syncedToGoogle = false;
-      try {
+      // Helper to post payload to Google Form
+      const postSubmission = async (token: string) => {
+        const bodyParams = new URLSearchParams(formParams);
+        if (token) {
+          bodyParams.set("fbzx", token);
+        }
         const formRes = await fetch(GOOGLE_KEYS_FORM_ACTION_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           },
-          body: formParams.toString(),
+          body: bodyParams.toString(),
         });
         const formText = await formRes.text();
-        syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 ||
-          formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
-      } catch (err: any) {
-        console.warn("Could not post to Google Form directly for keys:", err?.message);
+        const isRecorded = formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+        return { isRecorded, formText, status: formRes.status };
+      };
+
+      let currentFbzx = await fetchFbzx();
+      let submitResult = await postSubmission(currentFbzx);
+
+      // If not recorded, retry once with a freshly fetched fbzx token
+      if (!submitResult.isRecorded) {
+        currentFbzx = await fetchFbzx();
+        submitResult = await postSubmission(currentFbzx);
+      }
+
+      if (!submitResult.isRecorded) {
+        console.error("Google form rejected keys submission:", submitResult.formText.substring(0, 300));
+        return res.status(502).json({
+          success: false,
+          error: "ไม่สามารถบันทึกข้อมูลลง Google Sheet ได้ โปรดตรวจสอบว่าแผนกตรงกับตัวเลือกใน Google Form หรือลองใหม่อีกครั้ง",
+        });
       }
 
       const record: KeySubmissionRecord = {
@@ -1537,10 +1620,10 @@ async function startServer() {
         actionType,
         date: dateFormatted,
         personName,
-        department,
+        department: matchedDepartment,
         keyNumbers,
         note: note || undefined,
-        syncedToGoogle,
+        syncedToGoogle: true,
         createdAt: Date.now(),
       };
 
@@ -1548,10 +1631,8 @@ async function startServer() {
 
       return res.json({
         success: true,
-        googleSheetSynced: syncedToGoogle,
-        message: syncedToGoogle
-          ? "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว"
-          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
+        googleSheetSynced: true,
+        message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
         record,
         sheetUrl: "https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221",
         formUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url",
@@ -1561,6 +1642,250 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during key requisition submission",
+      });
+    }
+  });
+
+  // A-Frame Ladder Google Form & Google Sheet direct submission endpoint
+  app.post("/api/equipment-ladder-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      let actionType = (payload.actionType || payload.action || "ยืม").trim();
+      if (actionType === "เบิก") actionType = "ยืม";
+      if (actionType !== "ยืม" && actionType !== "คืน") {
+        actionType = "ยืม";
+      }
+
+      const rawDate = (payload.date || payload.dateTime || "").trim();
+      let year = "";
+      let month = "";
+      let day = "";
+
+      if (rawDate) {
+        if (rawDate.includes("-")) {
+          const parts = rawDate.split("-");
+          year = parts[0];
+          month = String(parseInt(parts[1], 10));
+          day = String(parseInt(parts[2], 10));
+        } else if (rawDate.includes("/")) {
+          const parts = rawDate.split("/");
+          day = String(parseInt(parts[0], 10));
+          month = String(parseInt(parts[1], 10));
+          year = parts[2];
+        }
+        if (parseInt(year, 10) > 2400) {
+          year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const personName = (payload.personName || payload.requesterName || payload.name || "").trim();
+      if (!personName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้ยืม-คืน",
+        });
+      }
+
+      const GOOGLE_LADDER_DEPARTMENTS = [
+        "A/2",
+        "A/3",
+        "A/4",
+        "B/1",
+        "B/5",
+        "สต็อก 4",
+        "การตลาด",
+        "ซาโบเต็น",
+        "เทคนิคการผลิต 4",
+        "เทคนิคบริการ ส่วนบำรุงรักษาอาคาร",
+        "บำรุงรักษาอาคาร",
+        "ปรับอากาศ",
+        "ไฟฟ้าและสื่อสาร",
+        "สารสนเทศโรงงาน",
+        "สุขาภิบาลและเครื่องกล",
+        "วิศวกรรมเครื่องกล",
+      ];
+
+      const GOOGLE_LADDER_TYPES = [
+        "บันได 5 ขั้น (สูง 1.50 เมตร)",
+        "บันได 7 ขั้น (สูง 2.10 เมตร)",
+        "บันได 13 ขั้น (สูง 3.80 เมตร)",
+      ];
+
+      const rawDept = (payload.department || payload.dept || "").trim();
+      if (!rawDept) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุแผนก",
+        });
+      }
+
+      let matchedDepartment = GOOGLE_LADDER_DEPARTMENTS.find(
+        (d) => d.toLowerCase() === rawDept.toLowerCase()
+      );
+      if (!matchedDepartment) {
+        matchedDepartment = GOOGLE_LADDER_DEPARTMENTS.find(
+          (d) => d.includes(rawDept) || rawDept.includes(d)
+        );
+      }
+      if (!matchedDepartment) {
+        return res.status(400).json({
+          success: false,
+          error: `แผนก "${rawDept}" ไม่ตรงกับตัวเลือกใน Google Form กรุณาเลือกจากรายการที่กำหนด`,
+        });
+      }
+
+      let ladderTypes: string[] = [];
+      if (Array.isArray(payload.ladderType)) {
+        ladderTypes = payload.ladderType.map((l: any) => String(l).trim()).filter(Boolean);
+      } else if (typeof payload.ladderType === "string" && payload.ladderType.trim()) {
+        ladderTypes = [payload.ladderType.trim()];
+      } else if (typeof payload.ladderTypes === "string" && payload.ladderTypes.trim()) {
+        ladderTypes = [payload.ladderTypes.trim()];
+      }
+
+      const validLadders = ladderTypes
+        .map((lt) => {
+          return (
+            GOOGLE_LADDER_TYPES.find(
+              (gl) => gl.toLowerCase() === lt.toLowerCase() || gl.includes(lt) || lt.includes(gl)
+            ) || lt
+          );
+        })
+        .filter(Boolean);
+
+      if (validLadders.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาเลือกบันไดทรง A อย่างน้อย 1 รายการ",
+        });
+      }
+
+      const GOOGLE_LADDER_FORM_ACTION_URL =
+        "https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/formResponse";
+
+      const formParams = new URLSearchParams();
+      // 1. วันที่
+      const dateFormatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      formParams.append("entry.1605796721_year", year);
+      formParams.append("entry.1605796721_month", month);
+      formParams.append("entry.1605796721_day", day);
+      formParams.append("entry.1605796721", dateFormatted);
+
+      // 2. กรุณาเลือการยืม - ยืน
+      formParams.append("entry.1963148641", actionType);
+
+      // 3. กรุณาระบุชื่อ
+      formParams.append("entry.1025821912", personName);
+
+      // 4. แผนก
+      formParams.append("entry.1235243654", matchedDepartment);
+
+      // 5. กรุณาเลือกบันได้ทรง A
+      for (const ladder of validLadders) {
+        formParams.append("entry.1627587977", ladder);
+      }
+
+      // Sentinels and hidden inputs
+      formParams.append("entry.1963148641_sentinel", "");
+      formParams.append("entry.1235243654_sentinel", "");
+      formParams.append("entry.1627587977_sentinel", "");
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      const fetchFbzx = async (): Promise<string> => {
+        try {
+          const viewRes = await fetch(
+            "https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/viewform",
+            {
+              signal: AbortSignal.timeout(8000),
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+            }
+          );
+          if (viewRes.ok) {
+            const viewHtml = await viewRes.text();
+            const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
+          }
+        } catch (e: any) {
+          console.warn("Could not fetch ladder form fbzx token:", e?.message);
+        }
+        return "";
+      };
+
+      const postSubmission = async (token: string) => {
+        const bodyParams = new URLSearchParams(formParams);
+        if (token) {
+          bodyParams.set("fbzx", token);
+        }
+        const formRes = await fetch(GOOGLE_LADDER_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: bodyParams.toString(),
+        });
+        const formText = await formRes.text();
+        const isRecorded =
+          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
+          formText.includes("Your response has been recorded");
+        return { isRecorded, formText, status: formRes.status };
+      };
+
+      let currentFbzx = await fetchFbzx();
+      let submitResult = await postSubmission(currentFbzx);
+
+      if (!submitResult.isRecorded) {
+        currentFbzx = await fetchFbzx();
+        submitResult = await postSubmission(currentFbzx);
+      }
+
+      if (!submitResult.isRecorded) {
+        console.error("Google form rejected ladder submission:", submitResult.formText.substring(0, 300));
+        return res.status(502).json({
+          success: false,
+          error: "ไม่สามารถบันทึกข้อมูลลง Google Sheet ได้ โปรดตรวจสอบข้อมูลหรือลองใหม่อีกครั้ง",
+        });
+      }
+
+      const primaryLadder = validLadders.join(", ");
+      const record: LadderSubmissionRecord = {
+        id: `ladder-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        actionType,
+        date: dateFormatted,
+        personName,
+        department: matchedDepartment,
+        ladderType: primaryLadder,
+        syncedToGoogle: true,
+        createdAt: Date.now(),
+      };
+
+      saveLadderSubmission(record);
+
+      return res.json({
+        success: true,
+        googleSheetSynced: true,
+        message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        record,
+        sheetUrl:
+          "https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/edit?gid=1183570474#gid=1183570474",
+        formUrl:
+          "https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/viewform?usp=pp_url",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-ladder-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during ladder requisition submission",
       });
     }
   });

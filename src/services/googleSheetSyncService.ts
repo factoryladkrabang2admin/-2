@@ -3415,7 +3415,7 @@ export const KEYS_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQ
 
 export const LADDER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/edit?gid=1183570474#gid=1183570474';
 export const LADDER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/export?format=csv&gid=1183570474';
-export const LADDER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1Lv2zhIFc0iWIf1F06Y6s0TNWTDwzMQ85YlCnZ5Z2NpE/edit?usp=drive_web&ouid=116671584161777218123';
+export const LADDER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/viewform?usp=pp_url';
 
 export const SOFTENER_FALLBACK_CSV = `ประทับเวลา,วันที่,ชื่อผู้เบิก (ชื่อจริง),พื้นที่ในการใช้งาน
 "5/2/2026, 13:35:25",5/2/2026,พรนิภา,"A2, C1"
@@ -3917,7 +3917,7 @@ export async function fetchGoogleSheetEquipmentSoftener(): Promise<EquipmentSync
       SOFTENER_EQUIPMENT_SHEET_CSV_URL,
     ];
     const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_eq_softener_csv_v1');
-    const records = csv ? convertSoftenerCsvToRecords(csv) : convertSoftenerCsvToRecords(SOFTENER_FALLBACK_CSV);
+    const records = csv ? convertSoftenerCsvToRecords(csv) : [];
     return {
       success: true,
       records,

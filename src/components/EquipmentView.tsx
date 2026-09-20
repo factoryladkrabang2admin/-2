@@ -33,6 +33,7 @@ import {
   ExternalLink,
   Droplets
 } from 'lucide-react';
+import { Ladder } from './LadderIcon';
 import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { parseEquipmentDate } from '../utils/equipmentDateUtils';
@@ -49,7 +50,7 @@ import {
   KEYS_EQUIPMENT_FORM_URL,
   LADDER_EQUIPMENT_FORM_URL
 } from '../services/googleSheetSyncService';
-import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
+import { AdminUserAccount, isUserAdminOrSupervisor, canAccessRestrictedEquipment } from '../data/mockData';
 import { EquipmentDetailModal } from './EquipmentDetailModal';
 import { EquipmentAnalyticsModal } from './EquipmentAnalyticsModal';
 import { CreateEquipmentModal } from './CreateEquipmentModal';
@@ -65,22 +66,27 @@ interface EquipmentViewProps {
 
 export const EquipmentView: React.FC<EquipmentViewProps> = ({
   currentUser,
-  isAuthenticated = true,
+  isAuthenticated = false,
 }) => {
   const { language } = useLanguage();
 
-  // Active Sub-category Tab (Default to 'gown' for unauthenticated users, 'cleaning' for authenticated users)
+  // ตรวจสอบสิทธิ์สำหรับหัวข้อย่อย อุปกรณ์ทำความสะอาด และน้ำยาปรับผ้านุ่ม (เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น)
+  const canAccessRestricted = useMemo(() => {
+    return canAccessRestrictedEquipment(currentUser, isAuthenticated);
+  }, [currentUser, isAuthenticated]);
+
+  // Active Sub-category Tab (Default to 'gown' for unauthenticated/unrestricted users, 'cleaning' for authorized users)
   const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>(() => {
-    if (!isAuthenticated) return 'gown';
+    if (!canAccessRestrictedEquipment(currentUser, isAuthenticated)) return 'gown';
     return 'cleaning';
   });
 
-  // Guard against unauthenticated users accessing restricted subcategories
+  // Guard against unauthorized users accessing restricted subcategories (cleaning & softener)
   useEffect(() => {
-    if (!isAuthenticated && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener')) {
+    if (!canAccessRestricted && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener')) {
       setActiveSubCategory('gown');
     }
-  }, [isAuthenticated, activeSubCategory]);
+  }, [canAccessRestricted, activeSubCategory]);
 
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
@@ -173,10 +179,18 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
 
+  // สิทธิ์การทำรายการสำหรับหมวดหมู่อุปกรณ์ปัจจุบัน
+  const canCreateInCurrentCategory = useMemo(() => {
+    if (activeSubCategory === 'cleaning' || activeSubCategory === 'softener') {
+      return canAccessRestricted;
+    }
+    return true; // เสื้อกาวน์, กุญแจ, บันไดทรง A ทำรายการได้ทั่วไป
+  }, [activeSubCategory, canAccessRestricted]);
+
   // Load Data for active subcategory
   const loadData = async (sub: EquipmentSubCategory, force = false) => {
-    // If not authenticated, only allow gown, keys, and ladder
-    if (!isAuthenticated && (sub === 'cleaning' || sub === 'softener')) {
+    // จำกัดสิทธิ์การมองเห็นและดึงข้อมูล: อุปกรณ์ทำความสะอาด และน้ำยาปรับผ้านุ่ม เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น
+    if (!canAccessRestricted && (sub === 'cleaning' || sub === 'softener')) {
       setRecords([]);
       setIsLoading(false);
       return;
@@ -275,10 +289,15 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       }
     });
 
+    const isLadder = activeSubCategory === 'ladder';
     const isKeys = activeSubCategory === 'keys';
     // 2. Cached equipment records in localStorage
     try {
-      const cacheKey = isKeys ? 'proworkflow_equipment_cache_keys' : 'proworkflow_equipment_cache_gown';
+      const cacheKey = isLadder
+        ? 'proworkflow_equipment_cache_ladder'
+        : isKeys
+        ? 'proworkflow_equipment_cache_keys'
+        : 'proworkflow_equipment_cache_gown';
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
@@ -304,7 +323,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
     // 3. User submission history in localStorage
     try {
-      const savedKey = isKeys ? 'proworkflow_keys_requester_names' : 'proworkflow_gown_requester_names';
+      const savedKey = isLadder
+        ? 'proworkflow_ladder_requester_names'
+        : isKeys
+        ? 'proworkflow_keys_requester_names'
+        : 'proworkflow_gown_requester_names';
       const savedNames = localStorage.getItem(savedKey);
       if (savedNames) {
         const arr = JSON.parse(savedNames);
@@ -456,15 +479,16 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       { 
         id: 'ladder', 
         label: language === 'th' ? 'บันไดทรง A' : 'A-Frame Ladder',
-        icon: <Layers className="w-4 h-4" />
+        icon: <Ladder className="w-4 h-4 stroke-[2.2]" />
       },
     ];
 
-    if (!isAuthenticated) {
-      return tabs.filter((t) => t.id === 'gown' || t.id === 'keys' || t.id === 'ladder');
+    if (!canAccessRestricted) {
+      return tabs.filter((t) => t.id !== 'cleaning' && t.id !== 'softener');
     }
+
     return tabs;
-  }, [isAuthenticated, language]);
+  }, [canAccessRestricted, language]);
 
   // Export CSV (นำคอลัมน์ แผนก, สถานะ ออก และแยกรายการอุปกรณ์และจำนวนเป็นแถวๆ เพื่อง่ายต่อการค้นหา)
   const handleExportCsv = () => {
@@ -519,8 +543,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           <Key className="w-24 h-24 sm:w-28 sm:h-28 animate-tool-spin text-red-700 opacity-20 absolute right-24 sm:right-40 bottom-1 stroke-[1.5]" />
           {/* 3. Gown Shirt Icon */}
           <Shirt className="w-20 h-20 -rotate-12 animate-custom-float-rev text-rose-800 opacity-20 absolute right-40 sm:right-64 top-2 hidden md:block stroke-[1.5]" />
-          {/* 4. A-Frame Ladder / Layers Icon */}
-          <Layers className="w-16 h-16 rotate-12 animate-tool-float text-red-900 opacity-15 absolute right-20 top-4 hidden lg:block stroke-[1.5]" />
+          {/* 4. A-Frame Ladder Icon */}
+          <Ladder className="w-16 h-16 rotate-12 animate-tool-float text-red-900 opacity-15 absolute right-20 top-4 hidden lg:block stroke-[1.5]" />
           {/* 5. Subtle Sparkle Accents */}
           <Sparkles className="w-6 h-6 text-amber-500 animate-pulse absolute left-12 top-6 opacity-60" />
           <Sparkles className="w-4 h-4 text-rose-400 animate-pulse absolute left-28 bottom-4 opacity-50" />
@@ -543,7 +567,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           {/* Action Buttons Toolbar in Header */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
             {/* 0. ปุ่มไอคอน เพิ่มรายการ เบิกอุปกรณ์ / เสื้อกาวน์ / กุญแจ (ทำผ่าน Google Form) */}
-            {(canAccessGoogleSheet || activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
+            {canCreateInCurrentCategory && (
               <button
                 type="button"
                 id="btn-create-equipment-icon"
@@ -554,6 +578,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์ (ผ่าน Google Form)' : 'Add Gown Requisition / Return (Google Form)')
                     : activeSubCategory === 'keys'
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ (ผ่าน Google Form)' : 'Add Key Requisition / Return (Google Form)')
+                    : activeSubCategory === 'ladder'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก บันไดทรง A (ผ่าน Google Form)' : 'Add A-Frame Ladder Requisition (Google Form)')
                     : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName} (ผ่าน Google Form)` : `Add Requisition (${currentSubCategoryName})`)
                 }
                 aria-label={
@@ -561,6 +587,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์' : 'Add Gown Requisition')
                     : activeSubCategory === 'keys'
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ' : 'Add Key Requisition')
+                    : activeSubCategory === 'ladder'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก บันไดทรง A' : 'Add A-Frame Ladder Requisition')
                     : (language === 'th' ? 'เพิ่มรายการเบิกอุปกรณ์' : 'Add Equipment Requisition')
                 }
               >
@@ -572,6 +600,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     <Shirt className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   ) : activeSubCategory === 'keys' ? (
                     <Key className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
+                  ) : activeSubCategory === 'ladder' ? (
+                    <Ladder className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
                   ) : (
                     <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   )}
@@ -1203,7 +1233,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         onClose={() => setShowAnalyticsModal(false)}
         records={records}
         activeSubCategory={activeSubCategory}
-        isAuthenticated={isAuthenticated}
+        isAuthenticated={canAccessRestricted}
       />
 
       {/* Filter Modal */}
@@ -1465,7 +1495,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       )}
 
       {/* 5. Modal เพิ่มรายการเบิกอุปกรณ์ / เสื้อกาวน์ / กุญแจ ผ่าน Google Form */}
-      {(canAccessGoogleSheet || activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
+      {canCreateInCurrentCategory && (
         <CreateEquipmentModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
@@ -1475,6 +1505,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           formUrl={currentFormUrl}
           sheetUrl={currentSheetUrl}
           canAccessGoogleSheet={canAccessGoogleSheet}
+          canAccessRestricted={canAccessRestricted}
           existingRequesterNames={currentRequesterNames}
           existingDepartments={currentSubCategoryDepartments}
           requesterNameToDept={currentRequesterDeptMap}

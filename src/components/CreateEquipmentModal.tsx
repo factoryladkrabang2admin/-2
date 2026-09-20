@@ -14,6 +14,7 @@ import {
   Info,
   Send,
   AlertCircle,
+  AlertTriangle,
   Calendar,
   User,
   Building2,
@@ -22,8 +23,10 @@ import {
   RotateCw,
   CheckCircle2,
   ChevronDown,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
+import { Ladder } from './LadderIcon';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export const MASTER_EQUIPMENT_REQUISITION_FORM_URL =
@@ -37,6 +40,12 @@ export const KEYS_EQUIPMENT_FORM_URL =
 
 export const KEYS_GOOGLE_SHEET_URL =
   'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221';
+
+export const LADDER_EQUIPMENT_FORM_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/viewform?usp=pp_url';
+
+export const LADDER_GOOGLE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/edit?gid=1183570474#gid=1183570474';
 
 const GOWN_DEPARTMENTS = [
   'แผนกเทคนิคการผลิต 4',
@@ -60,7 +69,7 @@ const GOWN_DEPARTMENTS = [
   'แผนกสารสนเทศ',
 ];
 
-const KEYS_DEPARTMENTS = [
+export const KEYS_DEPARTMENTS = [
   'แผนกความปลอดภัย',
   'แผนกธุรการลาดกระบัง 1',
   'แผนกธุรการลาดกระบัง 2',
@@ -72,6 +81,31 @@ const KEYS_DEPARTMENTS = [
   'แผนก Lab',
   'แผนกสารสนเทศ',
   'ฝ่ายผลิตลาดกระบัง 2',
+];
+
+export const LADDER_DEPARTMENTS = [
+  'A/2',
+  'A/3',
+  'A/4',
+  'B/1',
+  'B/5',
+  'สต็อก 4',
+  'การตลาด',
+  'ซาโบเต็น',
+  'เทคนิคการผลิต 4',
+  'เทคนิคบริการ ส่วนบำรุงรักษาอาคาร',
+  'บำรุงรักษาอาคาร',
+  'ปรับอากาศ',
+  'ไฟฟ้าและสื่อสาร',
+  'สารสนเทศโรงงาน',
+  'สุขาภิบาลและเครื่องกล',
+  'วิศวกรรมเครื่องกล',
+];
+
+export const LADDER_OPTIONS = [
+  { id: 'ladder-5', name: 'บันได 5 ขั้น (สูง 1.50 เมตร)', steps: '5 ขั้น', height: 'สูง 1.50 ม.', desc: 'ความสูงเหมาะกับงานทั่วไป ภายในอาคาร' },
+  { id: 'ladder-7', name: 'บันได 7 ขั้น (สูง 2.10 เมตร)', steps: '7 ขั้น', height: 'สูง 2.10 ม.', desc: 'ความสูงระดับกลาง งานเปลี่ยนหลอดไฟ ฝ้าเพดาน' },
+  { id: 'ladder-13', name: 'บันได 13 ขั้น (สูง 3.80 เมตร)', steps: '13 ขั้น', height: 'สูง 3.80 ม.', desc: 'ความสูงพิเศษ สำหรับงานติดตั้ง งานซ่อมบำรุงที่สูง' },
 ];
 
 interface SubmittedGownSummary {
@@ -96,6 +130,15 @@ interface SubmittedKeySummary {
   timestamp: string;
 }
 
+interface SubmittedLadderSummary {
+  actionType: 'ยืม' | 'คืน';
+  date: string;
+  personName: string;
+  department: string;
+  ladderType: string;
+  timestamp: string;
+}
+
 interface CreateEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -105,6 +148,7 @@ interface CreateEquipmentModalProps {
   formUrl?: string;
   sheetUrl?: string;
   canAccessGoogleSheet?: boolean;
+  canAccessRestricted?: boolean;
   existingRequesterNames?: string[];
   existingDepartments?: string[];
   requesterNameToDept?: Record<string, string>;
@@ -161,6 +205,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   formUrl: propFormUrl,
   sheetUrl: propSheetUrl,
   canAccessGoogleSheet = false,
+  canAccessRestricted = true,
   existingRequesterNames: propExistingRequesterNames,
   existingDepartments: propExistingDepartments,
   requesterNameToDept: propRequesterNameToDept,
@@ -170,12 +215,25 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [showQr, setShowQr] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
 
+  const isLadder = activeSubCategory === 'ladder';
   const isKeys = activeSubCategory === 'keys';
-  const isGown = activeSubCategory === 'gown' || (!isKeys && propFormUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL);
-  const formUrl = isKeys ? KEYS_EQUIPMENT_FORM_URL : (propFormUrl || MASTER_EQUIPMENT_REQUISITION_FORM_URL);
-  const effectiveSheetUrl = propSheetUrl || (isGown ? GOWN_GOOGLE_SHEET_URL : isKeys ? KEYS_GOOGLE_SHEET_URL : undefined);
+  const isGown = activeSubCategory === 'gown' || (!isKeys && !isLadder && propFormUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL);
+  const formUrl = isLadder
+    ? LADDER_EQUIPMENT_FORM_URL
+    : isKeys
+    ? KEYS_EQUIPMENT_FORM_URL
+    : (propFormUrl || MASTER_EQUIPMENT_REQUISITION_FORM_URL);
+  const effectiveSheetUrl = propSheetUrl || (
+    isGown
+      ? GOWN_GOOGLE_SHEET_URL
+      : isKeys
+      ? KEYS_GOOGLE_SHEET_URL
+      : isLadder
+      ? LADDER_GOOGLE_SHEET_URL
+      : undefined
+  );
 
-  // Tab: only used for non-gown, non-keys equipment
+  // Tab: only used for non-gown, non-keys, non-ladder equipment
   const [activeTab, setActiveTab] = useState<'form' | 'direct'>('direct');
 
   // Gown Form States
@@ -192,6 +250,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [keyNumbers, setKeyNumbers] = useState<string>('');
   const [keyNote, setKeyNote] = useState<string>('');
   const [submittedKeyRecord, setSubmittedKeyRecord] = useState<SubmittedKeySummary | null>(null);
+
+  // Ladder Form States
+  const [ladderActionType, setLadderActionType] = useState<'ยืม' | 'คืน'>('ยืม');
+  const [selectedLadderType, setSelectedLadderType] = useState<string>('บันได 5 ขั้น (สูง 1.50 เมตร)');
+  const [submittedLadderRecord, setSubmittedLadderRecord] = useState<SubmittedLadderSummary | null>(null);
+  const [ladderDepartmentsList, setLadderDepartmentsList] = useState<string[]>(LADDER_DEPARTMENTS);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState<boolean>(false);
@@ -246,7 +310,11 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
     // 2. From saved list in localStorage
     try {
-      const storageKey = isKeys ? 'proworkflow_keys_requester_names' : 'proworkflow_gown_requester_names';
+      const storageKey = isLadder
+        ? 'proworkflow_ladder_requester_names'
+        : isKeys
+        ? 'proworkflow_keys_requester_names'
+        : 'proworkflow_gown_requester_names';
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const arr = JSON.parse(saved);
@@ -264,7 +332,11 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
     // 3. From cached equipment records in localStorage
     try {
-      const cacheKey = isKeys ? 'proworkflow_equipment_cache_keys' : 'proworkflow_equipment_cache_gown';
+      const cacheKey = isLadder
+        ? 'proworkflow_equipment_cache_ladder'
+        : isKeys
+        ? 'proworkflow_equipment_cache_keys'
+        : 'proworkflow_equipment_cache_gown';
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const arr = JSON.parse(cached);
@@ -290,14 +362,31 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
     // 4. From raw CSV in localStorage using proper CSV parsing
     try {
-      const csvKey = isKeys ? 'proworkflow_eq_keys_csv_v1' : 'proworkflow_eq_gown_csv_v1';
+      const csvKey = isLadder
+        ? 'proworkflow_eq_ladder_csv_v1'
+        : isKeys
+        ? 'proworkflow_eq_keys_csv_v1'
+        : 'proworkflow_eq_gown_csv_v1';
       const rawCsv = localStorage.getItem(csvKey);
       if (rawCsv) {
         const rows = parseCsvText(rawCsv);
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i];
           if (!row || row.length < 3) continue;
-          if (isKeys) {
+          if (isLadder) {
+            // Ladder sheet: col 0 timestamp, col 1 date, col 2 action, col 3 name, col 4 dept, col 5 ladder
+            const name = (row[3] || '').trim();
+            const dept = (row[4] || '').trim();
+            if (!isInvalidGownName(name)) {
+              nameSet.add(name);
+              if (dept && !deptMap[name]) {
+                deptMap[name] = dept;
+              }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              deptSet.add(dept);
+            }
+          } else if (isKeys) {
             // Keys sheet: col 0 is timestamp, col 1 is date, col 2 is "กรุณาระบุชื่อ", col 3 is "แผนก"
             const name = (row[2] || '').trim();
             const dept = (row[3] || '').trim();
@@ -330,8 +419,10 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       // ignore
     }
 
-    // If Keys departments still empty, fallback to KEYS_DEPARTMENTS
-    if (isKeys && deptSet.size === 0) {
+    // Fallback departments
+    if (isLadder && deptSet.size === 0) {
+      LADDER_DEPARTMENTS.forEach((d) => deptSet.add(d));
+    } else if (isKeys && deptSet.size === 0) {
       KEYS_DEPARTMENTS.forEach((d) => deptSet.add(d));
     }
 
@@ -339,10 +430,52 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     const sortedDepts = Array.from(deptSet).sort((a, b) => a.localeCompare(b, 'th'));
     setRememberedNames(sortedNames);
     setNameDeptMap(deptMap);
-    setKeyDepartmentsList(sortedDepts);
+    if (isLadder) {
+      setLadderDepartmentsList(sortedDepts.length > 0 ? sortedDepts : LADDER_DEPARTMENTS);
+    } else {
+      setKeyDepartmentsList(sortedDepts.length > 0 ? sortedDepts : KEYS_DEPARTMENTS);
+    }
 
-    // 5. In-flight background fetch of Keys Google Sheet to keep names and departments up-to-date with Sheet
-    if (isKeys) {
+    // 5. In-flight background fetch of Google Sheets to keep names and departments up-to-date
+    if (isLadder) {
+      fetch('/api/sheet-csv?sheetId=1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s&gid=1183570474')
+        .then((res) => res.text())
+        .then((csvText) => {
+          if (!csvText || !csvText.trim()) return;
+          try {
+            localStorage.setItem('proworkflow_eq_ladder_csv_v1', csvText);
+          } catch {
+            // ignore
+          }
+          const rows = parseCsvText(csvText);
+          const freshNames = new Set<string>(nameSet);
+          const freshDepts = new Set<string>(deptSet);
+          const freshDeptMap = { ...deptMap };
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < 5) continue;
+            const name = (row[3] || '').trim();
+            const dept = (row[4] || '').trim();
+            if (!isInvalidGownName(name)) {
+              freshNames.add(name);
+              if (dept && !freshDeptMap[name]) {
+                freshDeptMap[name] = dept;
+              }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              freshDepts.add(dept);
+            }
+          }
+
+          setRememberedNames(Array.from(freshNames).sort((a, b) => a.localeCompare(b, 'th')));
+          setNameDeptMap(freshDeptMap);
+          setLadderDepartmentsList(Array.from(freshDepts).sort((a, b) => a.localeCompare(b, 'th')));
+        })
+        .catch(() => {
+          // ignore network error
+        });
+    } else if (isKeys) {
       fetch('/api/sheet-csv?sheetId=1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY&gid=546384221')
         .then((res) => res.text())
         .then((csvText) => {
@@ -381,7 +514,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           // ignore network error
         });
     }
-  }, [isOpen, isKeys, propExistingRequesterNames, propExistingDepartments, propRequesterNameToDept]);
+  }, [isOpen, isKeys, isLadder, propExistingRequesterNames, propExistingDepartments, propRequesterNameToDept]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -427,7 +560,28 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
     // If department is currently blank and we know their department, auto-fill it
     if (!department.trim() && nameDeptMap[name]) {
-      setDepartment(nameDeptMap[name]);
+      const mapped = nameDeptMap[name];
+      if (isLadder) {
+        if (LADDER_DEPARTMENTS.includes(mapped)) {
+          setDepartment(mapped);
+        } else {
+          const matched = LADDER_DEPARTMENTS.find(
+            (d) => d.toLowerCase() === mapped.toLowerCase() || d.includes(mapped) || mapped.includes(d)
+          );
+          if (matched) setDepartment(matched);
+        }
+      } else if (isKeys) {
+        if (KEYS_DEPARTMENTS.includes(mapped)) {
+          setDepartment(mapped);
+        } else {
+          const matched = KEYS_DEPARTMENTS.find(
+            (d) => d.toLowerCase() === mapped.toLowerCase() || d.includes(mapped) || mapped.includes(d)
+          );
+          if (matched) setDepartment(matched);
+        }
+      } else {
+        setDepartment(mapped);
+      }
     }
   };
 
@@ -475,10 +629,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       setKeyActionType('เบิก');
       setKeyNumbers('');
       setKeyNote('');
+      setLadderActionType('ยืม');
+      setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
       setIsSubmitting(false);
       setIsSubmittedSuccess(false);
       setSubmittedRecord(null);
       setSubmittedKeyRecord(null);
+      setSubmittedLadderRecord(null);
       setSubmitError(null);
       setIsNameDropdownOpen(false);
       setActiveSuggestionIndex(-1);
@@ -525,6 +682,119 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setKeyNote('');
   };
 
+  const handleStartNewLadderEntry = () => {
+    setIsSubmittedSuccess(false);
+    setSubmittedLadderRecord(null);
+    setSubmitError(null);
+    setLadderActionType('ยืม');
+    setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
+  };
+
+  const handleLadderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+
+    if (!date.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุวันที่' : 'Please specify date');
+      return;
+    }
+
+    if (!personName.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุชื่อผู้ยืม-คืน' : 'Please enter borrower/returner name');
+      return;
+    }
+
+    if (!department.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาเลือกแผนก' : 'Please select department');
+      return;
+    }
+
+    if (!LADDER_DEPARTMENTS.includes(department.trim())) {
+      setSubmitError(language === 'th' ? 'กรุณาเลือกแผนกจากรายการที่กำหนด' : 'Please select a valid department from the list');
+      return;
+    }
+
+    if (!selectedLadderType.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาเลือกบันไดทรง A' : 'Please select an A-Frame ladder');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        actionType: ladderActionType,
+        date: date.trim(),
+        personName: personName.trim(),
+        department: department.trim(),
+        ladderType: selectedLadderType.trim(),
+      };
+
+      const res = await fetch('/api/equipment-ladder-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success && data.googleSheetSynced) {
+        const trimmedName = personName.trim();
+        const trimmedDept = department.trim();
+
+        // 1. Mark success and store record summary
+        setIsSubmittedSuccess(true);
+        setSubmittedLadderRecord({
+          actionType: ladderActionType,
+          date: date.trim(),
+          personName: trimmedName,
+          department: trimmedDept,
+          ladderType: selectedLadderType.trim(),
+          timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        });
+
+        // 2. Remember name in localStorage for instant future autocompletion
+        if (trimmedName && !isInvalidGownName(trimmedName)) {
+          try {
+            const saved = localStorage.getItem('proworkflow_ladder_requester_names');
+            const list: string[] = saved ? JSON.parse(saved) : [];
+            const cleanedList = list.filter((n) => typeof n === 'string' && !isInvalidGownName(n));
+            if (!cleanedList.includes(trimmedName)) {
+              cleanedList.unshift(trimmedName);
+              localStorage.setItem('proworkflow_ladder_requester_names', JSON.stringify(cleanedList.slice(0, 100)));
+            }
+          } catch {
+            // ignore
+          }
+
+          setRememberedNames((prev) => {
+            if (!prev.includes(trimmedName)) {
+              return [trimmedName, ...prev.filter((n) => !isInvalidGownName(n))].sort((a, b) => a.localeCompare(b, 'th'));
+            }
+            return prev;
+          });
+        }
+
+        if (trimmedDept) {
+          setNameDeptMap((prev) => ({ ...prev, [trimmedName]: trimmedDept }));
+        }
+
+        // 3. Refresh background data table
+        if (onRefreshData) {
+          onRefreshData();
+        }
+
+        // Requirement: Keep window open until the user clicks close button!
+      } else {
+        setSubmitError(data.error || (language === 'th' ? 'เกิดข้อผิดพลาดในการบันทึกข้อมูล' : 'Failed to submit data'));
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || (language === 'th' ? 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' : 'Network error'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleKeySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
@@ -540,7 +810,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     }
 
     if (!department.trim()) {
-      setSubmitError(language === 'th' ? 'กรุณาระบุแผนก' : 'Please specify department');
+      setSubmitError(language === 'th' ? 'กรุณาเลือกแผนก' : 'Please select department');
+      return;
+    }
+
+    if (!KEYS_DEPARTMENTS.includes(department.trim())) {
+      setSubmitError(language === 'th' ? 'กรุณาเลือกแผนกจากรายการที่กำหนด' : 'Please select a valid department from the list');
       return;
     }
 
@@ -569,7 +844,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.googleSheetSynced) {
         const trimmedName = personName.trim();
         const trimmedDept = department.trim();
 
@@ -774,6 +1049,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                 <Shirt className="w-5 h-5 stroke-[2.5]" />
               ) : isKeys ? (
                 <Key className="w-5 h-5 stroke-[2.5]" />
+              ) : activeSubCategory === 'ladder' ? (
+                <Ladder className="w-5 h-5 stroke-[2.5]" />
               ) : (
                 <Package className="w-5 h-5 stroke-[2.5]" />
               )}
@@ -873,7 +1150,28 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {isGown ? (
+          {(activeSubCategory === 'cleaning' || activeSubCategory === 'softener') && !canAccessRestricted ? (
+            <div className="text-center py-12 px-4 space-y-4 animate-in fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 mx-auto flex items-center justify-center shadow-xs">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">
+                {language === 'th' ? 'จำกัดสิทธิ์การทำรายการ' : 'Restricted Access'}
+              </h3>
+              <p className="text-sm text-slate-600 max-w-md mx-auto">
+                {language === 'th'
+                  ? 'หัวข้อย่อยนี้จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น'
+                  : 'This section is restricted to Administrators, Page Admins, and Authenticated Users only.'}
+              </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                {language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+              </button>
+            </div>
+          ) : isGown ? (
             /* Direct Form for Gown */
             isSubmittedSuccess && submittedRecord ? (
               /* Requirement 1: Success confirmation receipt - stays open until user clicks close */
@@ -1610,20 +1908,22 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     <span>{language === 'th' ? 'แผนก' : 'Department'}</span> <span className="text-rose-600">*</span>
                   </label>
                   <div className="relative">
-                    <input
-                      type="text"
-                      list="key-departments-datalist"
+                    <select
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      placeholder={language === 'th' ? 'พิมพ์หรือเลือกแผนก' : 'Type or select department'}
                       required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
-                    />
-                    <datalist id="key-departments-datalist">
-                      {keyDepartmentsList.map((dept) => (
-                        <option key={dept} value={dept} />
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white appearance-none pr-9 cursor-pointer shadow-xs"
+                    >
+                      <option value="" disabled>
+                        {language === 'th' ? '-- กรุณาเลือกแผนก --' : '-- Select Department --'}
+                      </option>
+                      {KEYS_DEPARTMENTS.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
                       ))}
-                    </datalist>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                 </div>
 

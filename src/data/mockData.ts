@@ -281,6 +281,16 @@ export function canRecordRagsGloves(user?: AdminUserAccount | null, isAuthentica
   return canCreateLaundryOrder(user, isAuthenticated);
 }
 
+/**
+ * ตรวจสอบสิทธิ์การมองเห็นและทำรายการสำหรับหัวข้อย่อย อุปกรณ์ทำความสะอาด และน้ำยาปรับผ้านุ่ม
+ * ข้อกำหนด: จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น
+ */
+export function canAccessRestrictedEquipment(user?: AdminUserAccount | null, isAuthenticated: boolean = false): boolean {
+  if (!isAuthenticated || !user) return false;
+  if (user.username === 'guest') return false;
+  return true;
+}
+
 
 export interface StaffEmployeeInfo {
   employeeId: string;
