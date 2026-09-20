@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <PackageCheck className="w-5 h-5" />,
       breadKind: 'bun',
       breadName: 'บันกลมเนื้อนุ่ม',
-      requiresAuth: true,
+      requiresAuth: false,
     },
     {
       id: 'chlorine',

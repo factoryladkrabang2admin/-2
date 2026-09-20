@@ -32,6 +32,7 @@ interface EquipmentAnalyticsModalProps {
   onClose: () => void;
   records: EquipmentRecord[];
   activeSubCategory: EquipmentSubCategory;
+  isAuthenticated?: boolean;
 }
 
 export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = ({
@@ -39,6 +40,7 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
   onClose,
   records,
   activeSubCategory,
+  isAuthenticated = true,
 }) => {
   const { language } = useLanguage();
   const [activeChartTab, setActiveChartTab] = useState<'status' | 'departments' | 'topRequesters'>('status');
@@ -117,7 +119,10 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
         }
       }
 
-      // SubCategory
+      // SubCategory & Authentication Protection
+      if (!isAuthenticated && (r.subCategory === 'cleaning' || r.subCategory === 'softener')) {
+        return false;
+      }
       if (selectedSubCategory !== 'all') {
         if (r.subCategory !== selectedSubCategory) return false;
       }
@@ -365,8 +370,12 @@ export const EquipmentAnalyticsModal: React.FC<EquipmentAnalyticsModalProps> = (
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 >
                   <option value="all">{language === 'th' ? 'ทุกหมวดหมู่ (All)' : 'All Categories'}</option>
-                  <option value="cleaning">{language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning'}</option>
-                  <option value="softener">{language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Softener'}</option>
+                  {isAuthenticated && (
+                    <>
+                      <option value="cleaning">{language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning'}</option>
+                      <option value="softener">{language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Softener'}</option>
+                    </>
+                  )}
                   <option value="gown">{language === 'th' ? 'เสื้อกาวน์' : 'Gowns'}</option>
                   <option value="keys">{language === 'th' ? 'กุญแจ' : 'Keys'}</option>
                   <option value="ladder">{language === 'th' ? 'บันไดทรง A' : 'Ladder'}</option>

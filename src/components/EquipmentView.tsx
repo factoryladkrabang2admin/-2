@@ -68,8 +68,18 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 }) => {
   const { language } = useLanguage();
 
-  // Active Sub-category Tab
-  const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>('cleaning');
+  // Active Sub-category Tab (Default to 'gown' for unauthenticated users, 'cleaning' for authenticated users)
+  const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>(() => {
+    if (!isAuthenticated) return 'gown';
+    return 'cleaning';
+  });
+
+  // Guard against unauthenticated users accessing restricted subcategories
+  useEffect(() => {
+    if (!isAuthenticated && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener')) {
+      setActiveSubCategory('gown');
+    }
+  }, [isAuthenticated, activeSubCategory]);
 
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
@@ -163,6 +173,13 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   // Load Data for active subcategory
   const loadData = async (sub: EquipmentSubCategory, force = false) => {
+    // If not authenticated, only allow gown, keys, and ladder
+    if (!isAuthenticated && (sub === 'cleaning' || sub === 'softener')) {
+      setRecords([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     // 1. Try local storage cache first
     if (!force) {
@@ -326,33 +343,40 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   }, [filteredRecords, currentPage, itemsPerPage]);
 
   // Sub-category tabs definition
-  const subCategoryTabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode }[] = [
-    { 
-      id: 'cleaning', 
-      label: language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies',
-      icon: <Sparkle className="w-4 h-4" />
-    },
-    { 
-      id: 'softener', 
-      label: language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener',
-      icon: <Droplets className="w-4 h-4" />
-    },
-    { 
-      id: 'gown', 
-      label: language === 'th' ? 'เสื้อกาวน์' : 'Gowns',
-      icon: <Shirt className="w-4 h-4" />
-    },
-    { 
-      id: 'keys', 
-      label: language === 'th' ? 'กุญแจ' : 'Keys',
-      icon: <Key className="w-4 h-4" />
-    },
-    { 
-      id: 'ladder', 
-      label: language === 'th' ? 'บันไดทรง A' : 'A-Frame Ladder',
-      icon: <Layers className="w-4 h-4" />
-    },
-  ];
+  const subCategoryTabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode }[] = useMemo(() => {
+    const tabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode }[] = [
+      { 
+        id: 'cleaning', 
+        label: language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies',
+        icon: <Sparkle className="w-4 h-4" />
+      },
+      { 
+        id: 'softener', 
+        label: language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener',
+        icon: <Droplets className="w-4 h-4" />
+      },
+      { 
+        id: 'gown', 
+        label: language === 'th' ? 'เสื้อกาวน์' : 'Gowns',
+        icon: <Shirt className="w-4 h-4" />
+      },
+      { 
+        id: 'keys', 
+        label: language === 'th' ? 'กุญแจ' : 'Keys',
+        icon: <Key className="w-4 h-4" />
+      },
+      { 
+        id: 'ladder', 
+        label: language === 'th' ? 'บันไดทรง A' : 'A-Frame Ladder',
+        icon: <Layers className="w-4 h-4" />
+      },
+    ];
+
+    if (!isAuthenticated) {
+      return tabs.filter((t) => t.id === 'gown' || t.id === 'keys' || t.id === 'ladder');
+    }
+    return tabs;
+  }, [isAuthenticated, language]);
 
   // Export CSV (นำคอลัมน์ แผนก, สถานะ ออก และแยกรายการอุปกรณ์และจำนวนเป็นแถวๆ เพื่อง่ายต่อการค้นหา)
   const handleExportCsv = () => {
@@ -1051,6 +1075,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         onClose={() => setShowAnalyticsModal(false)}
         records={records}
         activeSubCategory={activeSubCategory}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* Filter Modal */}

@@ -1139,22 +1139,10 @@ export default function App() {
           )}
 
           {currentTab === 'equipment' && (
-            isAuthenticated ? (
-              <EquipmentView
-                currentUser={currentUser}
-                isAuthenticated={isAuthenticated}
-              />
-            ) : (
-              <RestrictedAccessView
-                currentTab="equipment"
-                onOpenLogin={() => setLoginModalOpen(true)}
-                onNavigateToLaundry={() => {
-                  setLaundrySubTab('pipeline');
-                  setCurrentTab('laundry');
-                }}
-                onNavigateToMeetingRoom={() => setCurrentTab('meeting_room')}
-              />
-            )
+            <EquipmentView
+              currentUser={currentUser}
+              isAuthenticated={isAuthenticated}
+            />
           )}
 
           {currentTab === 'chlorine' && (
