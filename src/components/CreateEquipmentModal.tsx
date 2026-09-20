@@ -26,10 +26,10 @@ import {
   Search,
   Lock,
   Droplets,
-  MapPin,
-  BrushCleaning
+  MapPin
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
+import { Mop } from './MopIcon';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   CLEANING_FORM_ITEMS,
@@ -64,7 +64,15 @@ export const SOFTENER_GOOGLE_SHEET_URL =
 
 export const SOFTENER_AREAS = ['A1', 'A2', 'B1', 'B2', 'C1'] as const;
 export const INITIAL_SOFTENER_NAMES = ['พรนิภา', 'สงกรานต์', 'ณัฐภัทร', 'สุดารัตน์', 'ยุพา'];
-export const INITIAL_CLEANING_NAMES = ['สงกรานต์', 'ณัฐภัทร', 'สุดารัตน์', 'พรนิภา', 'พงศกร', 'สุริยา', 'ยุพา กำพังเทียม'];
+export const INITIAL_CLEANING_NAMES = [
+  'ณัฐภัทร',
+  'พงศกร',
+  'พรนิภา',
+  'ยุพา  กำพังเทียม',
+  'สงกรานต์',
+  'สุดารัตน์',
+  'สุริยา',
+];
 export const CLEANING_CATEGORIES = [
   'ทั้งหมด',
   'ไม้กวาด',
@@ -566,9 +574,62 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       INITIAL_SOFTENER_NAMES.forEach((n) => nameSet.add(n));
     }
 
-    // Default seed for cleaning names from Google Sheet column if nameSet is still empty
-    if (isCleaning && nameSet.size === 0) {
-      INITIAL_CLEANING_NAMES.forEach((n) => nameSet.add(n));
+    // Specifically for Cleaning, ensure names strictly come from Google Sheet column "ชื่อผู้เบิก"
+    if (isCleaning) {
+      nameSet.clear();
+      INITIAL_CLEANING_NAMES.forEach((n) => {
+        if (!isInvalidGownName(n)) nameSet.add(n.trim());
+      });
+
+      // From saved cleaning requester names in localStorage
+      try {
+        const saved = localStorage.getItem('proworkflow_cleaning_requester_names');
+        if (saved) {
+          const arr = JSON.parse(saved);
+          if (Array.isArray(arr)) {
+            arr.forEach((n: any) => {
+              if (typeof n === 'string' && !isInvalidGownName(n)) nameSet.add(n.trim());
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // From raw cleaning CSV in localStorage (reading column "ชื่อผู้เบิก")
+      try {
+        const rawCsv = localStorage.getItem('proworkflow_eq_cleaning_csv_v1');
+        if (rawCsv) {
+          const rows = parseCsvText(rawCsv);
+          let nameCol = 2;
+          if (rows.length > 0) {
+            const hRow = rows[0].map((h) => (h || '').trim());
+            for (let c = 0; c < hRow.length; c++) {
+              if (hRow[c].includes('ผู้เบิก') || hRow[c].includes('ชื่อ')) {
+                nameCol = c;
+                break;
+              }
+            }
+          }
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row && row[nameCol]) {
+              const n = (row[nameCol] || '').trim();
+              if (n && !isInvalidGownName(n)) nameSet.add(n);
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // From propExistingRequesterNames if provided
+      if (propExistingRequesterNames && Array.isArray(propExistingRequesterNames)) {
+        propExistingRequesterNames.forEach((n) => {
+          const trimmed = (n || '').trim();
+          if (trimmed && !isInvalidGownName(trimmed)) nameSet.add(trimmed);
+        });
+      }
     }
 
     // Fallback departments
@@ -723,7 +784,10 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
             // ignore
           }
           const rows = parseCsvText(csvText);
-          const freshNames = new Set<string>(nameSet);
+          const freshNames = new Set<string>();
+          INITIAL_CLEANING_NAMES.forEach((n) => {
+            if (!isInvalidGownName(n)) freshNames.add(n.trim());
+          });
 
           let nameColIdx = 2;
           if (rows.length > 0) {
@@ -1178,14 +1242,14 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     }
 
     const itemsToSubmit = Object.entries(cleaningSelectedItems)
-      .filter(([_, qty]) => ['1', '2', '3'].includes(qty))
+      .filter(([_, qty]) => ['1', '2', '3'].includes(String(qty)))
       .map(([idStr, qty]) => {
         const idNum = Number(idStr);
         const itemObj = CLEANING_FORM_ITEMS.find((it) => it.id === idNum);
         return {
           id: idNum,
           name: itemObj ? itemObj.name : `รายการที่ ${idNum}`,
-          quantity: qty,
+          quantity: String(qty),
         };
       });
 
@@ -1245,7 +1309,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
             subCategory: 'cleaning',
             items: itemsToSubmit.map((it) => ({
               name: it.name,
-              quantity: parseInt(it.quantity, 10) || 1,
+              quantity: parseInt(String(it.quantity), 10) || 1,
             })),
             status: 'เบิก',
             raw: record,
@@ -1561,7 +1625,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
               ) : isSoftener ? (
                 <Droplets className="w-5 h-5 stroke-[2.5]" />
               ) : isCleaning ? (
-                <BrushCleaning className="w-5 h-5 stroke-[2.5]" />
+                <Mop className="w-5 h-5 stroke-[2.5]" />
               ) : (
                 <Package className="w-5 h-5 stroke-[2.5]" />
               )}
@@ -1587,13 +1651,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   </span>
                 )}
               </div>
-              {!isGown && !isKeys && !isLadder && !isSoftener && !isCleaning && (
-                <p className="text-xs text-rose-100 font-medium">
-                  {language === 'th'
-                    ? 'กรอกข้อมูลผ่านฟอร์มเพื่อบันทึกลงในระบบและ Google Sheet'
-                    : 'Fill out the form to record into the system and Google Sheet'}
-                </p>
-              )}
               {isGown && (
                 <p className="text-xs text-rose-100/95 font-medium">
                   {language === 'th'
@@ -1606,13 +1663,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   {language === 'th'
                     ? 'บันทึกรายการเบิกหรือคืนกุญแจ พร้อมซิงค์เข้า Google Sheet อัตโนมัติ'
                     : 'Record borrowing or return of keys, auto-syncing with Google Sheet'}
-                </p>
-              )}
-              {isCleaning && (
-                <p className="text-xs text-rose-100/95 font-medium">
-                  {language === 'th'
-                    ? 'บันทึกรายการเบิกอุปกรณ์ทำความสะอาด พร้อมซิงค์เข้า Google Sheet อัตโนมัติ'
-                    : 'Record requisition of cleaning equipment, auto-syncing with Google Sheet'}
                 </p>
               )}
             </div>
@@ -1681,7 +1731,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {(activeSubCategory === 'cleaning' || activeSubCategory === 'softener') && !canAccessRestricted ? (
+          {(activeSubCategory === 'softener' || activeSubCategory === 'cleaning') && !canAccessRestricted ? (
             <div className="text-center py-12 px-4 space-y-4 animate-in fade-in">
               <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 mx-auto flex items-center justify-center shadow-xs">
                 <Lock className="w-8 h-8" />
@@ -1691,7 +1741,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
               </h3>
               <p className="text-sm text-slate-600 max-w-md mx-auto">
                 {language === 'th'
-                  ? 'หัวข้อย่อยนี้จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น'
+                  ? `หัวข้อย่อย${activeSubCategory === 'softener' ? 'น้ำยาปรับผ้านุ่ม' : 'อุปกรณ์ทำความสะอาด'} จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น`
                   : 'This section is restricted to Administrators, Page Admins, and Authenticated Users only.'}
               </p>
               <button
@@ -3238,7 +3288,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">{language === 'th' ? 'ประเภทรายการ' : 'Action Type'}</span>
                     <span className="px-3 py-1 rounded-lg font-black text-xs bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1.5">
-                      <BrushCleaning className="w-3.5 h-3.5 text-rose-600" />
+                      <Mop className="w-3.5 h-3.5 text-rose-600" />
                       {language === 'th' ? 'เบิกอุปกรณ์ทำความสะอาด' : 'Cleaning Equipment Requisition'}
                     </span>
                   </div>
@@ -3334,7 +3384,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     </p>
                     <p>
                       {language === 'th'
-                        ? 'เลือกรายการเบิกอุปกรณ์ แผนกธุรการลาดกระบัง 2 ภายในวันศุกร์ก่อนเที่ยง เพื่อจะได้รับอุปกรณ์ในวันพฤหัสอาทิตย์ถัดไป'
+                        ? 'เลือกรายการเบิกอุปกรณ์ แผนกธุรการลาดกระบัง 2 ภายในวันศุกร์ก่อนเที่ยง เพื่อจะได้รับอุปกรณ์ในวันพฤหัสบดีอาทิตย์ถัดไป'
                         : 'Submit equipment requisition by Friday before 12:00 PM to receive items on Thursday of next week.'}
                     </p>
                   </div>
@@ -3362,11 +3412,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       <User className="w-3.5 h-3.5 text-rose-600" />
                       <span>{language === 'th' ? 'ชื่อผู้เบิก' : 'Requester Name'}</span> <span className="text-rose-600">*</span>
                     </span>
-                    {rememberedNames.length > 0 && (
-                      <span className="text-2xs text-slate-400 font-medium">
-                        {language === 'th' ? `จำชื่อ ${rememberedNames.length} ท่าน` : `${rememberedNames.length} names saved`}
-                      </span>
-                    )}
                   </label>
 
                   <div className="relative">
@@ -3466,19 +3511,16 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <BrushCleaning className="w-3.5 h-3.5 text-rose-600" />
+                      <Mop className="w-3.5 h-3.5 text-rose-600" />
                       <span>{language === 'th' ? 'เลือกรายการอุปกรณ์ทำความสะอาด' : 'Select Cleaning Items'}</span>
-                      <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                        {CLEANING_FORM_ITEMS.length} รายการ
-                      </span>
                     </label>
 
-                    {Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length > 0 && (
+                    {Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(String(v))).length > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
                           {language === 'th'
-                            ? `เลือกแล้ว ${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length} รายการ`
-                            : `${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length} selected`}
+                            ? `เลือกแล้ว ${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(String(v))).length} รายการ`
+                            : `${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(String(v))).length} selected`}
                         </span>
                         <button
                           type="button"
@@ -3491,62 +3533,33 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     )}
                   </div>
 
-                  {/* Search and Category Filter */}
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={cleaningSearchQuery}
-                        onChange={(e) => setCleaningSearchQuery(e.target.value)}
-                        placeholder={language === 'th' ? 'ค้นหาชื่ออุปกรณ์ทำความสะอาด เช่น ไม้กวาด, ถูพื้น, น้ำยา...' : 'Search cleaning items...'}
-                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs bg-slate-50 focus:bg-white outline-hidden font-medium"
-                      />
-                      {cleaningSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => setCleaningSearchQuery('')}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Category pills */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-                      {CLEANING_CATEGORIES.map((cat) => {
-                        const isCatActive = cleaningSelectedCategory === cat;
-                        return (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => setCleaningSelectedCategory(cat)}
-                            className={`px-2.5 py-1 rounded-lg text-2xs font-bold whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
-                              isCatActive
-                                ? 'bg-rose-600 text-white shadow-xs'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {cat}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={cleaningSearchQuery}
+                      onChange={(e) => setCleaningSearchQuery(e.target.value)}
+                      placeholder={language === 'th' ? 'ค้นหาชื่ออุปกรณ์ทำความสะอาด เช่น ไม้กวาด, ถูพื้น, น้ำยา...' : 'Search cleaning items...'}
+                      className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs bg-slate-50 focus:bg-white outline-hidden font-medium"
+                    />
+                    {cleaningSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setCleaningSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   {/* Items List */}
                   <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white p-1">
                     {CLEANING_FORM_ITEMS.filter((it) => {
-                      if (cleaningSelectedCategory !== 'ทั้งหมด' && it.category !== cleaningSelectedCategory) {
-                        return false;
-                      }
                       if (cleaningSearchQuery.trim()) {
                         const q = cleaningSearchQuery.trim().toLowerCase();
-                        return (
-                          it.name.toLowerCase().includes(q) ||
-                          it.category.toLowerCase().includes(q)
-                        );
+                        return it.name.toLowerCase().includes(q);
                       }
                       return true;
                     }).length === 0 ? (
@@ -3555,15 +3568,9 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       </div>
                     ) : (
                       CLEANING_FORM_ITEMS.filter((it) => {
-                        if (cleaningSelectedCategory !== 'ทั้งหมด' && it.category !== cleaningSelectedCategory) {
-                          return false;
-                        }
                         if (cleaningSearchQuery.trim()) {
                           const q = cleaningSearchQuery.trim().toLowerCase();
-                          return (
-                            it.name.toLowerCase().includes(q) ||
-                            it.category.toLowerCase().includes(q)
-                          );
+                          return it.name.toLowerCase().includes(q);
                         }
                         return true;
                       }).map((item) => {
@@ -3578,14 +3585,9 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                             }`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-bold text-slate-800">
-                                  {item.name}
-                                </span>
-                                <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">
-                                  {item.category}
-                                </span>
-                              </div>
+                              <span className="text-xs font-bold text-slate-800">
+                                {item.name}
+                              </span>
                             </div>
 
                             {/* Quantity buttons 1, 2, 3 */}
@@ -3640,7 +3642,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                 </div>
 
                 {/* 5. Live Summary Preview Card */}
-                {(personName.trim() || Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(v)) || cleaningOther.trim()) && (
+                {(personName.trim() || Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(String(v))) || cleaningOther.trim()) && (
                   <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200/80 text-xs space-y-1.5">
                     <div className="font-bold text-rose-950 flex items-center justify-between">
                       <span>{language === 'th' ? 'ตัวอย่างข้อมูลที่จะบันทึก' : 'Preview Data'}</span>
@@ -3654,9 +3656,9 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       <div>
                         <span className="text-slate-500">รายการอุปกรณ์ที่เลือก:</span>{' '}
                         <span className="font-bold text-rose-900">
-                          {Object.entries(cleaningSelectedItems).filter(([_, qty]) => ['1', '2', '3'].includes(qty)).length > 0
+                          {Object.entries(cleaningSelectedItems).filter(([_, qty]) => ['1', '2', '3'].includes(String(qty))).length > 0
                             ? Object.entries(cleaningSelectedItems)
-                                .filter(([_, qty]) => ['1', '2', '3'].includes(qty))
+                                .filter(([_, qty]) => ['1', '2', '3'].includes(String(qty)))
                                 .map(([id, qty]) => {
                                   const it = CLEANING_FORM_ITEMS.find((x) => x.id === Number(id));
                                   return `${it ? it.name : id} (${qty} ชิ้น)`;
@@ -3679,7 +3681,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     disabled={
                       isSubmitting ||
                       !personName.trim() ||
-                      (!Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(v)) && !cleaningOther.trim())
+                      (!Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(String(v))) && !cleaningOther.trim())
                     }
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-rose-700 via-red-600 to-amber-600 hover:from-rose-800 hover:via-red-700 hover:to-amber-700 text-white shadow-rose-500/30 hover:scale-102 active:scale-98"
                   >

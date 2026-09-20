@@ -32,9 +32,10 @@ import {
   Copy,
   ExternalLink,
   Droplets,
-  BrushCleaning
+  Lock
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
+import { Mop } from './MopIcon';
 import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { parseEquipmentDate } from '../utils/equipmentDateUtils';
@@ -76,15 +77,14 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     return canAccessRestrictedEquipment(currentUser, isAuthenticated);
   }, [currentUser, isAuthenticated]);
 
-  // Active Sub-category Tab (Default to 'gown' for unauthenticated/unrestricted users, 'cleaning' for authorized users)
+  // Active Sub-category Tab (Default to 'cleaning' if authorized, otherwise 'gown')
   const [activeSubCategory, setActiveSubCategory] = useState<EquipmentSubCategory>(() => {
-    if (!canAccessRestrictedEquipment(currentUser, isAuthenticated)) return 'gown';
-    return 'cleaning';
+    return canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
   });
 
-  // Guard against unauthorized users accessing restricted subcategories (cleaning only)
+  // Switch to an allowed subcategory if user does not have permission for cleaning or softener
   useEffect(() => {
-    if (!canAccessRestricted && activeSubCategory === 'cleaning') {
+    if (!canAccessRestricted && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener')) {
       setActiveSubCategory('gown');
     }
   }, [canAccessRestricted, activeSubCategory]);
@@ -180,23 +180,21 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
 
-  // สิทธิ์การทำรายการสำหรับหมวดหมู่อุปกรณ์ปัจจุบัน
+  // สิทธิ์การทำรายการสำหรับหมวดหมู่อุปกรณ์ปัจจุบัน (อุปกรณ์ทำความสะอาด, น้ำยาปรับผ้านุ่ม จำกัดเฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าระบบได้เท่านั้น)
   const canCreateInCurrentCategory = useMemo(() => {
-    if (activeSubCategory === 'cleaning') {
+    if (activeSubCategory === 'cleaning' || activeSubCategory === 'softener') {
       return canAccessRestricted;
     }
-    return true; // เสื้อกาวน์, กุญแจ, บันไดทรง A, น้ำยาปรับผ้านุ่ม ทำรายการได้ทั่วไป
+    return true; // เสื้อกาวน์, กุญแจ, บันไดทรง A ทำรายการได้ทั่วไป
   }, [activeSubCategory, canAccessRestricted]);
 
   // Load Data for active subcategory
   const loadData = async (sub: EquipmentSubCategory, force = false) => {
-    // จำกัดสิทธิ์การมองเห็นและดึงข้อมูล: อุปกรณ์ทำความสะอาด เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น
-    if (!canAccessRestricted && sub === 'cleaning') {
+    if (!canAccessRestricted && (sub === 'cleaning' || sub === 'softener')) {
       setRecords([]);
       setIsLoading(false);
       return;
     }
-
     setIsLoading(true);
     // 1. Try local storage cache first
     if (!force) {
@@ -293,6 +291,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     const isLadder = activeSubCategory === 'ladder';
     const isKeys = activeSubCategory === 'keys';
     const isSoftener = activeSubCategory === 'softener';
+    const isCleaning = activeSubCategory === 'cleaning';
     // 2. Cached equipment records in localStorage
     try {
       const cacheKey = isLadder
@@ -301,6 +300,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         ? 'proworkflow_equipment_cache_keys'
         : isSoftener
         ? 'proworkflow_equipment_cache_softener'
+        : isCleaning
+        ? `${SUB_CATEGORY_STORAGE_PREFIX}cleaning`
         : 'proworkflow_equipment_cache_gown';
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -333,6 +334,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         ? 'proworkflow_keys_requester_names'
         : isSoftener
         ? 'proworkflow_remembered_names_softener'
+        : isCleaning
+        ? 'proworkflow_cleaning_requester_names'
         : 'proworkflow_gown_requester_names';
       const savedNames = localStorage.getItem(savedKey);
       if (savedNames) {
@@ -349,7 +352,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       // ignore
     }
 
-    // 4. Also check cached CSV for softener if active
+    // 4. Also check cached CSV for softener or cleaning if active
     if (isSoftener) {
       try {
         const rawCsv = localStorage.getItem('proworkflow_eq_softener_csv_v1');
@@ -359,6 +362,27 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             const line = lines[i].trim();
             if (!line) continue;
             // Parse line handling quotes
+            const match = line.match(/^("[^"]*"|[^,]*),("[^"]*"|[^,]*),("[^"]*"|[^,]*)/);
+            if (match && match[3]) {
+              const name = match[3].replace(/^["']+|["']+$/g, '').trim();
+              if (!isInvalidGownName(name)) {
+                nameSet.add(name);
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    } else if (isCleaning) {
+      try {
+        const rawCsv = localStorage.getItem('proworkflow_eq_cleaning_csv_v1');
+        if (rawCsv) {
+          const lines = rawCsv.split(/\r?\n/);
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            // Parse line handling quotes: col 0 timestamp, col 1 date, col 2 requester name
             const match = line.match(/^("[^"]*"|[^,]*),("[^"]*"|[^,]*),("[^"]*"|[^,]*)/);
             if (match && match[3]) {
               const name = match[3].replace(/^["']+|["']+$/g, '').trim();
@@ -483,18 +507,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     return filteredRecords.slice(start, start + itemsPerPage);
   }, [filteredRecords, currentPage, itemsPerPage]);
 
-  // Sub-category tabs definition
+  // Sub-category tabs definition (หัวข้อย่อย อุปกรณ์ทำความสะอาด, น้ำยาปรับผ้านุ่ม จำกัดสิทธิ์การมองเห็นเฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าระบบได้เท่านั้น)
   const subCategoryTabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode }[] = useMemo(() => {
-    const tabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode }[] = [
+    const allTabs: { id: EquipmentSubCategory; label: string; icon: React.ReactNode; isRestricted?: boolean }[] = [
       { 
         id: 'cleaning', 
         label: language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies',
-        icon: <BrushCleaning className="w-4 h-4 stroke-[2.2]" />
+        icon: <Mop className="w-4 h-4 stroke-[2.2]" />,
+        isRestricted: true,
       },
       { 
         id: 'softener', 
         label: language === 'th' ? 'น้ำยาปรับผ้านุ่ม' : 'Fabric Softener',
-        icon: <Droplets className="w-4 h-4" />
+        icon: <Droplets className="w-4 h-4" />,
+        isRestricted: true,
       },
       { 
         id: 'gown', 
@@ -514,11 +540,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     ];
 
     if (!canAccessRestricted) {
-      return tabs.filter((t) => t.id !== 'cleaning');
+      return allTabs.filter((t) => !t.isRestricted);
     }
 
-    return tabs;
-  }, [canAccessRestricted, language]);
+    return allTabs;
+  }, [language, canAccessRestricted]);
 
   // Export CSV (นำคอลัมน์ แผนก, สถานะ ออก และแยกรายการอุปกรณ์และจำนวนเป็นแถวๆ เพื่อง่ายต่อการค้นหา)
   const handleExportCsv = () => {
@@ -643,7 +669,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                   ) : activeSubCategory === 'softener' ? (
                     <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   ) : activeSubCategory === 'cleaning' ? (
-                    <BrushCleaning className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
+                    <Mop className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
                   ) : (
                     <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   )}
@@ -752,16 +778,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               </button>
 
               {/* เส้นคั่นและไอคอน QR Code อยู่ในกล่องเดียวกับมุมมอง */}
-              <div className="w-[1px] h-4 bg-rose-200 mx-0.5" />
-              <button
-                type="button"
-                onClick={() => setShowQrModal(true)}
-                className="p-2 rounded-lg transition-all cursor-pointer text-rose-900 hover:text-rose-950 hover:bg-rose-100/70 active:scale-95 group relative"
-                title={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
-                aria-label={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
-              >
-                <QrCode className="w-4 h-4 text-rose-700 transition-transform group-hover:scale-110" />
-              </button>
+              {canCreateInCurrentCategory && (
+                <>
+                  <div className="w-[1px] h-4 bg-rose-200 mx-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="p-2 rounded-lg transition-all cursor-pointer text-rose-900 hover:text-rose-950 hover:bg-rose-100/70 active:scale-95 group relative"
+                    title={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
+                    aria-label={language === 'th' ? `QR Code แบบฟอร์ม (${currentSubCategoryName})` : `Form QR Code (${currentSubCategoryName})`}
+                  >
+                    <QrCode className="w-4 h-4 text-rose-700 transition-transform group-hover:scale-110" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -997,7 +1027,30 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       )}
 
       {/* 5. Main Content View Area */}
-      {isLoading && records.length === 0 ? (
+      {!canAccessRestricted && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener') ? (
+        <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-rose-200/80 shadow-xs max-w-lg mx-auto space-y-4 my-6">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 mx-auto flex items-center justify-center shadow-xs">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-slate-800">
+              {language === 'th' ? 'จำกัดสิทธิ์การมองเห็นและทำรายการ' : 'Restricted Access'}
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto">
+              {language === 'th'
+                ? `หัวข้อย่อย ${currentSubCategoryName} จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น`
+                : 'This section is restricted to Administrators, Page Admins, and Authenticated Users only.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSubCategory('gown')}
+            className="px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-800 transition-all cursor-pointer"
+          >
+            {language === 'th' ? 'ไปยังรายการเสื้อกาวน์' : 'Go to Gowns'}
+          </button>
+        </div>
+      ) : isLoading && records.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-orange-200/80 shadow-xs space-y-3">
           <RotateCw className="w-8 h-8 text-orange-600 animate-spin mx-auto" />
           <p className="font-bold text-slate-700">{language === 'th' ? 'กำลังโหลดข้อมูลเบิกอุปกรณ์...' : 'Loading equipment records...'}</p>
