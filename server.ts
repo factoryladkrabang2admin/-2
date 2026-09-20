@@ -22,6 +22,7 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
 const LAUNDRY_DATA_FILE = path.join(DATA_DIR, "laundry_submissions.json");
 const ANNOUNCEMENTS_DATA_FILE = path.join(DATA_DIR, "announcements_submissions.json");
+const GOWN_DATA_FILE = path.join(DATA_DIR, "gown_submissions.json");
 
 // Helper to generate running tracking code identical to Laundry QR code
 function extractServerDateTag(input?: string): string {
@@ -154,6 +155,43 @@ function saveAnnouncementSubmission(record: AnnouncementSubmissionRecord) {
     fs.writeFileSync(ANNOUNCEMENTS_DATA_FILE, JSON.stringify(inMemoryAnnouncementSubmissions, null, 2), "utf-8");
   } catch (err) {
     console.warn("Could not persist announcement submission to disk:", err);
+  }
+}
+
+interface GownSubmissionRecord {
+  id: string;
+  actionType: string;
+  date: string;
+  personName: string;
+  department: string;
+  sizeL?: number | string;
+  sizeXL?: number | string;
+  size2XL?: number | string;
+  totalQuantity: number;
+  syncedToGoogle: boolean;
+  createdAt: number;
+}
+
+let inMemoryGownSubmissions: GownSubmissionRecord[] = [];
+try {
+  if (fs.existsSync(GOWN_DATA_FILE)) {
+    const raw = fs.readFileSync(GOWN_DATA_FILE, "utf-8");
+    inMemoryGownSubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemoryGownSubmissions.length} saved gown submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load gown submissions from file:", e);
+}
+
+function saveGownSubmission(record: GownSubmissionRecord) {
+  inMemoryGownSubmissions.unshift(record);
+  if (inMemoryGownSubmissions.length > 500) {
+    inMemoryGownSubmissions = inMemoryGownSubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(GOWN_DATA_FILE, JSON.stringify(inMemoryGownSubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist gown submission to disk:", err);
   }
 }
 
@@ -1129,6 +1167,188 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during rags & gloves submission",
+      });
+    }
+  });
+
+  // Equipment Gown (แบบฟอร์มการเบิก-คืน เสื้อกาวน์สีกรมท่า) Google Form & Google Sheet direct submission endpoint
+  app.post("/api/equipment-gown-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+
+      let actionType = (payload.actionType || payload.action || "").trim();
+      if (actionType === "เบิก" || actionType.toLowerCase().includes("requisition") || actionType.toLowerCase().includes("borrow")) {
+        actionType = "เบิกเสื้อกาวน์";
+      } else if (actionType === "คืน" || actionType.toLowerCase().includes("return")) {
+        actionType = "คืนเสื้อกาวน์";
+      }
+      if (!actionType) {
+        actionType = "เบิกเสื้อกาวน์";
+      }
+
+      // Date parsing (YYYY-MM-DD or DD/MM/YYYY)
+      let year = "2026";
+      let month = "9";
+      let day = "15";
+      if (payload.date) {
+        const clean = String(payload.date).trim();
+        if (clean.includes("-")) {
+          const p = clean.split("-");
+          year = p[0];
+          month = String(parseInt(p[1], 10));
+          day = String(parseInt(p[2], 10));
+        } else if (clean.includes("/")) {
+          const p = clean.split("/");
+          day = String(parseInt(p[0], 10));
+          month = String(parseInt(p[1], 10));
+          year = p[2];
+          if (parseInt(year, 10) > 2500) year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const personName = (payload.personName || payload.name || payload.operatorName || "").trim();
+      if (!personName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้เบิก-คืน",
+        });
+      }
+
+      const department = (payload.department || payload.dept || "").trim();
+      if (!department) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุแผนก",
+        });
+      }
+
+      const formatQty = (v: any) => {
+        if (v === undefined || v === null || v === "" || v === 0 || v === "0") return "";
+        const num = parseInt(String(v), 10);
+        return (!isNaN(num) && num > 0) ? String(num) : "";
+      };
+
+      const sizeL = formatQty(payload.sizeL);
+      const sizeXL = formatQty(payload.sizeXL);
+      const size2XL = formatQty(payload.size2XL);
+
+      if (!sizeL && !sizeXL && !size2XL) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุขนาดและจำนวนเสื้อกาวน์อย่างน้อย 1 รายการ (L, XL หรือ 2XL)",
+        });
+      }
+
+      const GOOGLE_GOWN_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/formResponse";
+
+      const formParams = new URLSearchParams();
+      // 1. กรุณาเลือกการเบิก-คืน
+      formParams.append("entry.405389570", actionType);
+
+      // 2. วันที่
+      const dateFormatted = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      formParams.append("entry.575108522", dateFormatted);
+      formParams.append("entry.575108522_year", year);
+      formParams.append("entry.575108522_month", month);
+      formParams.append("entry.575108522_day", day);
+
+      // 3. ชื่อผู้เบิก-คืน
+      formParams.append("entry.1775519368", personName);
+
+      // 4. แผนก
+      formParams.append("entry.422774460", department);
+
+      // 5. ขนาดและจำนวนที่ต้องการ
+      if (sizeL) formParams.append("entry.1507729396", sizeL);
+      if (sizeXL) formParams.append("entry.1172983301", sizeXL);
+      if (size2XL) formParams.append("entry.1185036298", size2XL);
+
+      // Sentinels and hidden inputs
+      formParams.append("entry.405389570_sentinel", "");
+      formParams.append("entry.422774460_sentinel", "");
+      formParams.append("entry.1507729396_sentinel", "");
+      formParams.append("entry.1172983301_sentinel", "");
+      formParams.append("entry.1185036298_sentinel", "");
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      // Fetch dynamic fbzx
+      let fbzx = "";
+      try {
+        const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url", {
+          signal: AbortSignal.timeout(3500),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          }
+        });
+        if (viewRes.ok) {
+          const viewHtml = await viewRes.text();
+          const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+          if (fbzxMatch) fbzx = fbzxMatch[1];
+        }
+      } catch {
+        // Fallback
+      }
+
+      if (fbzx) {
+        formParams.append("fbzx", fbzx);
+      }
+
+      let syncedToGoogle = false;
+      try {
+        const formRes = await fetch(GOOGLE_GOWN_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: formParams.toString(),
+        });
+        const formText = await formRes.text();
+        syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 ||
+          formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+      } catch (err: any) {
+        console.warn("Could not post to Google Form directly:", err?.message);
+      }
+
+      const totalQuantity = (parseInt(sizeL || "0", 10) + parseInt(sizeXL || "0", 10) + parseInt(size2XL || "0", 10)) || 1;
+
+      const record: GownSubmissionRecord = {
+        id: `gown-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        actionType,
+        date: dateFormatted,
+        personName,
+        department,
+        sizeL: sizeL ? parseInt(sizeL, 10) : undefined,
+        sizeXL: sizeXL ? parseInt(sizeXL, 10) : undefined,
+        size2XL: size2XL ? parseInt(size2XL, 10) : undefined,
+        totalQuantity,
+        syncedToGoogle,
+        createdAt: Date.now(),
+      };
+
+      saveGownSubmission(record);
+
+      return res.json({
+        success: true,
+        googleSheetSynced: syncedToGoogle,
+        message: syncedToGoogle
+          ? "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว"
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
+        record,
+        sheetUrl: "https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902",
+        formUrl: "https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-gown-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during gown submission",
       });
     }
   });

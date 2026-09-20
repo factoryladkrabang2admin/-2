@@ -52,6 +52,7 @@ import {
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { EquipmentDetailModal } from './EquipmentDetailModal';
 import { EquipmentAnalyticsModal } from './EquipmentAnalyticsModal';
+import { CreateEquipmentModal } from './CreateEquipmentModal';
 
 const SUB_CATEGORY_STORAGE_PREFIX = 'proworkflow_equipment_cache_';
 const TABLE_ITEMS_PER_PAGE = 20;
@@ -168,6 +169,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
   const [qrCopied, setQrCopied] = useState<boolean>(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser);
 
@@ -454,6 +456,40 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
           {/* Action Buttons Toolbar in Header */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* 0. ปุ่มไอคอน เพิ่มรายการ เบิกอุปกรณ์ / เสื้อกาวน์ (ทำผ่าน Google Form) - อินเตอร์เฟสและการทำงานเหมือนไอคอนเพิ่มข่าวประชาสัมพันธ์ */}
+            {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
+              <button
+                type="button"
+                id="btn-create-equipment-icon"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-600 to-amber-600 hover:from-rose-700 hover:via-red-700 hover:to-amber-700 text-white shadow-lg hover:shadow-xl hover:shadow-rose-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
+                title={
+                  activeSubCategory === 'gown'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์ (ผ่าน Google Form)' : 'Add Gown Requisition / Return (Google Form)')
+                    : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName} (ผ่าน Google Form)` : `Add Requisition (${currentSubCategoryName})`)
+                }
+                aria-label={
+                  activeSubCategory === 'gown'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์' : 'Add Gown Requisition')
+                    : (language === 'th' ? 'เพิ่มรายการเบิกอุปกรณ์' : 'Add Equipment Requisition')
+                }
+              >
+                {/* Shimmer sweep animation */}
+                <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
+
+                <div className="relative flex items-center justify-center">
+                  {activeSubCategory === 'gown' ? (
+                    <Shirt className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
+                  ) : (
+                    <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
+                  )}
+                  <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center shadow-xs border border-white group-hover:scale-110 transition-transform leading-none pb-0.5">
+                    +
+                  </span>
+                </div>
+              </button>
+            )}
+
             {/* Statistics / Analytics Modal Button (Placed before Google Sheet) */}
             <button
               type="button"
@@ -465,14 +501,14 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               <BarChart3 className="w-5 h-5 text-rose-600 stroke-[2]" />
             </button>
 
-            {/* Google Sheet Link - Restricted to Admin & Supervisor */}
-            {canAccessGoogleSheet && (
+            {/* Google Sheet Link - Available for Gown and Admin/Supervisor */}
+            {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
               <a
                 href={currentSheetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-rose-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs"
-                title={language === 'th' ? 'เปิดดู Google Sheet' : 'Open Google Sheet'}
+                title={language === 'th' ? `เปิดดู Google Sheet (${currentSubCategoryName})` : `Open Google Sheet (${currentSubCategoryName})`}
                 aria-label="Google Sheet"
               >
                 <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
@@ -1334,6 +1370,19 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 5. Modal เพิ่มรายการเบิกอุปกรณ์ / เสื้อกาวน์ผ่าน Google Form (อินเตอร์เฟสและการทำงานเหมือนไอคอนเพิ่มข่าวประชาสัมพันธ์) */}
+      {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
+        <CreateEquipmentModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onRefreshData={() => loadData(activeSubCategory, true)}
+          currentSubCategoryName={currentSubCategoryName}
+          activeSubCategory={activeSubCategory}
+          formUrl={currentFormUrl}
+          sheetUrl={currentSheetUrl}
+        />
       )}
     </div>
   );

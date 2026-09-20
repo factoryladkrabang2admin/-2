@@ -3395,6 +3395,8 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
 // EQUIPMENT REQUISITION (เบิกอุปกรณ์) GOOGLE SHEET INTEGRATION
 // ==========================================
 
+export const MASTER_EQUIPMENT_REQUISITION_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url';
+
 export const CLEANING_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/edit?gid=1432727518#gid=1432727518';
 export const CLEANING_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/export?format=csv&gid=1432727518';
 export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1zFktbx7mqm2RVoW6ffYFnLctdd8Z622trcKyN8BmoxI/edit';
@@ -3405,7 +3407,7 @@ export const SOFTENER_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1F
 
 export const GOWN_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902';
 export const GOWN_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/export?format=csv&gid=1537050902';
-export const GOWN_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1k937Yb3vV_Q6a3sevJ-JkFkOF6KCWPF03MaXACwvxF8/edit';
+export const GOWN_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url';
 
 export const KEYS_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221';
 export const KEYS_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/export?format=csv&gid=546384221';
