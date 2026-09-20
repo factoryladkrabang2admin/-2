@@ -81,9 +81,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     return 'cleaning';
   });
 
-  // Guard against unauthorized users accessing restricted subcategories (cleaning & softener)
+  // Guard against unauthorized users accessing restricted subcategories (cleaning only)
   useEffect(() => {
-    if (!canAccessRestricted && (activeSubCategory === 'cleaning' || activeSubCategory === 'softener')) {
+    if (!canAccessRestricted && activeSubCategory === 'cleaning') {
       setActiveSubCategory('gown');
     }
   }, [canAccessRestricted, activeSubCategory]);
@@ -181,16 +181,16 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   // สิทธิ์การทำรายการสำหรับหมวดหมู่อุปกรณ์ปัจจุบัน
   const canCreateInCurrentCategory = useMemo(() => {
-    if (activeSubCategory === 'cleaning' || activeSubCategory === 'softener') {
+    if (activeSubCategory === 'cleaning') {
       return canAccessRestricted;
     }
-    return true; // เสื้อกาวน์, กุญแจ, บันไดทรง A ทำรายการได้ทั่วไป
+    return true; // เสื้อกาวน์, กุญแจ, บันไดทรง A, น้ำยาปรับผ้านุ่ม ทำรายการได้ทั่วไป
   }, [activeSubCategory, canAccessRestricted]);
 
   // Load Data for active subcategory
   const loadData = async (sub: EquipmentSubCategory, force = false) => {
-    // จำกัดสิทธิ์การมองเห็นและดึงข้อมูล: อุปกรณ์ทำความสะอาด และน้ำยาปรับผ้านุ่ม เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น
-    if (!canAccessRestricted && (sub === 'cleaning' || sub === 'softener')) {
+    // จำกัดสิทธิ์การมองเห็นและดึงข้อมูล: อุปกรณ์ทำความสะอาด เฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าสู่ระบบเท่านั้น
+    if (!canAccessRestricted && sub === 'cleaning') {
       setRecords([]);
       setIsLoading(false);
       return;
@@ -291,12 +291,15 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
     const isLadder = activeSubCategory === 'ladder';
     const isKeys = activeSubCategory === 'keys';
+    const isSoftener = activeSubCategory === 'softener';
     // 2. Cached equipment records in localStorage
     try {
       const cacheKey = isLadder
         ? 'proworkflow_equipment_cache_ladder'
         : isKeys
         ? 'proworkflow_equipment_cache_keys'
+        : isSoftener
+        ? 'proworkflow_equipment_cache_softener'
         : 'proworkflow_equipment_cache_gown';
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -327,6 +330,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         ? 'proworkflow_ladder_requester_names'
         : isKeys
         ? 'proworkflow_keys_requester_names'
+        : isSoftener
+        ? 'proworkflow_remembered_names_softener'
         : 'proworkflow_gown_requester_names';
       const savedNames = localStorage.getItem(savedKey);
       if (savedNames) {
@@ -341,6 +346,30 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       }
     } catch {
       // ignore
+    }
+
+    // 4. Also check cached CSV for softener if active
+    if (isSoftener) {
+      try {
+        const rawCsv = localStorage.getItem('proworkflow_eq_softener_csv_v1');
+        if (rawCsv) {
+          const lines = rawCsv.split(/\r?\n/);
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            // Parse line handling quotes
+            const match = line.match(/^("[^"]*"|[^,]*),("[^"]*"|[^,]*),("[^"]*"|[^,]*)/);
+            if (match && match[3]) {
+              const name = match[3].replace(/^["']+|["']+$/g, '').trim();
+              if (!isInvalidGownName(name)) {
+                nameSet.add(name);
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
 
     const sortedNames = Array.from(nameSet).sort((a, b) => a.localeCompare(b, 'th'));
@@ -484,7 +513,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     ];
 
     if (!canAccessRestricted) {
-      return tabs.filter((t) => t.id !== 'cleaning' && t.id !== 'softener');
+      return tabs.filter((t) => t.id !== 'cleaning');
     }
 
     return tabs;
@@ -575,20 +604,24 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-600 to-amber-600 hover:from-rose-700 hover:via-red-700 hover:to-amber-700 text-white shadow-lg hover:shadow-xl hover:shadow-rose-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
                 title={
                   activeSubCategory === 'gown'
-                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์ (ผ่าน Google Form)' : 'Add Gown Requisition / Return (Google Form)')
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์' : 'Add Gown Requisition / Return')
                     : activeSubCategory === 'keys'
-                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ (ผ่าน Google Form)' : 'Add Key Requisition / Return (Google Form)')
+                    ? (language === 'th' ? 'เพิ่มรายการยืม-คืน กุญแจ' : 'Add Key Requisition / Return')
                     : activeSubCategory === 'ladder'
-                    ? (language === 'th' ? 'เพิ่มรายการเบิก บันไดทรง A (ผ่าน Google Form)' : 'Add A-Frame Ladder Requisition (Google Form)')
-                    : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName} (ผ่าน Google Form)` : `Add Requisition (${currentSubCategoryName})`)
+                    ? (language === 'th' ? 'เพิ่มรายการ บันไดทรง A' : 'Add A-Frame Ladder Transaction')
+                    : activeSubCategory === 'softener'
+                    ? (language === 'th' ? 'เพิ่มรายการ น้ำยาปรับผ้านุ่ม' : 'Add Fabric Softener Requisition')
+                    : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName}` : `Add Requisition (${currentSubCategoryName})`)
                 }
                 aria-label={
                   activeSubCategory === 'gown'
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์' : 'Add Gown Requisition')
                     : activeSubCategory === 'keys'
-                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ' : 'Add Key Requisition')
+                    ? (language === 'th' ? 'เพิ่มรายการยืม-คืน กุญแจ' : 'Add Key Requisition')
                     : activeSubCategory === 'ladder'
-                    ? (language === 'th' ? 'เพิ่มรายการเบิก บันไดทรง A' : 'Add A-Frame Ladder Requisition')
+                    ? (language === 'th' ? 'เพิ่มรายการ บันไดทรง A' : 'Add A-Frame Ladder Transaction')
+                    : activeSubCategory === 'softener'
+                    ? (language === 'th' ? 'เพิ่มรายการ น้ำยาปรับผ้านุ่ม' : 'Add Fabric Softener Requisition')
                     : (language === 'th' ? 'เพิ่มรายการเบิกอุปกรณ์' : 'Add Equipment Requisition')
                 }
               >
@@ -602,6 +635,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     <Key className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   ) : activeSubCategory === 'ladder' ? (
                     <Ladder className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
+                  ) : activeSubCategory === 'softener' ? (
+                    <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   ) : (
                     <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   )}

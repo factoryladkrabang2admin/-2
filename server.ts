@@ -268,6 +268,42 @@ function saveLadderSubmission(record: LadderSubmissionRecord) {
   }
 }
 
+const SOFTENER_DATA_FILE = path.join(process.cwd(), "softener-submissions.json");
+
+interface SoftenerSubmissionRecord {
+  id: string;
+  actionType: string;
+  date: string;
+  personName: string;
+  area: string;
+  item: string;
+  syncedToGoogle: boolean;
+  createdAt: number;
+}
+
+let inMemorySoftenerSubmissions: SoftenerSubmissionRecord[] = [];
+try {
+  if (fs.existsSync(SOFTENER_DATA_FILE)) {
+    const raw = fs.readFileSync(SOFTENER_DATA_FILE, "utf-8");
+    inMemorySoftenerSubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemorySoftenerSubmissions.length} saved softener submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load softener submissions from file:", e);
+}
+
+function saveSoftenerSubmission(record: SoftenerSubmissionRecord) {
+  inMemorySoftenerSubmissions.unshift(record);
+  if (inMemorySoftenerSubmissions.length > 500) {
+    inMemorySoftenerSubmissions = inMemorySoftenerSubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(SOFTENER_DATA_FILE, JSON.stringify(inMemorySoftenerSubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist softener submission to disk:", err);
+  }
+}
+
 // RFC-4180 compliant CSV parser and stringifier
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -1886,6 +1922,173 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during ladder requisition submission",
+      });
+    }
+  });
+
+  // Softener Requisition Google Form & Google Sheet direct submission endpoint
+  app.post("/api/equipment-softener-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const rawDate = (payload.date || payload.entry_date || "").trim();
+      const personName = (payload.personName || payload.name || "").trim();
+      const area = (payload.area || payload.zone || "").trim();
+
+      if (!personName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้เบิก",
+        });
+      }
+
+      if (!area) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุพื้นที่ในการใช้งาน",
+        });
+      }
+
+      const SOFTENER_AREAS = ["A1", "A2", "B1", "B2", "C1"];
+      const matchedArea = SOFTENER_AREAS.find(
+        (a) => a.toLowerCase() === area.toLowerCase()
+      ) || area;
+
+      // Parse Date
+      let year = "";
+      let month = "";
+      let day = "";
+
+      if (rawDate) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+          const parts = rawDate.split("-");
+          year = parts[0];
+          month = String(parseInt(parts[1], 10));
+          day = String(parseInt(parts[2], 10));
+        } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate)) {
+          const parts = rawDate.split("/");
+          day = String(parseInt(parts[0], 10));
+          month = String(parseInt(parts[1], 10));
+          year = parts[2];
+        }
+      }
+
+      if (!year || !month || !day) {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const GOOGLE_SOFTENER_FORM_ACTION_URL =
+        "https://docs.google.com/forms/d/e/1FAIpQLSeO-DULwAXxDIj2lb7D75UMuKmEB6wlt-n_RuOFm7_LDtv5lw/formResponse";
+
+      const formParams = new URLSearchParams();
+      // 1. วันที่
+      const dateFormatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      formParams.append("entry.820380440_year", year);
+      formParams.append("entry.820380440_month", month);
+      formParams.append("entry.820380440_day", day);
+      formParams.append("entry.820380440", dateFormatted);
+
+      // 2. ชื่อผู้เบิก (ชื่อจริง)
+      formParams.append("entry.1228314840", personName);
+
+      // 3. พื้นที่ในการใช้งาน
+      formParams.append("entry.414847099", matchedArea);
+      formParams.append("entry.414847099_sentinel", "");
+
+      // Sentinels and hidden inputs
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      const fetchFbzx = async (): Promise<string> => {
+        try {
+          const viewRes = await fetch(
+            "https://docs.google.com/forms/d/e/1FAIpQLSeO-DULwAXxDIj2lb7D75UMuKmEB6wlt-n_RuOFm7_LDtv5lw/viewform",
+            {
+              signal: AbortSignal.timeout(8000),
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+            }
+          );
+          if (viewRes.ok) {
+            const viewHtml = await viewRes.text();
+            const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
+          }
+        } catch (e: any) {
+          console.warn("Could not fetch softener form fbzx token:", e?.message);
+        }
+        return "";
+      };
+
+      const postSubmission = async (token: string) => {
+        const bodyParams = new URLSearchParams(formParams);
+        if (token) {
+          bodyParams.set("fbzx", token);
+        }
+        const formRes = await fetch(GOOGLE_SOFTENER_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: bodyParams.toString(),
+        });
+        const formText = await formRes.text();
+        const isRecorded =
+          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
+          formText.includes("Your response has been recorded");
+        return { isRecorded, formText, status: formRes.status };
+      };
+
+      let currentFbzx = await fetchFbzx();
+      let submitResult = await postSubmission(currentFbzx);
+
+      if (!submitResult.isRecorded) {
+        currentFbzx = await fetchFbzx();
+        submitResult = await postSubmission(currentFbzx);
+      }
+
+      if (!submitResult.isRecorded) {
+        console.error("Google form rejected softener submission:", submitResult.formText.substring(0, 300));
+        return res.status(502).json({
+          success: false,
+          error: "ไม่สามารถบันทึกข้อมูลลง Google Sheet ได้ โปรดตรวจสอบข้อมูลหรือลองใหม่อีกครั้ง",
+        });
+      }
+
+      const record: SoftenerSubmissionRecord = {
+        id: `softener-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        actionType: "เบิก",
+        date: dateFormatted,
+        personName,
+        area: matchedArea,
+        item: "น้ำยาปรับผ้านุ่ม",
+        syncedToGoogle: true,
+        createdAt: Date.now(),
+      };
+
+      saveSoftenerSubmission(record);
+
+      return res.json({
+        success: true,
+        googleSheetSynced: true,
+        message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        record,
+        sheetUrl:
+          "https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217",
+        formUrl:
+          "https://docs.google.com/forms/d/e/1FAIpQLSeO-DULwAXxDIj2lb7D75UMuKmEB6wlt-n_RuOFm7_LDtv5lw/viewform?usp=pp_url",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-softener-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during softener requisition submission",
       });
     }
   });
