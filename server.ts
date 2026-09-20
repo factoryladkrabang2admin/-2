@@ -195,6 +195,43 @@ function saveGownSubmission(record: GownSubmissionRecord) {
   }
 }
 
+const KEYS_DATA_FILE = path.join(process.cwd(), "keys-submissions.json");
+
+interface KeySubmissionRecord {
+  id: string;
+  actionType: string;
+  date: string;
+  personName: string;
+  department: string;
+  keyNumbers: string;
+  note?: string;
+  syncedToGoogle: boolean;
+  createdAt: number;
+}
+
+let inMemoryKeysSubmissions: KeySubmissionRecord[] = [];
+try {
+  if (fs.existsSync(KEYS_DATA_FILE)) {
+    const raw = fs.readFileSync(KEYS_DATA_FILE, "utf-8");
+    inMemoryKeysSubmissions = JSON.parse(raw);
+    console.log(`Loaded ${inMemoryKeysSubmissions.length} saved keys submissions`);
+  }
+} catch (e) {
+  console.warn("Could not load keys submissions from file:", e);
+}
+
+function saveKeysSubmission(record: KeySubmissionRecord) {
+  inMemoryKeysSubmissions.unshift(record);
+  if (inMemoryKeysSubmissions.length > 500) {
+    inMemoryKeysSubmissions = inMemoryKeysSubmissions.slice(0, 500);
+  }
+  try {
+    fs.writeFileSync(KEYS_DATA_FILE, JSON.stringify(inMemoryKeysSubmissions, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not persist keys submission to disk:", err);
+  }
+}
+
 // RFC-4180 compliant CSV parser and stringifier
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -497,11 +534,16 @@ async function startServer() {
       const sheetName = req.query.sheet as string | undefined;
       const targetGid = gid || "1327805432";
 
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+
       let exportUrl = "";
+      const nowTs = Date.now();
       if (sheetName) {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${nowTs}`;
       } else {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}`;
+        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}&_t=${nowTs}`;
       }
 
       const response = await fetch(exportUrl, {
@@ -1349,6 +1391,176 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during gown submission",
+      });
+    }
+  });
+
+  // Equipment Keys (แบบฟอร์มยืมกุญแจ แผนกธุรการลาดกระบัง 2) Google Form & Google Sheet direct submission endpoint
+  app.post("/api/equipment-keys-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+
+      let actionType = (payload.actionType || payload.action || "").trim();
+      if (actionType.includes("เบิก") || actionType.toLowerCase().includes("borrow")) {
+        actionType = "เบิก";
+      } else if (actionType.includes("คืน") || actionType.toLowerCase().includes("return")) {
+        actionType = "คืน";
+      } else {
+        actionType = "เบิก";
+      }
+
+      // Date parsing (YYYY-MM-DD or DD/MM/YYYY)
+      let year = "2026";
+      let month = "9";
+      let day = "20";
+      if (payload.date) {
+        const clean = String(payload.date).trim();
+        if (clean.includes("-")) {
+          const p = clean.split("-");
+          year = p[0];
+          month = String(parseInt(p[1], 10));
+          day = String(parseInt(p[2], 10));
+        } else if (clean.includes("/")) {
+          const p = clean.split("/");
+          day = String(parseInt(p[0], 10));
+          month = String(parseInt(p[1], 10));
+          year = p[2];
+          if (parseInt(year, 10) > 2500) year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const personName = (payload.personName || payload.name || payload.operatorName || "").trim();
+      if (!personName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้เบิก-คืน",
+        });
+      }
+
+      const department = (payload.department || payload.dept || "").trim();
+      if (!department) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุแผนก",
+        });
+      }
+
+      const keyNumbers = (payload.keyNumbers || payload.keys || payload.keyNumber || "").trim();
+      if (!keyNumbers) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุหมายเลขกุญแจ",
+        });
+      }
+
+      const note = (payload.note || payload.remarks || "").trim();
+
+      const GOOGLE_KEYS_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/formResponse";
+
+      const formParams = new URLSearchParams();
+      // 1. วันที่
+      const dateFormatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      formParams.append("entry.2018293025_year", year);
+      formParams.append("entry.2018293025_month", month.padStart(2, "0"));
+      formParams.append("entry.2018293025_day", day.padStart(2, "0"));
+      formParams.append("entry.2018293025", dateFormatted);
+
+      // 2. ชื่อ
+      formParams.append("entry.1526694336", personName);
+
+      // 3. แผนก
+      formParams.append("entry.1276429706", department);
+
+      // 4. เลือกรูปแบบ
+      formParams.append("entry.396433262", actionType);
+
+      // 5. หมายเลขกุญแจ
+      formParams.append("entry.551601096", keyNumbers);
+
+      // 6. หมายเหตุ
+      if (note) {
+        formParams.append("entry.1058815699", note);
+      }
+
+      // Sentinels and hidden inputs
+      formParams.append("entry.1276429706_sentinel", "");
+      formParams.append("entry.396433262_sentinel", "");
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      // Fetch dynamic fbzx
+      let fbzx = "";
+      try {
+        const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url", {
+          signal: AbortSignal.timeout(3500),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          }
+        });
+        if (viewRes.ok) {
+          const viewHtml = await viewRes.text();
+          const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+          if (fbzxMatch) fbzx = fbzxMatch[1];
+        }
+      } catch {
+        // Fallback
+      }
+
+      if (fbzx) {
+        formParams.append("fbzx", fbzx);
+      }
+
+      let syncedToGoogle = false;
+      try {
+        const formRes = await fetch(GOOGLE_KEYS_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: formParams.toString(),
+        });
+        const formText = await formRes.text();
+        syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 ||
+          formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+      } catch (err: any) {
+        console.warn("Could not post to Google Form directly for keys:", err?.message);
+      }
+
+      const record: KeySubmissionRecord = {
+        id: `keys-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        actionType,
+        date: dateFormatted,
+        personName,
+        department,
+        keyNumbers,
+        note: note || undefined,
+        syncedToGoogle,
+        createdAt: Date.now(),
+      };
+
+      saveKeysSubmission(record);
+
+      return res.json({
+        success: true,
+        googleSheetSynced: syncedToGoogle,
+        message: syncedToGoogle
+          ? "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว"
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
+        record,
+        sheetUrl: "https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221",
+        formUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-keys-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during key requisition submission",
       });
     }
   });

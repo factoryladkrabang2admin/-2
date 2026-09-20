@@ -8,6 +8,7 @@ import {
   Download,
   Package,
   Shirt,
+  Key,
   Sparkles,
   FileSpreadsheet,
   Info,
@@ -31,6 +32,12 @@ export const MASTER_EQUIPMENT_REQUISITION_FORM_URL =
 export const GOWN_GOOGLE_SHEET_URL =
   'https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902';
 
+export const KEYS_EQUIPMENT_FORM_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url';
+
+export const KEYS_GOOGLE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221';
+
 const GOWN_DEPARTMENTS = [
   'แผนกเทคนิคการผลิต 4',
   'แผนกความปลอดภัย',
@@ -53,6 +60,20 @@ const GOWN_DEPARTMENTS = [
   'แผนกสารสนเทศ',
 ];
 
+const KEYS_DEPARTMENTS = [
+  'แผนกความปลอดภัย',
+  'แผนกธุรการลาดกระบัง 1',
+  'แผนกธุรการลาดกระบัง 2',
+  'แผนกเทคนิคบริการ',
+  'แผนกไฟฟ้าและสื่อสาร',
+  'แผนกปรับอากาศ',
+  'แผนกสุขาภิบาล',
+  'แผนกวิศกรรมเครื่องกล',
+  'แผนก Lab',
+  'แผนกสารสนเทศ',
+  'ฝ่ายผลิตลาดกระบัง 2',
+];
+
 interface SubmittedGownSummary {
   actionType: 'เบิกเสื้อกาวน์' | 'คืนเสื้อกาวน์';
   date: string;
@@ -62,6 +83,16 @@ interface SubmittedGownSummary {
   sizeXL: number;
   size2XL: number;
   totalPieces: number;
+  timestamp: string;
+}
+
+interface SubmittedKeySummary {
+  actionType: 'เบิก' | 'คืน';
+  date: string;
+  personName: string;
+  department: string;
+  keyNumbers: string;
+  note?: string;
   timestamp: string;
 }
 
@@ -75,7 +106,50 @@ interface CreateEquipmentModalProps {
   sheetUrl?: string;
   canAccessGoogleSheet?: boolean;
   existingRequesterNames?: string[];
+  existingDepartments?: string[];
   requesterNameToDept?: Record<string, string>;
+}
+
+// Utility to parse CSV text handling quoted fields with commas
+function parseCsvText(text: string): string[][] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let inQuotes = false;
+  let current = '';
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim().replace(/^["']+|["']+$/g, ''));
+      current = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      row.push(current.trim().replace(/^["']+|["']+$/g, ''));
+      if (row.some((c) => c.length > 0)) {
+        lines.push(row);
+      }
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current || row.length > 0) {
+    row.push(current.trim().replace(/^["']+|["']+$/g, ''));
+    if (row.some((c) => c.length > 0)) {
+      lines.push(row);
+    }
+  }
+  return lines;
 }
 
 export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
@@ -88,6 +162,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   sheetUrl: propSheetUrl,
   canAccessGoogleSheet = false,
   existingRequesterNames: propExistingRequesterNames,
+  existingDepartments: propExistingDepartments,
   requesterNameToDept: propRequesterNameToDept,
 }) => {
   const { language } = useLanguage();
@@ -95,11 +170,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [showQr, setShowQr] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
 
-  const formUrl = propFormUrl || MASTER_EQUIPMENT_REQUISITION_FORM_URL;
-  const isGown = activeSubCategory === 'gown' || formUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL;
-  const effectiveSheetUrl = propSheetUrl || (isGown ? GOWN_GOOGLE_SHEET_URL : undefined);
+  const isKeys = activeSubCategory === 'keys';
+  const isGown = activeSubCategory === 'gown' || (!isKeys && propFormUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL);
+  const formUrl = isKeys ? KEYS_EQUIPMENT_FORM_URL : (propFormUrl || MASTER_EQUIPMENT_REQUISITION_FORM_URL);
+  const effectiveSheetUrl = propSheetUrl || (isGown ? GOWN_GOOGLE_SHEET_URL : isKeys ? KEYS_GOOGLE_SHEET_URL : undefined);
 
-  // Tab: only used for non-gown equipment
+  // Tab: only used for non-gown, non-keys equipment
   const [activeTab, setActiveTab] = useState<'form' | 'direct'>('direct');
 
   // Gown Form States
@@ -111,6 +187,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [sizeXL, setSizeXL] = useState<string>('');
   const [size2XL, setSize2XL] = useState<string>('');
 
+  // Keys Form States
+  const [keyActionType, setKeyActionType] = useState<'เบิก' | 'คืน'>('เบิก');
+  const [keyNumbers, setKeyNumbers] = useState<string>('');
+  const [keyNote, setKeyNote] = useState<string>('');
+  const [submittedKeyRecord, setSubmittedKeyRecord] = useState<SubmittedKeySummary | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState<boolean>(false);
   const [submittedRecord, setSubmittedRecord] = useState<SubmittedGownSummary | null>(null);
@@ -119,26 +201,28 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   // Autocomplete / Suggestion state for ชื่อผู้เบิก-คืน
   const [rememberedNames, setRememberedNames] = useState<string[]>([]);
   const [nameDeptMap, setNameDeptMap] = useState<Record<string, string>>({});
+  const [keyDepartmentsList, setKeyDepartmentsList] = useState<string[]>([]);
   const [isNameDropdownOpen, setIsNameDropdownOpen] = useState<boolean>(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState<number>(-1);
   const nameInputWrapperRef = useRef<HTMLDivElement>(null);
 
-  // Helper to validate and exclude action types like 'คืนเสื้อกาวน์', 'เบิกเสื้อกาวน์' from person names
+  // Helper to validate and exclude action types from person names
   const isInvalidGownName = (name: string) => {
     const n = (name || '').trim();
     if (!n || n.length < 2) return true;
     if (n === 'ไม่ระบุชื่อ' || n === 'ไม่ระบุชื่อผู้เบิก' || n === 'ชื่อผู้เบิก-คืน') return true;
-    if (n === 'คืนเสื้อกาวน์' || n === 'เบิกเสื้อกาวน์') return true;
+    if (n === 'คืนเสื้อกาวน์' || n === 'เบิกเสื้อกาวน์' || n === 'เบิกกุญแจ' || n === 'คืนกุญแจ') return true;
     if (n.includes('คืนเสื้อกาวน์') || n.includes('เบิกเสื้อกาวน์') || n.includes('เสื้อกาวน์')) return true;
     if (n === 'เบิก' || n === 'คืน' || n === 'เบิกกาวน์' || n === 'คืนกาวน์') return true;
     return false;
   };
 
-  // Load and remember names from Google Sheet column, records, and history
+  // Load and remember names & departments from Google Sheet column, records, and history
   useEffect(() => {
     if (!isOpen) return;
 
     const nameSet = new Set<string>();
+    const deptSet = new Set<string>();
     const deptMap: Record<string, string> = { ...(propRequesterNameToDept || {}) };
 
     // 1. From props (records from Google Sheet)
@@ -151,14 +235,24 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       });
     }
 
-    // 2. From saved list in localStorage (clean out invalid action names)
+    if (propExistingDepartments && Array.isArray(propExistingDepartments)) {
+      propExistingDepartments.forEach((d) => {
+        const trimmed = (d || '').trim();
+        if (trimmed && trimmed !== 'แผนกทั่วไป' && trimmed !== 'ไม่ระบุแผนก') {
+          deptSet.add(trimmed);
+        }
+      });
+    }
+
+    // 2. From saved list in localStorage
     try {
-      const saved = localStorage.getItem('proworkflow_gown_requester_names');
+      const storageKey = isKeys ? 'proworkflow_keys_requester_names' : 'proworkflow_gown_requester_names';
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const arr = JSON.parse(saved);
         if (Array.isArray(arr)) {
           const cleaned = arr.filter((n) => typeof n === 'string' && !isInvalidGownName(n));
-          localStorage.setItem('proworkflow_gown_requester_names', JSON.stringify(cleaned));
+          localStorage.setItem(storageKey, JSON.stringify(cleaned));
           cleaned.forEach((n) => {
             nameSet.add(n.trim());
           });
@@ -168,19 +262,24 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       // ignore
     }
 
-    // 3. From cached gown records in localStorage
+    // 3. From cached equipment records in localStorage
     try {
-      const cached = localStorage.getItem('proworkflow_equipment_cache_gown');
+      const cacheKey = isKeys ? 'proworkflow_equipment_cache_keys' : 'proworkflow_equipment_cache_gown';
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const arr = JSON.parse(cached);
         if (Array.isArray(arr)) {
           arr.forEach((r: any) => {
             const trimmed = (r?.requesterName || '').trim();
+            const dept = (r?.department || '').trim();
             if (!isInvalidGownName(trimmed)) {
               nameSet.add(trimmed);
-              if (r.department && !deptMap[trimmed]) {
-                deptMap[trimmed] = r.department;
+              if (dept && !deptMap[trimmed]) {
+                deptMap[trimmed] = dept;
               }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              deptSet.add(dept);
             }
           });
         }
@@ -189,23 +288,40 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       // ignore
     }
 
-    // 4. From raw CSV in localStorage ('proworkflow_eq_gown_csv_v1')
+    // 4. From raw CSV in localStorage using proper CSV parsing
     try {
-      const rawCsv = localStorage.getItem('proworkflow_eq_gown_csv_v1');
+      const csvKey = isKeys ? 'proworkflow_eq_keys_csv_v1' : 'proworkflow_eq_gown_csv_v1';
+      const rawCsv = localStorage.getItem(csvKey);
       if (rawCsv) {
-        const lines = rawCsv.split('\n');
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          const parts = line.split(',');
-          if (parts.length > 3) {
-            const name = parts[3].replace(/^["']|["']$/g, '').trim();
-            const dept = parts.length > 4 ? parts[4].replace(/^["']|["']$/g, '').trim() : '';
+        const rows = parseCsvText(rawCsv);
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length < 3) continue;
+          if (isKeys) {
+            // Keys sheet: col 0 is timestamp, col 1 is date, col 2 is "กรุณาระบุชื่อ", col 3 is "แผนก"
+            const name = (row[2] || '').trim();
+            const dept = (row[3] || '').trim();
             if (!isInvalidGownName(name)) {
               nameSet.add(name);
               if (dept && !deptMap[name]) {
                 deptMap[name] = dept;
               }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              deptSet.add(dept);
+            }
+          } else {
+            // Gown sheet: col 0 timestamp, col 1 action, col 2 date, col 3 name, col 4 dept
+            const name = (row[3] || '').trim();
+            const dept = (row[4] || '').trim();
+            if (!isInvalidGownName(name)) {
+              nameSet.add(name);
+              if (dept && !deptMap[name]) {
+                deptMap[name] = dept;
+              }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              deptSet.add(dept);
             }
           }
         }
@@ -214,10 +330,58 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       // ignore
     }
 
+    // If Keys departments still empty, fallback to KEYS_DEPARTMENTS
+    if (isKeys && deptSet.size === 0) {
+      KEYS_DEPARTMENTS.forEach((d) => deptSet.add(d));
+    }
+
     const sortedNames = Array.from(nameSet).sort((a, b) => a.localeCompare(b, 'th'));
+    const sortedDepts = Array.from(deptSet).sort((a, b) => a.localeCompare(b, 'th'));
     setRememberedNames(sortedNames);
     setNameDeptMap(deptMap);
-  }, [isOpen, propExistingRequesterNames, propRequesterNameToDept]);
+    setKeyDepartmentsList(sortedDepts);
+
+    // 5. In-flight background fetch of Keys Google Sheet to keep names and departments up-to-date with Sheet
+    if (isKeys) {
+      fetch('/api/sheet-csv?sheetId=1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY&gid=546384221')
+        .then((res) => res.text())
+        .then((csvText) => {
+          if (!csvText || !csvText.trim()) return;
+          try {
+            localStorage.setItem('proworkflow_eq_keys_csv_v1', csvText);
+          } catch {
+            // ignore
+          }
+          const rows = parseCsvText(csvText);
+          const freshNames = new Set<string>(nameSet);
+          const freshDepts = new Set<string>(deptSet);
+          const freshDeptMap = { ...deptMap };
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < 3) continue;
+            const name = (row[2] || '').trim();
+            const dept = (row[3] || '').trim();
+            if (!isInvalidGownName(name)) {
+              freshNames.add(name);
+              if (dept && !freshDeptMap[name]) {
+                freshDeptMap[name] = dept;
+              }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              freshDepts.add(dept);
+            }
+          }
+
+          setRememberedNames(Array.from(freshNames).sort((a, b) => a.localeCompare(b, 'th')));
+          setNameDeptMap(freshDeptMap);
+          setKeyDepartmentsList(Array.from(freshDepts).sort((a, b) => a.localeCompare(b, 'th')));
+        })
+        .catch(() => {
+          // ignore network error
+        });
+    }
+  }, [isOpen, isKeys, propExistingRequesterNames, propExistingDepartments, propRequesterNameToDept]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -298,15 +462,23 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   // Reset states when modal opens
   useEffect(() => {
     if (isOpen) {
-      setDate('');
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      setDate(`${y}-${m}-${d}`);
       setPersonName('');
       setDepartment('');
       setSizeL('');
       setSizeXL('');
       setSize2XL('');
+      setKeyActionType('เบิก');
+      setKeyNumbers('');
+      setKeyNote('');
       setIsSubmitting(false);
       setIsSubmittedSuccess(false);
       setSubmittedRecord(null);
+      setSubmittedKeyRecord(null);
       setSubmitError(null);
       setIsNameDropdownOpen(false);
       setActiveSuggestionIndex(-1);
@@ -343,6 +515,116 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setSizeL('');
     setSizeXL('');
     setSize2XL('');
+  };
+
+  const handleStartNewKeyEntry = () => {
+    setIsSubmittedSuccess(false);
+    setSubmittedKeyRecord(null);
+    setSubmitError(null);
+    setKeyNumbers('');
+    setKeyNote('');
+  };
+
+  const handleKeySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+
+    if (!date.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุวันที่' : 'Please specify date');
+      return;
+    }
+
+    if (!personName.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุชื่อผู้เบิก-คืน' : 'Please enter borrower/returner name');
+      return;
+    }
+
+    if (!department.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุแผนก' : 'Please specify department');
+      return;
+    }
+
+    if (!keyNumbers.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุหมายเลขกุญแจ' : 'Please specify key number(s)');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        actionType: keyActionType,
+        date: date.trim(),
+        personName: personName.trim(),
+        department: department.trim(),
+        keyNumbers: keyNumbers.trim(),
+        note: keyNote.trim() || undefined,
+      };
+
+      const res = await fetch('/api/equipment-keys-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const trimmedName = personName.trim();
+        const trimmedDept = department.trim();
+
+        // 1. Mark success and store record summary
+        setIsSubmittedSuccess(true);
+        setSubmittedKeyRecord({
+          actionType: keyActionType,
+          date: date.trim(),
+          personName: trimmedName,
+          department: trimmedDept,
+          keyNumbers: keyNumbers.trim(),
+          note: keyNote.trim() || undefined,
+          timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        });
+
+        // 2. Remember name in localStorage for instant future autocompletion
+        if (!isInvalidGownName(trimmedName)) {
+          try {
+            const saved = localStorage.getItem('proworkflow_keys_requester_names');
+            const list: string[] = saved ? JSON.parse(saved) : [];
+            const cleanedList = list.filter((n) => typeof n === 'string' && !isInvalidGownName(n));
+            if (!cleanedList.includes(trimmedName)) {
+              cleanedList.unshift(trimmedName);
+              localStorage.setItem('proworkflow_keys_requester_names', JSON.stringify(cleanedList.slice(0, 100)));
+            }
+          } catch {
+            // ignore
+          }
+
+          setRememberedNames((prev) => {
+            if (!prev.includes(trimmedName)) {
+              return [trimmedName, ...prev.filter((n) => !isInvalidGownName(n))].sort((a, b) => a.localeCompare(b, 'th'));
+            }
+            return prev;
+          });
+        }
+
+        if (trimmedDept) {
+          setNameDeptMap((prev) => ({ ...prev, [trimmedName]: trimmedDept }));
+        }
+
+        // 3. Refresh background data table
+        if (onRefreshData) {
+          onRefreshData();
+        }
+
+        // Requirement: Keep window open until the user clicks close button!
+      } else {
+        setSubmitError(data.error || (language === 'th' ? 'เกิดข้อผิดพลาดในการบันทึกข้อมูล' : 'Failed to submit data'));
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || (language === 'th' ? 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' : 'Network error'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDirectSubmit = async (e: React.FormEvent) => {
@@ -490,6 +772,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
             <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-inner">
               {isGown ? (
                 <Shirt className="w-5 h-5 stroke-[2.5]" />
+              ) : isKeys ? (
+                <Key className="w-5 h-5 stroke-[2.5]" />
               ) : (
                 <Package className="w-5 h-5 stroke-[2.5]" />
               )}
@@ -499,15 +783,17 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                 <h2 className="text-base sm:text-lg font-black tracking-tight">
                   {isGown
                     ? (language === 'th' ? 'แบบฟอร์มการเบิก-คืน เสื้อกาวน์สีกรมท่า' : 'Navy Gown Requisition & Return Form')
+                    : isKeys
+                    ? (language === 'th' ? 'แบบฟอร์มยืมกุญแจ แผนกธุรการลาดกระบัง 2' : 'Key Requisition Form - Ladkrabang 2')
                     : (language === 'th' ? `เพิ่มรายการ ${currentSubCategoryName || 'เบิกอุปกรณ์'}` : `Add Requisition: ${currentSubCategoryName || 'Equipment'}`)}
                 </h2>
-                {!isGown && (
+                {!isGown && !isKeys && (
                   <span className="px-2 py-0.5 rounded-full text-2xs font-black bg-white/20 backdrop-blur-sm border border-white/30 text-white">
                     Google Form
                   </span>
                 )}
               </div>
-              {!isGown && (
+              {!isGown && !isKeys && (
                 <p className="text-xs text-rose-100 font-medium">
                   {language === 'th'
                     ? 'กรอกข้อมูลผ่านฟอร์มเพื่อบันทึกลงในระบบและ Google Sheet'
@@ -525,8 +811,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            {/* Google Sheet link in header - restricted to admin/supervisor only (Requirement 3) */}
-            {canAccessGoogleSheet && effectiveSheetUrl && (
+            {/* Google Sheet link in header - hidden for Gown and Keys as requested */}
+            {!isGown && !isKeys && canAccessGoogleSheet && effectiveSheetUrl && (
               <a
                 href={effectiveSheetUrl}
                 target="_blank"
@@ -551,8 +837,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           </div>
         </div>
 
-        {/* Toolbar: Completely hidden for Gown as per user specification */}
-        {!isGown && (
+        {/* Toolbar: Completely hidden for Gown and Keys as per user specification */}
+        {!isGown && !isKeys && (
           <div className="p-3 sm:p-4 bg-rose-50/50 border-b border-rose-100 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <a
@@ -677,8 +963,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
                 {/* Actions: ทำรายการใหม่ & ปิดหน้าต่าง */}
                 <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
-                  {/* Google Sheet button - visible ONLY for admin/supervisor (Requirement 3) */}
-                  {canAccessGoogleSheet && effectiveSheetUrl && (
+                  {/* Google Sheet button - hidden for Gown as requested */}
+                  {!isGown && canAccessGoogleSheet && effectiveSheetUrl && (
                     <a
                       href={effectiveSheetUrl}
                       target="_blank"
@@ -1055,6 +1341,349 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmitting || totalGownPieces <= 0}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-rose-700 via-red-600 to-amber-600 hover:from-rose-800 hover:via-red-700 hover:to-amber-700 text-white shadow-rose-500/30 hover:scale-102 active:scale-98"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{language === 'th' ? 'กำลังบันทึกข้อมูล...' : 'Saving...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>{language === 'th' ? 'บันทึกข้อมูล' : 'Save Data'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )
+          ) : isKeys ? (
+            /* Direct Form for Keys */
+            isSubmittedSuccess && submittedKeyRecord ? (
+              /* Success confirmation receipt - stays open until user clicks close */
+              <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white border-2 border-emerald-500/40 shadow-lg space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+                    <CheckCircle2 className="w-7 h-7 stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-black text-emerald-950">
+                        {language === 'th' ? 'บันทึกรายการเรียบร้อยแล้ว' : 'Recorded Successfully'}
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        {language === 'th' ? 'สำเร็จ' : 'Success'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-800/90 font-medium mt-1">
+                      {language === 'th'
+                        ? 'ข้อมูลได้ถูกบันทึกเข้าสู่ระบบและเชื่อมต่อ Google Sheet แล้ว หน้าต่างนี้จะยังคงอยู่จนกว่าคุณจะกดปิด'
+                        : 'Data recorded and synced. This window will remain open until you close it.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Summary receipt card */}
+                <div className="bg-white rounded-xl border border-emerald-200/80 p-4 shadow-xs divide-y divide-emerald-100 text-xs sm:text-sm">
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'ประเภทรายการ' : 'Action Type'}</span>
+                    <span
+                      className={`px-3 py-1 rounded-lg font-black text-xs ${
+                        submittedKeyRecord.actionType === 'คืน'
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          : 'bg-rose-100 text-rose-900 border border-rose-300'
+                      }`}
+                    >
+                      {submittedKeyRecord.actionType === 'คืน'
+                        ? (language === 'th' ? 'คืนกุญแจ' : 'Return Key')
+                        : (language === 'th' ? 'เบิกกุญแจ' : 'Borrow Key')}
+                    </span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'วันที่ทำรายการ' : 'Date'}</span>
+                    <span className="font-bold text-slate-800">{submittedKeyRecord.date}</span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'ชื่อผู้เบิก-คืน' : 'Name'}</span>
+                    <span className="font-black text-rose-950 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-rose-600" />
+                      {submittedKeyRecord.personName}
+                    </span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'แผนก' : 'Department'}</span>
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                      {submittedKeyRecord.department}
+                    </span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'หมายเลขกุญแจ' : 'Key Numbers'}</span>
+                    <span className="font-black text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-amber-600" />
+                      {submittedKeyRecord.keyNumbers}
+                    </span>
+                  </div>
+                  {submittedKeyRecord.note && (
+                    <div className="py-2.5 flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">{language === 'th' ? 'หมายเหตุ' : 'Notes'}</span>
+                      <span className="text-slate-700 font-medium">{submittedKeyRecord.note}</span>
+                    </div>
+                  )}
+                  <div className="py-2 flex items-center justify-between text-xs text-slate-400">
+                    <span>{language === 'th' ? 'เวลาบันทึก' : 'Recorded at'}</span>
+                    <span>{submittedKeyRecord.timestamp} น.</span>
+                  </div>
+                </div>
+
+                {/* Actions: ทำรายการใหม่ & ปิดหน้าต่าง */}
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleStartNewKeyEntry}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
+                  >
+                    <RotateCw className="w-4 h-4 text-slate-600" />
+                    <span>{language === 'th' ? 'ทำรายการใหม่' : 'New Transaction'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>{language === 'th' ? 'ปิดหน้าต่าง' : 'Close Window'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleKeySubmit} className="space-y-5">
+                {submitError && (
+                  <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+
+                {/* 1. Action Type Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    {language === 'th' ? 'เลือกรูปแบบ' : 'Select Action'} <span className="text-rose-600">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setKeyActionType('เบิก')}
+                      className={`p-3.5 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+                        keyActionType === 'เบิก'
+                          ? 'border-rose-600 bg-rose-50 text-rose-900 shadow-sm'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <Key className="w-4 h-4 text-rose-700" />
+                      <span>{language === 'th' ? 'เบิก' : 'Borrow'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setKeyActionType('คืน')}
+                      className={`p-3.5 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+                        keyActionType === 'คืน'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <Check className="w-4 h-4 text-emerald-700" />
+                      <span>{language === 'th' ? 'คืน' : 'Return'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Date */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                    <span>{language === 'th' ? 'กรุณาระบุวันที่' : 'Date'}</span> <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                  />
+                </div>
+
+                {/* 3. Requester Name with Suggestive Autocomplete */}
+                <div ref={nameInputWrapperRef} className="relative">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-rose-600" />
+                      <span>{language === 'th' ? 'กรุณาระบุชื่อ' : 'Name'}</span> <span className="text-rose-600">*</span>
+                    </label>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={personName}
+                      onChange={(e) => {
+                        setPersonName(e.target.value);
+                        setIsNameDropdownOpen(true);
+                        setActiveSuggestionIndex(-1);
+                      }}
+                      onFocus={() => setIsNameDropdownOpen(true)}
+                      onKeyDown={handleNameKeyDown}
+                      placeholder={language === 'th' ? 'พิมพ์ชื่อ (มีระบบแนะนำอัตโนมัติ)' : 'Type name (with autocomplete)'}
+                      required
+                      autoComplete="off"
+                      className="w-full px-3.5 py-2.5 pr-9 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                    />
+
+                    {personName.trim() ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPersonName('');
+                          setIsNameDropdownOpen(false);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                      >
+                        ×
+                      </button>
+                    ) : (
+                      <ChevronDown
+                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform ${
+                          isNameDropdownOpen ? 'rotate-180 text-rose-600' : ''
+                        }`}
+                      />
+                    )}
+
+                    {/* Autocomplete dropdown */}
+                    {isNameDropdownOpen && filteredNameSuggestions.length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl divide-y divide-slate-100">
+                        {filteredNameSuggestions.map((item, idx) => {
+                          const isSelected = idx === activeSuggestionIndex;
+                          const knownDept = nameDeptMap[item];
+                          return (
+                            <div
+                              key={`${item}-${idx}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectName(item);
+                              }}
+                              className={`px-3.5 py-2.5 text-xs sm:text-sm cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                isSelected ? 'bg-rose-50 text-rose-900 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-2xs font-black ${
+                                    isSelected ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {item.slice(0, 1)}
+                                </div>
+                                <span className="truncate">{renderHighlightedText(item, personName)}</span>
+                              </div>
+
+                              {knownDept && (
+                                <span className="text-2xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0 max-w-[150px] truncate border border-slate-200">
+                                  {knownDept}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Department */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>{language === 'th' ? 'แผนก' : 'Department'}</span> <span className="text-rose-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="key-departments-datalist"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder={language === 'th' ? 'พิมพ์หรือเลือกแผนก' : 'Type or select department'}
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                    />
+                    <datalist id="key-departments-datalist">
+                      {keyDepartmentsList.map((dept) => (
+                        <option key={dept} value={dept} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                {/* 5. หมายเลขกุญแจ */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{language === 'th' ? 'หมายเลขกุญแจ' : 'Key Numbers'}</span> <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={keyNumbers}
+                    onChange={(e) => setKeyNumbers(e.target.value)}
+                    placeholder={language === 'th' ? 'เช่น 17, 19 หรือ ห้องประชุม 1' : 'e.g. 17, 19 or Meeting Room 1'}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                  />
+                </div>
+
+                {/* 6. หมายเหตุ */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{language === 'th' ? 'หมายเหตุ (ถ้ามี)' : 'Notes (optional)'}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={keyNote}
+                    onChange={(e) => setKeyNote(e.target.value)}
+                    placeholder={language === 'th' ? 'เช่น เช็คสัญญาณไวไฟ, ซ่อมระบบไฟฟ้า' : 'e.g. WiFi check, electrical repair'}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                  />
+                </div>
+
+                {/* 7. Live Summary Preview Card */}
+                {(keyNumbers.trim() || personName.trim() || department.trim()) && (
+                  <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 text-xs space-y-1.5">
+                    <div className="font-bold text-amber-950 flex items-center justify-between">
+                      <span>{language === 'th' ? 'ตัวอย่างข้อมูลที่จะบันทึก' : 'Preview Data'}</span>
+                      <span className={`px-2 py-0.5 rounded text-2xs font-black ${
+                        keyActionType === 'คืน' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
+                      }`}>
+                        {keyActionType === 'คืน' ? 'คืนกุญแจ' : 'เบิกกุญแจ'}
+                      </span>
+                    </div>
+                    <div className="text-slate-700 space-y-0.5 pt-1">
+                      <div><span className="text-slate-500">วันที่:</span> <span className="font-medium">{date || '-'}</span></div>
+                      <div><span className="text-slate-500">ผู้ทำรายการ:</span> <span className="font-bold text-slate-900">{personName || '-'}</span></div>
+                      <div><span className="text-slate-500">แผนก:</span> <span className="font-medium">{department || '-'}</span></div>
+                      <div><span className="text-slate-500">หมายเลขกุญแจ:</span> <span className="font-black text-amber-900">{keyNumbers || '-'}</span></div>
+                      {keyNote.trim() && <div><span className="text-slate-500">หมายเหตุ:</span> <span className="font-medium">{keyNote}</span></div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* 8. Submit Button */}
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !keyNumbers.trim() || !personName.trim() || !department.trim()}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-rose-700 via-red-600 to-amber-600 hover:from-rose-800 hover:via-red-700 hover:to-amber-700 text-white shadow-rose-500/30 hover:scale-102 active:scale-98"
                   >
                     {isSubmitting ? (

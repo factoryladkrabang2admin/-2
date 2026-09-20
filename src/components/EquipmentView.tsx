@@ -254,35 +254,46 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     return false;
   };
 
-  // List of borrower/returner names extracted from gown records and Google Sheet column
-  const { gownRequesterNames, gownRequesterDeptMap } = useMemo(() => {
+  // List of requester names and departments extracted from records and Google Sheet column
+  const { currentRequesterNames, currentRequesterDeptMap, currentSubCategoryDepartments } = useMemo(() => {
     const nameSet = new Set<string>();
+    const deptSet = new Set<string>();
     const deptMap: Record<string, string> = {};
 
     // 1. Current active records (contains requesterName from Google Sheet column)
     records.forEach((r) => {
       const name = (r.requesterName || '').trim();
+      const dept = (r.department || '').trim();
       if (!isInvalidGownName(name)) {
         nameSet.add(name);
-        if (r.department && !deptMap[name]) {
-          deptMap[name] = r.department;
+        if (dept && !deptMap[name]) {
+          deptMap[name] = dept;
         }
+      }
+      if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+        deptSet.add(dept);
       }
     });
 
-    // 2. Cached gown records in localStorage
+    const isKeys = activeSubCategory === 'keys';
+    // 2. Cached equipment records in localStorage
     try {
-      const cached = localStorage.getItem('proworkflow_equipment_cache_gown');
+      const cacheKey = isKeys ? 'proworkflow_equipment_cache_keys' : 'proworkflow_equipment_cache_gown';
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
           parsed.forEach((r: any) => {
             const name = (r?.requesterName || '').trim();
+            const dept = (r?.department || '').trim();
             if (!isInvalidGownName(name)) {
               nameSet.add(name);
-              if (r.department && !deptMap[name]) {
-                deptMap[name] = r.department;
+              if (dept && !deptMap[name]) {
+                deptMap[name] = dept;
               }
+            }
+            if (dept && dept !== 'แผนกทั่วไป' && dept !== 'ไม่ระบุแผนก') {
+              deptSet.add(dept);
             }
           });
         }
@@ -291,14 +302,15 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       // ignore
     }
 
-    // 3. User submission history in localStorage (also cleans invalid action names)
+    // 3. User submission history in localStorage
     try {
-      const savedNames = localStorage.getItem('proworkflow_gown_requester_names');
+      const savedKey = isKeys ? 'proworkflow_keys_requester_names' : 'proworkflow_gown_requester_names';
+      const savedNames = localStorage.getItem(savedKey);
       if (savedNames) {
         const arr = JSON.parse(savedNames);
         if (Array.isArray(arr)) {
           const cleaned = arr.filter((n: any) => typeof n === 'string' && !isInvalidGownName(n));
-          localStorage.setItem('proworkflow_gown_requester_names', JSON.stringify(cleaned));
+          localStorage.setItem(savedKey, JSON.stringify(cleaned));
           cleaned.forEach((n: string) => {
             nameSet.add(n.trim());
           });
@@ -309,8 +321,13 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     }
 
     const sortedNames = Array.from(nameSet).sort((a, b) => a.localeCompare(b, 'th'));
-    return { gownRequesterNames: sortedNames, gownRequesterDeptMap: deptMap };
-  }, [records]);
+    const sortedDepts = Array.from(deptSet).sort((a, b) => a.localeCompare(b, 'th'));
+    return {
+      currentRequesterNames: sortedNames,
+      currentRequesterDeptMap: deptMap,
+      currentSubCategoryDepartments: sortedDepts,
+    };
+  }, [records, activeSubCategory]);
 
   // Filtered Records
   const filteredRecords = useMemo(() => {
@@ -525,8 +542,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
           {/* Action Buttons Toolbar in Header */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
-            {/* 0. ปุ่มไอคอน เพิ่มรายการ เบิกอุปกรณ์ / เสื้อกาวน์ (ทำผ่าน Google Form) - อินเตอร์เฟสและการทำงานเหมือนไอคอนเพิ่มข่าวประชาสัมพันธ์ */}
-            {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
+            {/* 0. ปุ่มไอคอน เพิ่มรายการ เบิกอุปกรณ์ / เสื้อกาวน์ / กุญแจ (ทำผ่าน Google Form) */}
+            {(canAccessGoogleSheet || activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
               <button
                 type="button"
                 id="btn-create-equipment-icon"
@@ -535,11 +552,15 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 title={
                   activeSubCategory === 'gown'
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์ (ผ่าน Google Form)' : 'Add Gown Requisition / Return (Google Form)')
+                    : activeSubCategory === 'keys'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ (ผ่าน Google Form)' : 'Add Key Requisition / Return (Google Form)')
                     : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName} (ผ่าน Google Form)` : `Add Requisition (${currentSubCategoryName})`)
                 }
                 aria-label={
                   activeSubCategory === 'gown'
                     ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน เสื้อกาวน์' : 'Add Gown Requisition')
+                    : activeSubCategory === 'keys'
+                    ? (language === 'th' ? 'เพิ่มรายการเบิก-คืน กุญแจ' : 'Add Key Requisition')
                     : (language === 'th' ? 'เพิ่มรายการเบิกอุปกรณ์' : 'Add Equipment Requisition')
                 }
               >
@@ -549,6 +570,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 <div className="relative flex items-center justify-center">
                   {activeSubCategory === 'gown' ? (
                     <Shirt className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
+                  ) : activeSubCategory === 'keys' ? (
+                    <Key className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   ) : (
                     <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   )}
@@ -1441,8 +1464,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         </div>
       )}
 
-      {/* 5. Modal เพิ่มรายการเบิกอุปกรณ์ / เสื้อกาวน์ผ่าน Google Form (อินเตอร์เฟสและการทำงานเหมือนไอคอนเพิ่มข่าวประชาสัมพันธ์) */}
-      {(canAccessGoogleSheet || activeSubCategory === 'gown') && (
+      {/* 5. Modal เพิ่มรายการเบิกอุปกรณ์ / เสื้อกาวน์ / กุญแจ ผ่าน Google Form */}
+      {(canAccessGoogleSheet || activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
         <CreateEquipmentModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
@@ -1452,8 +1475,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           formUrl={currentFormUrl}
           sheetUrl={currentSheetUrl}
           canAccessGoogleSheet={canAccessGoogleSheet}
-          existingRequesterNames={gownRequesterNames}
-          requesterNameToDept={gownRequesterDeptMap}
+          existingRequesterNames={currentRequesterNames}
+          existingDepartments={currentSubCategoryDepartments}
+          requesterNameToDept={currentRequesterDeptMap}
         />
       )}
     </div>
