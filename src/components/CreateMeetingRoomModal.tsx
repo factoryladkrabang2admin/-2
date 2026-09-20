@@ -30,30 +30,6 @@ interface CreateMeetingRoomModalProps {
   existingBookings?: MeetingRoomBooking[];
 }
 
-const POPULAR_DEPARTMENTS = [
-  'ทรัพยากรบุคคล',
-  'ธุรการลาดกระบัง 2',
-  'ธุรการลาดกระบัง 1',
-  'RD & QC',
-  'บำรุงรักษาอาคาร และงานระบบ',
-  'ฝ่ายผลิต',
-  'คลังสินค้า',
-  'จัดซื้อ',
-  'การเงินและบัญชี',
-  'ความปลอดภัย (จป./คปอ.)',
-  'วิศวกรรม',
-  'ประกันคุณภาพ (QA)',
-];
-
-const TIME_SLOTS = [
-  { start: '08:00', end: '09:00', label: '08:00 - 09:00 (เช้า)' },
-  { start: '09:00', end: '10:30', label: '09:00 - 10:30 (ช่วงเช้า)' },
-  { start: '10:30', end: '12:00', label: '10:30 - 12:00 (ก่อนเที่ยง)' },
-  { start: '13:00', end: '14:30', label: '13:00 - 14:30 (บ่ายต้น)' },
-  { start: '14:30', end: '16:30', label: '14:30 - 16:30 (บ่ายแก่)' },
-  { start: '16:30', end: '18:00', label: '16:30 - 18:00 (เย็น)' },
-];
-
 export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
   isOpen,
   onClose,
@@ -73,11 +49,11 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
   // Form Fields
   const [room, setRoom] = useState<'TPM 1' | 'TPM 2'>('TPM 1');
   const [bookingDate, setBookingDate] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('09:00');
-  const [endTime, setEndTime] = useState<string>('10:30');
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
   const [subject, setSubject] = useState<string>('');
   const [department, setDepartment] = useState<string>('');
-  const [attendeesCount, setAttendeesCount] = useState<number>(5);
+  const [attendeesCount, setAttendeesCount] = useState<string>('');
   const [phoneNumber, setPhoneNumber] = useState<string>('');
 
   // UI state
@@ -94,40 +70,18 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
       setErrorMessage(null);
       setLastCreatedBooking(null);
 
-      // Default date to today formatted YYYY-MM-DD
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      setBookingDate(`${yyyy}-${mm}-${dd}`);
-
+      setBookingDate('');
       setRoom('TPM 1');
-      setStartTime('09:00');
-      setEndTime('10:30');
+      setStartTime('');
+      setEndTime('');
       setSubject('');
-      setAttendeesCount(5);
-
-      if (currentUser?.department) {
-        setDepartment(currentUser.department);
-      } else {
-        setDepartment('ธุรการลาดกระบัง 2');
-      }
-
-      setPhoneNumber(currentUser?.username || '4510');
+      setAttendeesCount('');
+      setDepartment('');
+      setPhoneNumber('');
     } else if (!isOpen) {
       wasOpenRef.current = false;
     }
   }, [isOpen]);
-
-  // Quick Date Helpers
-  const setQuickDate = (offsetDays: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    setBookingDate(`${yyyy}-${mm}-${dd}`);
-  };
 
   // Convert time to minutes for comparison
   const timeToMinutes = (t: string) => {
@@ -217,7 +171,7 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
         endTime,
         subject: subject.trim(),
         department: department.trim(),
-        attendeesCount: attendeesCount || 1,
+        attendeesCount: parseInt(attendeesCount, 10) > 0 ? parseInt(attendeesCount, 10) : 1,
         phoneNumber: phoneNumber.trim() || '-',
       });
 
@@ -240,6 +194,12 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
   const handleResetForNext = () => {
     setIsSuccess(false);
     setSubject('');
+    setBookingDate('');
+    setStartTime('');
+    setEndTime('');
+    setDepartment('');
+    setPhoneNumber('');
+    setAttendeesCount('');
     setErrorMessage(null);
   };
 
@@ -453,30 +413,12 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                 </div>
               </div>
 
-              {/* 2. Date Selection & Quick Buttons */}
+              {/* 2. Date Selection */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                    <span>{language === 'th' ? 'วันที่ใช้งาน' : 'Booking Date'}</span> <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setQuickDate(0)}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-900 transition-colors cursor-pointer"
-                    >
-                      {language === 'th' ? 'วันนี้' : 'Today'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQuickDate(1)}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-900 transition-colors cursor-pointer"
-                    >
-                      {language === 'th' ? 'พรุ่งนี้' : 'Tomorrow'}
-                    </button>
-                  </div>
-                </div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                  <span>{language === 'th' ? 'วันที่ใช้งาน' : 'Booking Date'}</span> <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="date"
                   value={bookingDate}
@@ -520,30 +462,6 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                     />
                   </div>
                 </div>
-
-                {/* Quick Slot Presets */}
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {TIME_SLOTS.map((slot) => {
-                    const isSelected = startTime === slot.start && endTime === slot.end;
-                    return (
-                      <button
-                        key={slot.start}
-                        type="button"
-                        onClick={() => {
-                          setStartTime(slot.start);
-                          setEndTime(slot.end);
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {slot.start} - {slot.end}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
               {/* 4. Subject / Meeting Topic */}
@@ -564,7 +482,7 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
 
               {/* 5. Department & Attendees & Phone Row */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Department with Autocomplete Suggestions */}
+                {/* Department */}
                 <div className="sm:col-span-1">
                   <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                     <Building className="w-3.5 h-3.5 text-purple-600" />
@@ -572,18 +490,12 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    list="meeting-departments-list"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
-                    placeholder={language === 'th' ? 'ระบุแผนก' : 'Department'}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    placeholder={language === 'th' ? 'ระบุแผนก/ฝ่าย' : 'Department'}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
                     required
                   />
-                  <datalist id="meeting-departments-list">
-                    {POPULAR_DEPARTMENTS.map((d) => (
-                      <option key={d} value={d} />
-                    ))}
-                  </datalist>
                 </div>
 
                 {/* Attendees Count */}
@@ -592,30 +504,15 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                     <Users className="w-3.5 h-3.5 text-purple-600" />
                     <span>{language === 'th' ? 'จำนวน (คน)' : 'Attendees'}</span>
                   </label>
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => setAttendeesCount((prev) => Math.max(1, prev - 1))}
-                      className="w-8 h-8 rounded-l-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold flex items-center justify-center cursor-pointer active:scale-95"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={attendeesCount}
-                      onChange={(e) => setAttendeesCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      className="w-full py-2 text-center border-y border-slate-200 bg-slate-50 text-xs font-bold text-slate-900 outline-hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setAttendeesCount((prev) => prev + 1)}
-                      className="w-8 h-8 rounded-r-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold flex items-center justify-center cursor-pointer active:scale-95"
-                    >
-                      +
-                    </button>
-                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={attendeesCount}
+                    onChange={(e) => setAttendeesCount(e.target.value)}
+                    placeholder={language === 'th' ? 'ระบุจำนวนคน' : 'No. of attendees'}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                  />
                 </div>
 
                 {/* Phone Number / Extension */}
@@ -628,8 +525,8 @@ export const CreateMeetingRoomModal: React.FC<CreateMeetingRoomModalProps> = ({
                     type="text"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="4510 / 081-xxx-xxxx"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    placeholder={language === 'th' ? 'ระบุเบอร์โทร / ภายใน' : 'Phone / Ext.'}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
                   />
                 </div>
               </div>
