@@ -2093,6 +2093,197 @@ async function startServer() {
     }
   });
 
+  // Equipment Cleaning Supplies (แบบฟอร์มเบิกอุปกรณ์ทำความสะอาด แผนกธุรการลาดกระบัง 2) Google Form & Google Sheet direct submission endpoint
+  app.post("/api/equipment-cleaning-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+
+      // Date parsing (YYYY-MM-DD or DD/MM/YYYY)
+      let year = "2026";
+      let month = "9";
+      let day = "20";
+      if (payload.date) {
+        const clean = String(payload.date).trim();
+        if (clean.includes("-")) {
+          const p = clean.split("-");
+          year = p[0];
+          month = String(parseInt(p[1], 10));
+          day = String(parseInt(p[2], 10));
+        } else if (clean.includes("/")) {
+          const p = clean.split("/");
+          day = String(parseInt(p[0], 10));
+          month = String(parseInt(p[1], 10));
+          year = p[2];
+          if (parseInt(year, 10) > 2500) year = String(parseInt(year, 10) - 543);
+        }
+      } else {
+        const now = new Date();
+        year = String(now.getFullYear());
+        month = String(now.getMonth() + 1);
+        day = String(now.getDate());
+      }
+
+      const personName = (payload.personName || payload.name || "").trim();
+      if (!personName) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุชื่อผู้เบิก",
+        });
+      }
+
+      // items: map of { [itemId or name]: quantity (1, 2, 3) } or array of { id, quantity }
+      const selectedItems: { id: number; name?: string; quantity: string }[] = [];
+      if (Array.isArray(payload.items)) {
+        payload.items.forEach((it: any) => {
+          if (it && it.id && it.quantity) {
+            selectedItems.push({
+              id: Number(it.id),
+              name: it.name || "",
+              quantity: String(it.quantity),
+            });
+          }
+        });
+      } else if (payload.items && typeof payload.items === "object") {
+        Object.entries(payload.items).forEach(([key, val]) => {
+          if (val) {
+            selectedItems.push({
+              id: Number(key),
+              quantity: String(val),
+            });
+          }
+        });
+      }
+
+      const other = (payload.other || payload.note || "").trim();
+
+      if (selectedItems.length === 0 && !other) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาเลือกรายการอุปกรณ์อย่างน้อย 1 รายการ หรือระบุในช่องอื่นๆ",
+        });
+      }
+
+      const GOOGLE_CLEANING_FORM_ACTION_URL =
+        "https://docs.google.com/forms/d/e/1FAIpQLSc_z8qRUirSajn070DxgHIa7MWuNy8Sn7Rj0b_QuBLC7ow25A/formResponse";
+
+      const formParams = new URLSearchParams();
+
+      // 1. ระบุวันที่ (Item 0, Entry 134831132)
+      const dateFormatted = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      formParams.append("entry.134831132_year", year);
+      formParams.append("entry.134831132_month", month);
+      formParams.append("entry.134831132_day", day);
+      formParams.append("entry.134831132", dateFormatted);
+
+      // 2. ชื่อผู้เบิก (Item 1, Entry 1498271377)
+      formParams.append("entry.1498271377", personName);
+
+      // 3. เลือกรายการ (Item 2, Multiple grid entries)
+      selectedItems.forEach((item) => {
+        if (item.id && ["1", "2", "3"].includes(item.quantity)) {
+          formParams.append(`entry.${item.id}`, item.quantity);
+          formParams.append(`entry.${item.id}_sentinel`, "");
+        }
+      });
+
+      // 4. อื่นๆ (Item 3, Entry 381616994)
+      if (other) {
+        formParams.append("entry.381616994", other);
+      }
+
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      const fetchFbzx = async (): Promise<string> => {
+        try {
+          const viewRes = await fetch(
+            "https://docs.google.com/forms/d/e/1FAIpQLSc_z8qRUirSajn070DxgHIa7MWuNy8Sn7Rj0b_QuBLC7ow25A/viewform",
+            {
+              signal: AbortSignal.timeout(8000),
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+            }
+          );
+          if (viewRes.ok) {
+            const viewHtml = await viewRes.text();
+            const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
+          }
+        } catch (e: any) {
+          console.warn("Could not fetch cleaning form fbzx token:", e?.message);
+        }
+        return "";
+      };
+
+      const postSubmission = async (token: string) => {
+        const bodyParams = new URLSearchParams(formParams);
+        if (token) {
+          bodyParams.set("fbzx", token);
+        }
+        const formRes = await fetch(GOOGLE_CLEANING_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: bodyParams.toString(),
+        });
+        const formText = await formRes.text();
+        const isRecorded =
+          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
+          formText.includes("Your response has been recorded") ||
+          formRes.status === 200;
+        return { isRecorded, formText, status: formRes.status };
+      };
+
+      let currentFbzx = await fetchFbzx();
+      let submitResult = await postSubmission(currentFbzx);
+
+      if (!submitResult.isRecorded) {
+        currentFbzx = await fetchFbzx();
+        submitResult = await postSubmission(currentFbzx);
+      }
+
+      if (!submitResult.isRecorded) {
+        console.error("Google form rejected cleaning submission:", submitResult.formText.substring(0, 300));
+        return res.status(502).json({
+          success: false,
+          error: "ไม่สามารถบันทึกข้อมูลลง Google Sheet ได้ โปรดตรวจสอบข้อมูลหรือลองใหม่อีกครั้ง",
+        });
+      }
+
+      const record = {
+        id: `cleaning-sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        date: dateFormatted,
+        personName,
+        items: selectedItems,
+        other,
+        syncedToGoogle: true,
+        createdAt: Date.now(),
+      };
+
+      return res.json({
+        success: true,
+        googleSheetSynced: true,
+        message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        record,
+        sheetUrl:
+          "https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/edit?gid=1432727518#gid=1432727518",
+        formUrl:
+          "https://docs.google.com/forms/d/e/1FAIpQLSc_z8qRUirSajn070DxgHIa7MWuNy8Sn7Rj0b_QuBLC7ow25A/viewform?usp=pp_url",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-cleaning-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during cleaning requisition submission",
+      });
+    }
+  });
+
   // Announcements Google Form & Google Sheet direct submission endpoint
   app.post("/api/announcement-submit", async (req, res) => {
     try {

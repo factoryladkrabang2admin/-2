@@ -31,7 +31,8 @@ import {
   QrCode,
   Copy,
   ExternalLink,
-  Droplets
+  Droplets,
+  BrushCleaning
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
 import { EquipmentRecord, EquipmentSubCategory, EquipmentItemDetail } from '../types';
@@ -488,7 +489,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       { 
         id: 'cleaning', 
         label: language === 'th' ? 'อุปกรณ์ทำความสะอาด' : 'Cleaning Supplies',
-        icon: <Sparkle className="w-4 h-4" />
+        icon: <BrushCleaning className="w-4 h-4 stroke-[2.2]" />
       },
       { 
         id: 'softener', 
@@ -611,6 +612,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     ? (language === 'th' ? 'เพิ่มรายการ บันไดทรง A' : 'Add A-Frame Ladder Transaction')
                     : activeSubCategory === 'softener'
                     ? (language === 'th' ? 'เพิ่มรายการ น้ำยาปรับผ้านุ่ม' : 'Add Fabric Softener Requisition')
+                    : activeSubCategory === 'cleaning'
+                    ? (language === 'th' ? 'เพิ่มรายการ อุปกรณ์ทำความสะอาด' : 'Add Cleaning Supplies Requisition')
                     : (language === 'th' ? `เพิ่มรายการเบิก ${currentSubCategoryName}` : `Add Requisition (${currentSubCategoryName})`)
                 }
                 aria-label={
@@ -622,6 +625,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     ? (language === 'th' ? 'เพิ่มรายการ บันไดทรง A' : 'Add A-Frame Ladder Transaction')
                     : activeSubCategory === 'softener'
                     ? (language === 'th' ? 'เพิ่มรายการ น้ำยาปรับผ้านุ่ม' : 'Add Fabric Softener Requisition')
+                    : activeSubCategory === 'cleaning'
+                    ? (language === 'th' ? 'เพิ่มรายการ อุปกรณ์ทำความสะอาด' : 'Add Cleaning Supplies Requisition')
                     : (language === 'th' ? 'เพิ่มรายการเบิกอุปกรณ์' : 'Add Equipment Requisition')
                 }
               >
@@ -637,6 +642,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                     <Ladder className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
                   ) : activeSubCategory === 'softener' ? (
                     <Droplets className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
+                  ) : activeSubCategory === 'cleaning' ? (
+                    <BrushCleaning className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs stroke-[2.2]" />
                   ) : (
                     <Package className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-6 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                   )}

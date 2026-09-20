@@ -26,10 +26,17 @@ import {
   Search,
   Lock,
   Droplets,
-  MapPin
+  MapPin,
+  BrushCleaning
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
 import { useLanguage } from '../contexts/LanguageContext';
+import {
+  CLEANING_FORM_ITEMS,
+  CLEANING_FORM_URL,
+  CLEANING_SHEET_URL,
+  CleaningFormItem,
+} from '../data/cleaningItems';
 
 export const MASTER_EQUIPMENT_REQUISITION_FORM_URL =
   'https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url';
@@ -57,6 +64,25 @@ export const SOFTENER_GOOGLE_SHEET_URL =
 
 export const SOFTENER_AREAS = ['A1', 'A2', 'B1', 'B2', 'C1'] as const;
 export const INITIAL_SOFTENER_NAMES = ['พรนิภา', 'สงกรานต์', 'ณัฐภัทร', 'สุดารัตน์', 'ยุพา'];
+export const INITIAL_CLEANING_NAMES = ['สงกรานต์', 'ณัฐภัทร', 'สุดารัตน์', 'พรนิภา', 'พงศกร', 'สุริยา', 'ยุพา กำพังเทียม'];
+export const CLEANING_CATEGORIES = [
+  'ทั้งหมด',
+  'ไม้กวาด',
+  'ไม้ถูพื้น/ด้ามจับ',
+  'แปรง/ขัด',
+  'น้ำยา/เคมีภัณฑ์',
+  'ฟองน้ำ/ฝอยขัด',
+  'อุปกรณ์ฉีด/เช็ด',
+  'อุปกรณ์ปาดน้ำ',
+  'อุปกรณ์ดักแมลง',
+  'เครื่องดื่ม/อาหารว่าง',
+  'เครื่องเขียน/สำนักงาน',
+  'ของใช้ทั่วไป',
+  'ถุง/บรรจุภัณฑ์',
+  'อุปกรณ์ป้องกัน',
+  'อุปกรณ์ทำความสะอาด',
+  'อุปกรณ์ทั่วไป',
+] as const;
 
 const GOWN_DEPARTMENTS = [
   'แผนกเทคนิคการผลิต 4',
@@ -158,6 +184,14 @@ interface SubmittedSoftenerSummary {
   timestamp: string;
 }
 
+interface SubmittedCleaningSummary {
+  date: string;
+  personName: string;
+  items: { id: number; name: string; quantity: string }[];
+  other?: string;
+  timestamp: string;
+}
+
 interface CreateEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -237,13 +271,16 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const isLadder = activeSubCategory === 'ladder';
   const isKeys = activeSubCategory === 'keys';
   const isSoftener = activeSubCategory === 'softener';
-  const isGown = activeSubCategory === 'gown' || (!isKeys && !isLadder && !isSoftener && propFormUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL);
+  const isCleaning = activeSubCategory === 'cleaning';
+  const isGown = activeSubCategory === 'gown' || (!isKeys && !isLadder && !isSoftener && !isCleaning && propFormUrl === MASTER_EQUIPMENT_REQUISITION_FORM_URL);
   const formUrl = isLadder
     ? LADDER_EQUIPMENT_FORM_URL
     : isKeys
     ? KEYS_EQUIPMENT_FORM_URL
     : isSoftener
     ? SOFTENER_EQUIPMENT_FORM_URL
+    : isCleaning
+    ? CLEANING_FORM_URL
     : (propFormUrl || MASTER_EQUIPMENT_REQUISITION_FORM_URL);
   const effectiveSheetUrl = propSheetUrl || (
     isGown
@@ -254,6 +291,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       ? LADDER_GOOGLE_SHEET_URL
       : isSoftener
       ? SOFTENER_GOOGLE_SHEET_URL
+      : isCleaning
+      ? CLEANING_SHEET_URL
       : undefined
   );
 
@@ -284,6 +323,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   // Softener Form States
   const [selectedSoftenerArea, setSelectedSoftenerArea] = useState<string>('A1');
   const [submittedSoftenerRecord, setSubmittedSoftenerRecord] = useState<SubmittedSoftenerSummary | null>(null);
+
+  // Cleaning Form States
+  const [submittedCleaningRecord, setSubmittedCleaningRecord] = useState<SubmittedCleaningSummary | null>(null);
+  const [cleaningSelectedItems, setCleaningSelectedItems] = useState<{ [id: number]: string }>({});
+  const [cleaningOther, setCleaningOther] = useState<string>('');
+  const [cleaningSearchQuery, setCleaningSearchQuery] = useState<string>('');
+  const [cleaningSelectedCategory, setCleaningSelectedCategory] = useState<string>('ทั้งหมด');
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState<boolean>(false);
@@ -344,6 +390,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         ? 'proworkflow_keys_requester_names'
         : isSoftener
         ? 'proworkflow_remembered_names_softener'
+        : isCleaning
+        ? 'proworkflow_cleaning_requester_names'
         : 'proworkflow_gown_requester_names';
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -381,6 +429,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         ? 'proworkflow_equipment_cache_keys'
         : isSoftener
         ? 'proworkflow_equipment_cache_softener'
+        : isCleaning
+        ? 'proworkflow_equipment_cache_cleaning'
         : 'proworkflow_equipment_cache_gown';
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -427,6 +477,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         ? 'proworkflow_eq_keys_csv_v1'
         : isSoftener
         ? 'proworkflow_eq_softener_csv_v1'
+        : isCleaning
+        ? 'proworkflow_eq_cleaning_csv_v1'
         : 'proworkflow_eq_gown_csv_v1';
       const rawCsv = localStorage.getItem(csvKey);
       if (rawCsv) {
@@ -483,6 +535,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
             if (!isInvalidGownName(name)) {
               nameSet.add(name);
             }
+          } else if (isCleaning) {
+            // Cleaning sheet: col 0 timestamp, col 1 date, col 2 name ("ชื่อผู้เบิก")
+            const name = (row[2] || '').trim();
+            if (!isInvalidGownName(name)) {
+              nameSet.add(name);
+            }
           } else {
             // Gown sheet: col 0 timestamp, col 1 action, col 2 date, col 3 name, col 4 dept
             const name = (row[3] || '').trim();
@@ -506,6 +564,11 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     // Default seed for softener names from Google Sheet column if nameSet is still empty
     if (isSoftener && nameSet.size === 0) {
       INITIAL_SOFTENER_NAMES.forEach((n) => nameSet.add(n));
+    }
+
+    // Default seed for cleaning names from Google Sheet column if nameSet is still empty
+    if (isCleaning && nameSet.size === 0) {
+      INITIAL_CLEANING_NAMES.forEach((n) => nameSet.add(n));
     }
 
     // Fallback departments
@@ -649,8 +712,53 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         .catch(() => {
           // ignore network error
         });
+    } else if (isCleaning) {
+      fetch('/api/sheet-csv?sheetId=1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw&gid=1432727518')
+        .then((res) => res.text())
+        .then((csvText) => {
+          if (!csvText || !csvText.trim()) return;
+          try {
+            localStorage.setItem('proworkflow_eq_cleaning_csv_v1', csvText);
+          } catch {
+            // ignore
+          }
+          const rows = parseCsvText(csvText);
+          const freshNames = new Set<string>(nameSet);
+
+          let nameColIdx = 2;
+          if (rows.length > 0) {
+            const hRow = rows[0].map((h) => (h || '').trim());
+            for (let c = 0; c < hRow.length; c++) {
+              const h = hRow[c];
+              if (h.includes('ผู้เบิก') || h.includes('ชื่อ')) {
+                nameColIdx = c;
+                break;
+              }
+            }
+          }
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length <= nameColIdx) continue;
+            const name = (row[nameColIdx] || '').trim();
+            if (!isInvalidGownName(name)) {
+              freshNames.add(name);
+            }
+          }
+
+          const sorted = Array.from(freshNames).sort((a, b) => a.localeCompare(b, 'th'));
+          setRememberedNames(sorted);
+          try {
+            localStorage.setItem('proworkflow_cleaning_requester_names', JSON.stringify(sorted));
+          } catch {
+            // ignore
+          }
+        })
+        .catch(() => {
+          // ignore network error
+        });
     }
-  }, [isOpen, isKeys, isLadder, isSoftener, propExistingRequesterNames, propExistingDepartments, propRequesterNameToDept]);
+  }, [isOpen, isKeys, isLadder, isSoftener, isCleaning, propExistingRequesterNames, propExistingDepartments, propRequesterNameToDept]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -1055,6 +1163,145 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     }
   };
 
+  const handleCleaningSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+
+    if (!date.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุวันที่' : 'Please specify date');
+      return;
+    }
+
+    if (!personName.trim()) {
+      setSubmitError(language === 'th' ? 'กรุณาระบุชื่อผู้เบิก' : 'Please enter requester name');
+      return;
+    }
+
+    const itemsToSubmit = Object.entries(cleaningSelectedItems)
+      .filter(([_, qty]) => ['1', '2', '3'].includes(qty))
+      .map(([idStr, qty]) => {
+        const idNum = Number(idStr);
+        const itemObj = CLEANING_FORM_ITEMS.find((it) => it.id === idNum);
+        return {
+          id: idNum,
+          name: itemObj ? itemObj.name : `รายการที่ ${idNum}`,
+          quantity: qty,
+        };
+      });
+
+    if (itemsToSubmit.length === 0 && !cleaningOther.trim()) {
+      setSubmitError(
+        language === 'th'
+          ? 'กรุณาเลือกรายการอุปกรณ์อย่างน้อย 1 รายการ หรือระบุในช่องอื่นๆ'
+          : 'Please select at least 1 item or specify in notes'
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const trimmedName = personName.trim();
+      const payload = {
+        date: date.trim(),
+        personName: trimmedName,
+        items: itemsToSubmit,
+        other: cleaningOther.trim() || undefined,
+      };
+
+      const res = await fetch('/api/equipment-cleaning-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setIsSubmittedSuccess(true);
+        const record = data.record || {};
+        const submissionTime = record.timestamp
+          ? new Date(record.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+          : new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+        setSubmittedCleaningRecord({
+          date: record.date || date,
+          personName: record.personName || trimmedName,
+          items: itemsToSubmit,
+          other: cleaningOther.trim() || undefined,
+          timestamp: submissionTime,
+        });
+
+        // 1. Update local cache
+        try {
+          const cacheKey = 'proworkflow_equipment_cache_cleaning';
+          const cachedStr = localStorage.getItem(cacheKey);
+          const cachedRecords = cachedStr ? JSON.parse(cachedStr) : [];
+          const newCachedItem = {
+            id: record.id || `cleaning-${Date.now()}`,
+            timestamp: record.timestamp || new Date().toISOString(),
+            date: record.date || date,
+            requesterName: record.personName || trimmedName,
+            subCategory: 'cleaning',
+            items: itemsToSubmit.map((it) => ({
+              name: it.name,
+              quantity: parseInt(it.quantity, 10) || 1,
+            })),
+            status: 'เบิก',
+            raw: record,
+          };
+          localStorage.setItem(cacheKey, JSON.stringify([newCachedItem, ...cachedRecords]));
+        } catch {
+          // ignore
+        }
+
+        // 2. Remember requester name
+        if (trimmedName) {
+          try {
+            const raw = localStorage.getItem('proworkflow_cleaning_requester_names');
+            const arr = raw ? JSON.parse(raw) : [];
+            if (!arr.includes(trimmedName)) {
+              const updated = [trimmedName, ...arr].slice(0, 100);
+              localStorage.setItem('proworkflow_cleaning_requester_names', JSON.stringify(updated));
+            }
+          } catch {
+            // ignore
+          }
+
+          setRememberedNames((prev) => {
+            if (!prev.includes(trimmedName)) {
+              return [trimmedName, ...prev.filter((n) => !isInvalidGownName(n))].sort((a, b) => a.localeCompare(b, 'th'));
+            }
+            return prev;
+          });
+        }
+
+        // 3. Refresh background data table
+        if (onRefreshData) {
+          onRefreshData();
+        }
+      } else {
+        setSubmitError(data.error || (language === 'th' ? 'เกิดข้อผิดพลาดในการบันทึกข้อมูล' : 'Failed to submit data'));
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || (language === 'th' ? 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' : 'Network error'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStartNewCleaningEntry = () => {
+    setIsSubmittedSuccess(false);
+    setSubmittedCleaningRecord(null);
+    setCleaningSelectedItems({});
+    setCleaningOther('');
+    setCleaningSearchQuery('');
+    setCleaningSelectedCategory('ทั้งหมด');
+    setDate(new Date().toISOString().split('T')[0]);
+    setPersonName('');
+    setSubmitError(null);
+  };
+
   const handleKeySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
@@ -1313,6 +1560,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                 <Ladder className="w-5 h-5 stroke-[2.5]" />
               ) : isSoftener ? (
                 <Droplets className="w-5 h-5 stroke-[2.5]" />
+              ) : isCleaning ? (
+                <BrushCleaning className="w-5 h-5 stroke-[2.5]" />
               ) : (
                 <Package className="w-5 h-5 stroke-[2.5]" />
               )}
@@ -1328,15 +1577,17 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     ? (language === 'th' ? 'แบบฟอร์มยืมบันไดทรง A แผนกธุรการลาดกระบัง 2' : 'A-Frame Ladder Requisition Form - Ladkrabang 2')
                     : isSoftener
                     ? (language === 'th' ? 'แบบฟอร์มเบิกน้ำยาปรับผ้านุ่ม แผนกธุรการลาดกระบัง 2' : 'Fabric Softener Requisition Form - Ladkrabang 2')
+                    : isCleaning
+                    ? (language === 'th' ? 'แบบฟอร์มเบิกอุปกรณ์ทำความสะอาด แผนกธุรการลาดกระบัง 2' : 'Cleaning Equipment Requisition Form - Ladkrabang 2')
                     : (language === 'th' ? `เพิ่มรายการ ${currentSubCategoryName || 'เบิกอุปกรณ์'}` : `Add Requisition: ${currentSubCategoryName || 'Equipment'}`)}
                 </h2>
-                {!isGown && !isKeys && !isLadder && !isSoftener && (
+                {!isGown && !isKeys && !isLadder && !isSoftener && !isCleaning && (
                   <span className="px-2 py-0.5 rounded-full text-2xs font-black bg-white/20 backdrop-blur-sm border border-white/30 text-white">
                     Google Form
                   </span>
                 )}
               </div>
-              {!isGown && !isKeys && !isLadder && !isSoftener && (
+              {!isGown && !isKeys && !isLadder && !isSoftener && !isCleaning && (
                 <p className="text-xs text-rose-100 font-medium">
                   {language === 'th'
                     ? 'กรอกข้อมูลผ่านฟอร์มเพื่อบันทึกลงในระบบและ Google Sheet'
@@ -1357,12 +1608,19 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     : 'Record borrowing or return of keys, auto-syncing with Google Sheet'}
                 </p>
               )}
+              {isCleaning && (
+                <p className="text-xs text-rose-100/95 font-medium">
+                  {language === 'th'
+                    ? 'บันทึกรายการเบิกอุปกรณ์ทำความสะอาด พร้อมซิงค์เข้า Google Sheet อัตโนมัติ'
+                    : 'Record requisition of cleaning equipment, auto-syncing with Google Sheet'}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-1">
-            {/* Google Sheet link in header - hidden for Gown, Keys, Ladder, and Softener */}
-            {!isGown && !isKeys && !isLadder && !isSoftener && canAccessGoogleSheet && effectiveSheetUrl && (
+            {/* Google Sheet link in header - hidden for Gown, Keys, Ladder, Softener, and Cleaning */}
+            {!isGown && !isKeys && !isLadder && !isSoftener && !isCleaning && canAccessGoogleSheet && effectiveSheetUrl && (
               <a
                 href={effectiveSheetUrl}
                 target="_blank"
@@ -1387,8 +1645,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           </div>
         </div>
 
-        {/* Toolbar: Completely hidden for Gown, Keys, Ladder, and Softener */}
-        {!isGown && !isKeys && !isLadder && !isSoftener && (
+        {/* Toolbar: Completely hidden for Gown, Keys, Ladder, Softener, and Cleaning */}
+        {!isGown && !isKeys && !isLadder && !isSoftener && !isCleaning && (
           <div className="p-3 sm:p-4 bg-rose-50/50 border-b border-rose-100 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <a
@@ -2931,6 +3189,498 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmitting || !personName.trim() || !selectedSoftenerArea.trim()}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-rose-700 via-red-600 to-amber-600 hover:from-rose-800 hover:via-red-700 hover:to-amber-700 text-white shadow-rose-500/30 hover:scale-102 active:scale-98"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{language === 'th' ? 'กำลังบันทึกข้อมูล...' : 'Saving...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>{language === 'th' ? 'บันทึกข้อมูล' : 'Save Data'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )
+          ) : isCleaning ? (
+            /* Cleaning Equipment Requisition Form */
+            isSubmittedSuccess && submittedCleaningRecord ? (
+              /* Success Receipt View */
+              <div className="space-y-4 animate-in fade-in">
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+                    <CheckCircle2 className="w-7 h-7 stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-black text-emerald-950">
+                        {language === 'th' ? 'บันทึกรายการเรียบร้อยแล้ว' : 'Recorded Successfully'}
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        {language === 'th' ? 'สำเร็จ' : 'Success'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-800/90 font-medium mt-1">
+                      {language === 'th'
+                        ? 'ข้อมูลได้ถูกบันทึกเข้าสู่ระบบและเชื่อมต่อ Google Sheet แล้ว หน้าต่างนี้จะยังคงอยู่จนกว่าคุณจะกดปิด'
+                        : 'Data recorded and synced. This window will remain open until you close it.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Summary receipt card */}
+                <div className="bg-white rounded-xl border border-emerald-200/80 p-4 shadow-xs divide-y divide-emerald-100 text-xs sm:text-sm">
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'ประเภทรายการ' : 'Action Type'}</span>
+                    <span className="px-3 py-1 rounded-lg font-black text-xs bg-rose-100 text-rose-900 border border-rose-300 flex items-center gap-1.5">
+                      <BrushCleaning className="w-3.5 h-3.5 text-rose-600" />
+                      {language === 'th' ? 'เบิกอุปกรณ์ทำความสะอาด' : 'Cleaning Equipment Requisition'}
+                    </span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'วันที่ทำรายการ' : 'Date'}</span>
+                    <span className="font-bold text-slate-800">{submittedCleaningRecord.date}</span>
+                  </div>
+                  <div className="py-2.5 flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">{language === 'th' ? 'ชื่อผู้เบิก' : 'Name'}</span>
+                    <span className="font-black text-rose-950 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-rose-600" />
+                      {submittedCleaningRecord.personName}
+                    </span>
+                  </div>
+                  <div className="py-2.5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">{language === 'th' ? 'รายการอุปกรณ์ที่เบิก' : 'Requested Items'}</span>
+                      <span className="text-xs font-black text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                        {submittedCleaningRecord.items.length} {language === 'th' ? 'รายการ' : 'items'}
+                      </span>
+                    </div>
+                    {submittedCleaningRecord.items.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        {submittedCleaningRecord.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+                          >
+                            <span className="font-semibold text-slate-800 truncate pr-2">{item.name}</span>
+                            <span className="font-bold text-rose-700 bg-white px-2.5 py-1 rounded border border-rose-200 shrink-0">
+                              {item.quantity} ชิ้น
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 text-xs italic">
+                        {language === 'th' ? 'ไม่ได้เลือกจากรายการหลัก' : 'No items from list'}
+                      </div>
+                    )}
+                  </div>
+                  {submittedCleaningRecord.other && (
+                    <div className="py-2.5 flex items-start justify-between gap-3">
+                      <span className="text-slate-500 font-medium shrink-0">{language === 'th' ? 'อื่นๆ (ระบุเพิ่มเติม)' : 'Other / Notes'}</span>
+                      <span className="font-medium text-slate-800 text-right">{submittedCleaningRecord.other}</span>
+                    </div>
+                  )}
+                  <div className="py-2 flex items-center justify-between text-xs text-slate-400">
+                    <span>{language === 'th' ? 'เวลาบันทึก' : 'Recorded at'}</span>
+                    <span>{submittedCleaningRecord.timestamp} น.</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleStartNewCleaningEntry}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
+                  >
+                    <RotateCw className="w-4 h-4 text-slate-600" />
+                    <span>{language === 'th' ? 'ทำรายการใหม่' : 'New Transaction'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>{language === 'th' ? 'ปิดหน้าต่าง' : 'Close Window'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Cleaning Equipment Form */
+              <form onSubmit={handleCleaningSubmit} className="space-y-5">
+                {submitError && (
+                  <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+
+                {/* Notice banner matching Google Form description */}
+                <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 font-medium leading-relaxed">
+                    <p className="font-bold text-amber-950">
+                      {language === 'th'
+                        ? 'ข้อตกลงในการเบิกอุปกรณ์ แผนกธุรการลาดกระบัง 2'
+                        : 'Requisition Notice - Ladkrabang 2'}
+                    </p>
+                    <p>
+                      {language === 'th'
+                        ? 'เลือกรายการเบิกอุปกรณ์ แผนกธุรการลาดกระบัง 2 ภายในวันศุกร์ก่อนเที่ยง เพื่อจะได้รับอุปกรณ์ในวันพฤหัสอาทิตย์ถัดไป'
+                        : 'Submit equipment requisition by Friday before 12:00 PM to receive items on Thursday of next week.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 1. Date */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                    <span>{language === 'th' ? 'ระบุวันที่' : 'Date'}</span> <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                  />
+                </div>
+
+                {/* 2. Requester Name with Autocomplete */}
+                <div ref={nameInputWrapperRef} className="relative">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-rose-600" />
+                      <span>{language === 'th' ? 'ชื่อผู้เบิก' : 'Requester Name'}</span> <span className="text-rose-600">*</span>
+                    </span>
+                    {rememberedNames.length > 0 && (
+                      <span className="text-2xs text-slate-400 font-medium">
+                        {language === 'th' ? `จำชื่อ ${rememberedNames.length} ท่าน` : `${rememberedNames.length} names saved`}
+                      </span>
+                    )}
+                  </label>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={personName}
+                      onChange={(e) => {
+                        setPersonName(e.target.value);
+                        setIsNameDropdownOpen(true);
+                        setActiveSuggestionIndex(-1);
+                      }}
+                      onFocus={() => {
+                        if (rememberedNames.length > 0) {
+                          setIsNameDropdownOpen(true);
+                        }
+                      }}
+                      onKeyDown={handleNameKeyDown}
+                      placeholder={language === 'th' ? 'พิมพ์พยัญชนะหรือชื่อเพื่อเลือก' : 'Type letter to choose name'}
+                      required
+                      autoComplete="off"
+                      className="w-full pl-3.5 pr-16 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                    />
+
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {personName && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPersonName('');
+                            setActiveSuggestionIndex(-1);
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                          title={language === 'th' ? 'ล้างข้อความ' : 'Clear'}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsNameDropdownOpen((prev) => !prev)}
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                        title={language === 'th' ? 'แสดงรายชื่อ' : 'Toggle names'}
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform duration-200 ${
+                            isNameDropdownOpen ? 'rotate-180 text-rose-600' : ''
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Suggestions dropdown */}
+                  {isNameDropdownOpen && filteredNameSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-rose-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-2xs font-bold text-slate-500">
+                        <span className="flex items-center gap-1.5">
+                          <Search className="w-3 h-3 text-slate-400" />
+                          <span>{language === 'th' ? 'เลือกชื่อผู้เบิกจากระบบ' : 'Select name'}</span>
+                        </span>
+                        <span className="text-2xs font-normal text-slate-400">
+                          {language === 'th' ? 'กดลูกศรขึ้น/ลงเพื่อเลือก' : 'Use arrow keys'}
+                        </span>
+                      </div>
+
+                      {filteredNameSuggestions.map((item, idx) => {
+                        const isSelected = idx === activeSuggestionIndex;
+                        return (
+                          <div
+                            key={item}
+                            onClick={() => handleSelectName(item)}
+                            onMouseEnter={() => setActiveSuggestionIndex(idx)}
+                            className={`px-3 py-2.5 text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-rose-50 text-rose-950 font-bold'
+                                : 'hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-2xs font-black ${
+                                  isSelected ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-600 border border-rose-200'
+                                }`}
+                              >
+                                {item.slice(0, 1)}
+                              </div>
+                              <span className="truncate">{renderHighlightedText(item, personName)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Items Selection (40 Items from Google Form) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <BrushCleaning className="w-3.5 h-3.5 text-rose-600" />
+                      <span>{language === 'th' ? 'เลือกรายการอุปกรณ์ทำความสะอาด' : 'Select Cleaning Items'}</span>
+                      <span className="text-2xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        {CLEANING_FORM_ITEMS.length} รายการ
+                      </span>
+                    </label>
+
+                    {Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                          {language === 'th'
+                            ? `เลือกแล้ว ${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length} รายการ`
+                            : `${Object.values(cleaningSelectedItems).filter((v) => ['1', '2', '3'].includes(v)).length} selected`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCleaningSelectedItems({})}
+                          className="text-2xs text-slate-500 hover:text-rose-600 underline cursor-pointer"
+                        >
+                          {language === 'th' ? 'ล้างการเลือก' : 'Clear all'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search and Category Filter */}
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={cleaningSearchQuery}
+                        onChange={(e) => setCleaningSearchQuery(e.target.value)}
+                        placeholder={language === 'th' ? 'ค้นหาชื่ออุปกรณ์ทำความสะอาด เช่น ไม้กวาด, ถูพื้น, น้ำยา...' : 'Search cleaning items...'}
+                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs bg-slate-50 focus:bg-white outline-hidden font-medium"
+                      />
+                      {cleaningSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setCleaningSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Category pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                      {CLEANING_CATEGORIES.map((cat) => {
+                        const isCatActive = cleaningSelectedCategory === cat;
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setCleaningSelectedCategory(cat)}
+                            className={`px-2.5 py-1 rounded-lg text-2xs font-bold whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+                              isCatActive
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Items List */}
+                  <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white p-1">
+                    {CLEANING_FORM_ITEMS.filter((it) => {
+                      if (cleaningSelectedCategory !== 'ทั้งหมด' && it.category !== cleaningSelectedCategory) {
+                        return false;
+                      }
+                      if (cleaningSearchQuery.trim()) {
+                        const q = cleaningSearchQuery.trim().toLowerCase();
+                        return (
+                          it.name.toLowerCase().includes(q) ||
+                          it.category.toLowerCase().includes(q)
+                        );
+                      }
+                      return true;
+                    }).length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-400">
+                        {language === 'th' ? 'ไม่พบรายการอุปกรณ์ที่ค้นหา' : 'No matching items found'}
+                      </div>
+                    ) : (
+                      CLEANING_FORM_ITEMS.filter((it) => {
+                        if (cleaningSelectedCategory !== 'ทั้งหมด' && it.category !== cleaningSelectedCategory) {
+                          return false;
+                        }
+                        if (cleaningSearchQuery.trim()) {
+                          const q = cleaningSearchQuery.trim().toLowerCase();
+                          return (
+                            it.name.toLowerCase().includes(q) ||
+                            it.category.toLowerCase().includes(q)
+                          );
+                        }
+                        return true;
+                      }).map((item) => {
+                        const currentQty = cleaningSelectedItems[item.id] || '';
+                        const hasSelection = ['1', '2', '3'].includes(currentQty);
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`p-2.5 rounded-lg flex items-center justify-between gap-3 transition-colors ${
+                              hasSelection ? 'bg-rose-50/70' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-slate-800">
+                                  {item.name}
+                                </span>
+                                <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">
+                                  {item.category}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Quantity buttons 1, 2, 3 */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {(['1', '2', '3'] as const).map((q) => {
+                                const isThisQty = currentQty === q;
+                                return (
+                                  <button
+                                    key={q}
+                                    type="button"
+                                    onClick={() => {
+                                      setCleaningSelectedItems((prev) => {
+                                        if (prev[item.id] === q) {
+                                          const copy = { ...prev };
+                                          delete copy[item.id];
+                                          return copy;
+                                        }
+                                        return { ...prev, [item.id]: q };
+                                      });
+                                    }}
+                                    className={`w-7 h-7 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
+                                      isThisQty
+                                        ? 'bg-rose-600 text-white shadow-xs scale-105 ring-2 ring-rose-200'
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                    }`}
+                                    title={`เลือก ${q} ชิ้น`}
+                                  >
+                                    {q}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. อื่นๆ (ระบุเพิ่มเติม) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <span>{language === 'th' ? 'อื่นๆ (ระบุเพิ่มเติม)' : 'Other / Notes (Optional)'}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={cleaningOther}
+                    onChange={(e) => setCleaningOther(e.target.value)}
+                    placeholder={language === 'th' ? 'ระบุรายการหรือความต้องการเพิ่มเติม (ถ้ามี)' : 'Specify other requirements if any'}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
+                  />
+                </div>
+
+                {/* 5. Live Summary Preview Card */}
+                {(personName.trim() || Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(v)) || cleaningOther.trim()) && (
+                  <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200/80 text-xs space-y-1.5">
+                    <div className="font-bold text-rose-950 flex items-center justify-between">
+                      <span>{language === 'th' ? 'ตัวอย่างข้อมูลที่จะบันทึก' : 'Preview Data'}</span>
+                      <span className="px-2 py-0.5 rounded text-2xs font-black bg-rose-100 text-rose-900 border border-rose-200">
+                        {language === 'th' ? 'เบิกอุปกรณ์ทำความสะอาด' : 'Cleaning Equipment Requisition'}
+                      </span>
+                    </div>
+                    <div className="text-slate-700 space-y-0.5 pt-1">
+                      <div><span className="text-slate-500">วันที่:</span> <span className="font-medium">{date || '-'}</span></div>
+                      <div><span className="text-slate-500">ชื่อผู้เบิก:</span> <span className="font-bold text-slate-900">{personName || '-'}</span></div>
+                      <div>
+                        <span className="text-slate-500">รายการอุปกรณ์ที่เลือก:</span>{' '}
+                        <span className="font-bold text-rose-900">
+                          {Object.entries(cleaningSelectedItems).filter(([_, qty]) => ['1', '2', '3'].includes(qty)).length > 0
+                            ? Object.entries(cleaningSelectedItems)
+                                .filter(([_, qty]) => ['1', '2', '3'].includes(qty))
+                                .map(([id, qty]) => {
+                                  const it = CLEANING_FORM_ITEMS.find((x) => x.id === Number(id));
+                                  return `${it ? it.name : id} (${qty} ชิ้น)`;
+                                })
+                                .join(', ')
+                            : '-'}
+                        </span>
+                      </div>
+                      {cleaningOther.trim() && (
+                        <div><span className="text-slate-500">อื่นๆ:</span> <span className="font-medium text-slate-800">{cleaningOther}</span></div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Submit Button */}
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="submit"
+                    disabled={
+                      isSubmitting ||
+                      !personName.trim() ||
+                      (!Object.values(cleaningSelectedItems).some((v) => ['1', '2', '3'].includes(v)) && !cleaningOther.trim())
+                    }
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-rose-700 via-red-600 to-amber-600 hover:from-rose-800 hover:via-red-700 hover:to-amber-700 text-white shadow-rose-500/30 hover:scale-102 active:scale-98"
                   >
                     {isSubmitting ? (

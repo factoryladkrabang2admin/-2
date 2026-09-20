@@ -3399,7 +3399,7 @@ export const MASTER_EQUIPMENT_REQUISITION_FORM_URL = 'https://docs.google.com/fo
 
 export const CLEANING_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/edit?gid=1432727518#gid=1432727518';
 export const CLEANING_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ghnlCzcIq9A6rGVrZtEqiVA0bGFdqO3ZhbuYLhyBViw/export?format=csv&gid=1432727518';
-export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/1zFktbx7mqm2RVoW6ffYFnLctdd8Z622trcKyN8BmoxI/edit';
+export const CLEANING_EQUIPMENT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSc_z8qRUirSajn070DxgHIa7MWuNy8Sn7Rj0b_QuBLC7ow25A/viewform?usp=pp_url';
 
 export const SOFTENER_EQUIPMENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/edit?gid=1462351217#gid=1462351217';
 export const SOFTENER_EQUIPMENT_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Xs6vgGFieSYkJ1cl38Txer9Czr_A3Eh9_vh_Kyxr860/export?format=csv&gid=1462351217';
