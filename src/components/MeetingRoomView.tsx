@@ -18,6 +18,7 @@ import {
   ChevronRight, 
   X, 
   Calendar,
+  CalendarPlus,
   Layers,
   Presentation,
   Check,
@@ -35,12 +36,14 @@ import {
   fetchGoogleSheetMeetingRoomBookings, 
   calculateMeetingStatus,
   MEETING_ROOM_SHEET_URL,
-  MEETING_ROOM_FORM_URL
+  MEETING_ROOM_FORM_URL,
+  MEETING_ROOM_BOOKING_FORM_URL
 } from '../services/googleSheetSyncService';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { MeetingRoomDetailModal } from './MeetingRoomDetailModal';
 import { MeetingRoomCalendarView } from './MeetingRoomCalendarView';
 import { MeetingRoomAnalyticsModal } from './MeetingRoomAnalyticsModal';
+import { CreateMeetingRoomModal } from './CreateMeetingRoomModal';
 
 const STORAGE_KEY = 'proworkflow_meeting_room_bookings_cache_v1';
 const BACKGROUND_POLL_INTERVAL_MS = 20000; // Auto-update in background every 20s
@@ -126,6 +129,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [showAnalyticsModal, setShowAnalyticsModal] = useState<boolean>(false);
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
   const [copiedQrLink, setCopiedQrLink] = useState<boolean>(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
   // Sorting
   const [sortBy, setSortBy] = useState<'seq_desc' | 'seq_asc' | 'date_desc' | 'date_asc'>('seq_desc');
@@ -531,7 +535,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               <Presentation className="w-6 h-6 text-purple-700 animate-pulse" />
               <Sparkles className="w-3.5 h-3.5 text-amber-500 absolute -top-1 -right-1" />
             </div>
-            <div>
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#3b0764] drop-shadow-xs">
                 {language === 'th' ? 'ห้องประชุม' : 'Meeting Rooms'}
               </h1>
@@ -540,6 +544,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
           {/* Action Buttons & View Switcher Toolbar */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* 0. ปุ่มไอคอนจองห้องประชุม (จำกัดสิทธิ์เฉพาะผู้ดูแลและแอดมินเพจเท่านั้น) */}
+            {canAccessGoogleSheet && (
+              <button
+                type="button"
+                id="btn-book-meeting-room-icon"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="relative p-2.5 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-fuchsia-600 hover:from-purple-700 hover:via-indigo-700 hover:to-fuchsia-700 text-white border border-purple-400/50 shadow-xs hover:shadow-md hover:shadow-purple-500/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center group overflow-hidden"
+                title={language === 'th' ? 'จองห้องประชุม (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Book Meeting Room (Admin Only)'}
+                aria-label={language === 'th' ? 'จองห้องประชุม' : 'Book Meeting Room'}
+              >
+                <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
+                <CalendarPlus className="w-5 h-5 text-white stroke-[2.2] group-hover:scale-110 transition-transform" />
+              </button>
+            )}
+
             {/* 1. ปุ่มสถิติและการวิเคราะห์ (Statistics / Analytics Modal) - Icon BarChart3 matching LaundryView */}
             <button
               type="button"
@@ -1506,6 +1525,18 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* 5. Modal ลงข้อมูลจองห้องประชุม (อินเตอร์เฟซและการทำงานเหมือนเพิ่มรายการรับ-ส่งเอกสาร/พัสดุ) */}
+      <CreateMeetingRoomModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onBookingCreated={() => {
+          loadData();
+        }}
+        currentUser={currentUser}
+        isAuthenticated={isAuthenticated}
+        existingBookings={bookings}
+      />
     </div>
   );
 };

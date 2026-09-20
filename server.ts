@@ -1378,6 +1378,141 @@ async function startServer() {
     }
   });
 
+  // ==========================================
+  // Meeting Room Booking Google Form Submit Endpoint
+  // ==========================================
+  app.post("/api/meeting-room-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const {
+        room,
+        bookingDate,
+        startTime,
+        endTime,
+        subject,
+        department,
+        attendeesCount,
+        phoneNumber,
+      } = payload;
+
+      if (!room || !bookingDate || !startTime || !endTime || !subject || !department) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณากรอกข้อมูลการจองห้องประชุมให้ครบถ้วนทุกช่อง",
+        });
+      }
+
+      // Parse date
+      // Can be YYYY-MM-DD or DD/MM/YYYY
+      let year = "";
+      let month = "";
+      let day = "";
+
+      if (bookingDate.includes("-")) {
+        const parts = bookingDate.split("-");
+        year = parts[0];
+        month = parts[1].padStart(2, "0");
+        day = parts[2].padStart(2, "0");
+      } else if (bookingDate.includes("/")) {
+        const parts = bookingDate.split("/");
+        day = parts[0].padStart(2, "0");
+        month = parts[1].padStart(2, "0");
+        year = parts[2];
+        if (Number(year) > 2500) {
+          year = String(Number(year) - 543);
+        }
+      }
+
+      // Parse times
+      const startParts = (startTime || "09:00").replace(".", ":").split(":");
+      const startHour = startParts[0].padStart(2, "0");
+      const startMinute = (startParts[1] || "00").padStart(2, "0");
+
+      const endParts = (endTime || "10:00").replace(".", ":").split(":");
+      const endHour = endParts[0].padStart(2, "0");
+      const endMinute = (endParts[1] || "00").padStart(2, "0");
+
+      const GOOGLE_MEETING_FORM_ACTION_URL =
+        "https://docs.google.com/forms/d/e/1FAIpQLSflLlOcrbuczKPtgREUOckKiCyzX0BpgqeOP49XXaTxDALWKw/formResponse";
+
+      const formParams = new URLSearchParams();
+      formParams.append("entry.832847056", room);
+      formParams.append("entry.539265711_year", year);
+      formParams.append("entry.539265711_month", month);
+      formParams.append("entry.539265711_day", day);
+      formParams.append("entry.539265711", `${year}-${month}-${day}`);
+      formParams.append("entry.1300758557_hour", startHour);
+      formParams.append("entry.1300758557_minute", startMinute);
+      formParams.append("entry.1224325739_hour", endHour);
+      formParams.append("entry.1224325739_minute", endMinute);
+      formParams.append("entry.124149879", String(subject).trim());
+      formParams.append("entry.1240894642", String(attendeesCount || "1").trim());
+      formParams.append("entry.558804825", String(department).trim());
+      formParams.append("entry.944945468", String(phoneNumber || "-").trim());
+      formParams.append("fvv", "1");
+      formParams.append("pageHistory", "0");
+
+      let googleSheetSynced = false;
+      let details = "";
+
+      try {
+        const formResponse = await fetch(GOOGLE_MEETING_FORM_ACTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          body: formParams.toString(),
+          redirect: "follow",
+        });
+
+        const formText = await formResponse.text();
+        const isSuccess =
+          formResponse.ok ||
+          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
+          formText.includes("Your response has been recorded");
+
+        if (isSuccess) {
+          googleSheetSynced = true;
+          details = "บันทึกและส่งข้อมูลเข้า Google Form และ Google Sheet สำเร็จเรียบร้อยแล้ว";
+        } else {
+          details = `Google Form response status ${formResponse.status}`;
+        }
+      } catch (postErr: any) {
+        details = postErr.message || "Failed to submit to Google Form POST";
+      }
+
+      const now = new Date();
+      const record = {
+        id: `meeting-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        seq: Date.now(),
+        timestamp: `${now.toLocaleDateString("th-TH")}, ${now.toLocaleTimeString("th-TH")}`,
+        room,
+        bookingDate: `${day}/${month}/${year}`,
+        startTime: `${startHour}:${startMinute}`,
+        endTime: `${endHour}:${endMinute}`,
+        subject: String(subject).trim(),
+        department: String(department).trim(),
+        attendeesCount: Number(attendeesCount) || 1,
+        phoneNumber: String(phoneNumber || "-").trim(),
+      };
+
+      return res.json({
+        success: true,
+        googleSheetSynced,
+        details,
+        record,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/meeting-room-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal server error during meeting room booking",
+      });
+    }
+  });
+
   // Test endpoint for Announcements Google Apps Script Webhook
   app.post("/api/announcement-webhook-test", async (req, res) => {
     try {

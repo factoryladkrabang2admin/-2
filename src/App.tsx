@@ -587,12 +587,16 @@ export default function App() {
     syncGoogleSheetMaintenance();
     syncGoogleSheetAnnouncements();
 
-    // Embedded real-time background sync (every 5 seconds quietly in background)
+    // Embedded real-time background sync for Laundry & Maintenance (every 5 seconds)
     const interval = setInterval(() => {
       syncGoogleSheet(false);
       syncGoogleSheetMaintenance();
-      syncGoogleSheetAnnouncements();
     }, 5000);
+
+    // Embedded real-time background sync for Announcements: Every 2 seconds per user request
+    const announcementsInterval = setInterval(() => {
+      syncGoogleSheetAnnouncements();
+    }, 2000);
 
     const handleFocusOrVisible = () => {
       if (document.visibilityState === 'visible') {
@@ -607,6 +611,7 @@ export default function App() {
 
     return () => {
       clearInterval(interval);
+      clearInterval(announcementsInterval);
       window.removeEventListener('focus', handleFocusOrVisible);
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
     };

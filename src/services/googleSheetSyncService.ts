@@ -2342,7 +2342,8 @@ export async function fetchGoogleSheetActivitySchedule(): Promise<{
 // ==========================================
 export const MEETING_ROOM_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1SHDNqj6e-n1jmMfSl4UV5f6d6sCs_HZv_X00AlP8njA/edit?gid=860478872#gid=860478872';
 export const MEETING_ROOM_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1SHDNqj6e-n1jmMfSl4UV5f6d6sCs_HZv_X00AlP8njA/export?format=csv&gid=860478872';
-export const MEETING_ROOM_FORM_URL = 'https://docs.google.com/forms/d/1hgxOSqH1ck4D8BlpwokgmrWhAAf-YN4jFaof_0Rx6u0/edit';
+export const MEETING_ROOM_FORM_URL = 'https://docs.google.com/forms/d/1hgxOSqH1ck4D8BlpwokgmrWhAAf-YN4jFaof_0Rx6u0/prefill';
+export const MEETING_ROOM_BOOKING_FORM_URL = 'https://docs.google.com/forms/d/1hgxOSqH1ck4D8BlpwokgmrWhAAf-YN4jFaof_0Rx6u0/prefill';
 
 export const FALLBACK_MEETING_ROOM_CSV = `ประทับเวลา,เลือกห้องประชุม,วันที่,เวลาที่เริ่ม,เวลาสิ้นสุด,เรื่องที่ประชุม/อบรม,แผนก/ฝ่าย,จำนวน (คน),เบอร์โทร
 "24/8/2026, 15:17:57",TPM 1,3/8/2026,10:30:00,11:30:00,ประชุมแผนกธุรการลาดกระบัง 2,ทรัพยากรบุคคล,9,4510
@@ -2480,7 +2481,7 @@ export function convertSheetRowsToMeetingRoomBookings(csvText: string): MeetingR
     const status = calculateMeetingStatus(bookingDate, startTime, endTime);
 
     return {
-      id: `mtg-${idx + 1}-${Date.now().toString(36)}`,
+      id: `mtg-sheet-${idx + 1}-${timestamp.replace(/[^a-zA-Z0-9]/g, '')}`,
       seq: idx + 1,
       timestamp,
       room,
@@ -2577,13 +2578,14 @@ export async function fetchGoogleSheetMeetingRoomBookings(): Promise<{
       }
     }
 
-    const finalText = csvText || FALLBACK_MEETING_ROOM_CSV;
-    const bookings = convertSheetRowsToMeetingRoomBookings(finalText);
+    // แสดงข้อมูลเฉพาะที่มีใน Google sheet เท่านั้น (Strictly Google Sheet data only)
+    const finalText = csvText || '';
+    const sheetBookings = finalText ? convertSheetRowsToMeetingRoomBookings(finalText) : [];
 
     return {
       success: true,
-      bookings,
-      rawRowsCount: bookings.length,
+      bookings: sheetBookings,
+      rawRowsCount: sheetBookings.length,
       lastSyncedAt: new Date(),
     };
   };
@@ -2593,6 +2595,128 @@ export async function fetchGoogleSheetMeetingRoomBookings(): Promise<{
   });
 
   return inFlightMeetingRoomPromise;
+}
+
+// Local cache for recently created meeting room bookings
+const LOCAL_MEETING_BOOKINGS_KEY = 'proworkflow_meeting_room_local_bookings_v1';
+
+export function getLocalMeetingRoomBookings(): MeetingRoomBooking[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_MEETING_BOOKINGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalMeetingRoomBooking(booking: MeetingRoomBooking): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getLocalMeetingRoomBookings();
+    const filtered = existing.filter(b => b.id !== booking.id);
+    filtered.unshift(booking);
+    localStorage.setItem(LOCAL_MEETING_BOOKINGS_KEY, JSON.stringify(filtered.slice(0, 50)));
+  } catch (e) {
+    console.warn('Failed to save local meeting booking:', e);
+  }
+}
+
+export interface NewMeetingRoomPayload {
+  room: string;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  subject: string;
+  department: string;
+  attendeesCount: number | string;
+  phoneNumber: string;
+}
+
+export interface MeetingRoomSubmitResult {
+  success: boolean;
+  booking: MeetingRoomBooking | null;
+  googleSheetSynced: boolean;
+  error?: string;
+  details?: string;
+}
+
+export async function submitMeetingRoomBooking(
+  payload: NewMeetingRoomPayload
+): Promise<MeetingRoomSubmitResult> {
+  if (
+    !payload.room?.trim() ||
+    !payload.bookingDate?.trim() ||
+    !payload.startTime?.trim() ||
+    !payload.endTime?.trim() ||
+    !payload.subject?.trim() ||
+    !payload.department?.trim()
+  ) {
+    return {
+      success: false,
+      booking: null,
+      googleSheetSynced: false,
+      error: 'กรุณากรอกข้อมูลการจองห้องประชุมให้ครบถ้วนทุกช่อง',
+    };
+  }
+
+  const now = new Date();
+  const timestamp = `${now.toLocaleDateString('th-TH')}, ${now.toLocaleTimeString('th-TH')}`;
+  
+  // Format booking date to DD/MM/YYYY if YYYY-MM-DD
+  let formattedDate = payload.bookingDate;
+  if (payload.bookingDate.includes('-')) {
+    const [y, m, d] = payload.bookingDate.split('-');
+    formattedDate = `${parseInt(d, 10)}/${parseInt(m, 10)}/${y}`;
+  }
+
+  const newBooking: MeetingRoomBooking = {
+    id: `local-meeting-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    seq: Date.now(),
+    timestamp,
+    room: payload.room.trim(),
+    bookingDate: formattedDate,
+    startTime: payload.startTime.trim(),
+    endTime: payload.endTime.trim(),
+    subject: payload.subject.trim(),
+    department: payload.department.trim(),
+    attendeesCount: Number(payload.attendeesCount) || 1,
+    phoneNumber: payload.phoneNumber?.trim() || '-',
+    status: calculateMeetingStatus(formattedDate, payload.startTime, payload.endTime),
+  };
+
+  let googleSheetSynced = false;
+  let details = '';
+
+  try {
+    const res = await fetch('/api/meeting-room-submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      googleSheetSynced = !!data.googleSheetSynced;
+      details = data.details || '';
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      details = errData.error || `Server returned status ${res.status}`;
+    }
+  } catch (err: any) {
+    details = err.message || 'Network error';
+  }
+
+  return {
+    success: true,
+    booking: newBooking,
+    googleSheetSynced,
+    details,
+  };
 }
 
 // ==========================================
