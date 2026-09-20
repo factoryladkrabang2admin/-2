@@ -26,7 +26,8 @@ import {
   ExternalLink,
   Plus,
   RefreshCw,
-  FileText
+  FileText,
+  FolderOpen
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
@@ -39,6 +40,7 @@ import {
   ANNOUNCEMENTS_SHEET_URL,
   ANNOUNCEMENTS_FORM_VIEW_URL,
   ANNOUNCEMENTS_FORM_EDIT_URL,
+  ANNOUNCEMENTS_DRIVE_FOLDER_URL,
   getLocalAnnouncements,
   getAnnouncementsWebhookUrl
 } from '../services/googleSheetSyncService';
@@ -433,6 +435,18 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             >
               <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
             </button>
+
+            {/* Google Drive Folder Link Button (โฟลเดอร์เก็บรูปภาพประกอบข่าวสาร) */}
+            <a
+              href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-blue-700 hover:text-blue-900 shadow-md hover:shadow-lg transition-all border border-blue-300/80 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group"
+              title={language === 'th' ? 'เปิดโฟลเดอร์ Google Drive เก็บรูปภาพประกอบข่าวสาร (รูปภาพประกอบ File responses)' : 'Open Announcements Google Drive Folder'}
+              aria-label="Open Announcements Google Drive Folder"
+            >
+              <FolderOpen className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" />
+            </a>
 
             {/* Google Form Link Button (เปิดไปยัง Google Form ทางการ) */}
             <a

@@ -1263,7 +1263,6 @@ async function startServer() {
           });
 
           if (webhookRes.ok || webhookRes.status === 200 || webhookRes.status === 302) {
-            syncedToGoogle = true;
             try {
               const text = await webhookRes.text();
               let resData: any = null;
@@ -1273,19 +1272,28 @@ async function startServer() {
                 resData = null;
               }
 
-              if (resData) {
+              if (resData && (resData.success === true || resData.status === "ok" || resData.driveUploaded || resData.imageUrl || resData.driveUrl)) {
+                syncedToGoogle = true;
                 const driveLink = resData.imageUrl || resData.driveUrl || resData.fileUrl || resData.url;
-                if (driveLink && typeof driveLink === "string" && driveLink.startsWith("http")) {
+                if (driveLink && typeof driveLink === "string" && (driveLink.includes("drive.google.com") || driveLink.includes("docs.google.com") || driveLink.startsWith("http"))) {
                   resolvedImageUrl = driveLink;
                   driveUploaded = true;
                 } else if (resData.fileId || resData.driveFileId) {
                   const id = resData.fileId || resData.driveFileId;
                   resolvedImageUrl = `https://drive.google.com/file/d/${id}/view?usp=sharing`;
                   driveUploaded = true;
+                } else if (resData.driveUploaded) {
+                  driveUploaded = true;
                 }
+              } else if (!resData) {
+                console.warn("Webhook returned non-JSON content (likely HTML or redirect):", text.slice(0, 150));
+                webhookErrorDetails = "Webhook ส่งข้อมูลตอบกลับไม่ใช่ JSON (อาจเป็นหน้าเว็บหรือสิทธิ์การเข้าถึง)";
+              } else if (resData.error) {
+                webhookErrorDetails = String(resData.error);
               }
-            } catch (parseErr) {
+            } catch (parseErr: any) {
               console.warn("Could not parse Apps Script response body:", parseErr);
+              webhookErrorDetails = parseErr.message;
             }
           } else {
             webhookErrorDetails = `Webhook returned HTTP ${webhookRes.status}`;

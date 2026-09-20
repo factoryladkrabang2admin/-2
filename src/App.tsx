@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Clock, X } from 'lucide-react';
 import { NavigationTab, TeamMember, ActivityItem, LaundryOrder, AppNotification, LaundryStage, MaintenanceTicket, MaintenanceStatus, AnnouncementItem } from './types';
 import { 
   INITIAL_TEAM_MEMBERS, 
@@ -43,6 +44,9 @@ import { WeatherData, fetchCurrentWeather } from './services/weatherService';
 import { realtimeHub, RealtimeMessage } from './services/realtimeService';
 import { fetchGoogleSheetLaundryOrders, fetchGoogleSheetMaintenanceTickets, fetchGoogleSheetOtRecords, fetchGoogleSheetAnnouncements, GOOGLE_SHEET_URL } from './services/googleSheetSyncService';
 
+// 10 minutes inactivity timeout
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+
 export default function App() {
   // Main State: default to 'laundry' for guest users so they land directly on public content
   const [currentTab, setCurrentTab] = useState<NavigationTab>('laundry');
@@ -53,20 +57,154 @@ export default function App() {
   // Floating Service Portal Window: Show on page load per user request
   const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(true);
 
-  // Authentication State - Security Policy: Start unauthenticated when page is opened
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<AdminUserAccount>(DEFAULT_GUEST_USER);
-  const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
+  // Notification for 10-minute auto-logout
+  const [autoLogoutNotice, setAutoLogoutNotice] = useState<string | null>(null);
 
-  // Security Policy: Clear any auto-login on session start so login is required every page open
-  useEffect(() => {
+  // Authentication State - Keeps user logged in, checks 10-min inactivity window
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      localStorage.setItem('proworkflow_is_authenticated', 'false');
-      localStorage.removeItem('proworkflow_current_user');
+      const isAuth = localStorage.getItem('proworkflow_is_authenticated') === 'true';
+      const userJson = localStorage.getItem('proworkflow_current_user');
+      const lastActive = parseInt(localStorage.getItem('proworkflow_last_activity_time') || '0', 10);
+
+      if (isAuth && userJson) {
+        if (lastActive > 0 && Date.now() - lastActive > INACTIVITY_TIMEOUT_MS) {
+          // Inactive for more than 10 minutes while tab was closed/reopened
+          localStorage.setItem('proworkflow_is_authenticated', 'false');
+          localStorage.removeItem('proworkflow_current_user');
+          localStorage.removeItem('proworkflow_last_activity_time');
+          return false;
+        }
+        return true;
+      }
     } catch {
       // ignore
     }
+    return false;
+  });
+
+  const [currentUser, setCurrentUser] = useState<AdminUserAccount>(() => {
+    try {
+      const isAuth = localStorage.getItem('proworkflow_is_authenticated') === 'true';
+      const userJson = localStorage.getItem('proworkflow_current_user');
+      const lastActive = parseInt(localStorage.getItem('proworkflow_last_activity_time') || '0', 10);
+
+      if (isAuth && userJson && (lastActive === 0 || Date.now() - lastActive <= INACTIVITY_TIMEOUT_MS)) {
+        return JSON.parse(userJson);
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_GUEST_USER;
+  });
+
+  const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
+
+  // Activity tracking refs
+  const lastActivityTimeRef = useRef<number>(Date.now());
+  const lastStorageSyncTimeRef = useRef<number>(Date.now());
+
+  const handleLogout = useCallback((isAuto = false) => {
+    setIsAuthenticated(false);
+    setCurrentUser(DEFAULT_GUEST_USER);
+    try {
+      localStorage.setItem('proworkflow_is_authenticated', 'false');
+      localStorage.removeItem('proworkflow_current_user');
+      localStorage.removeItem('proworkflow_last_activity_time');
+    } catch {
+      // storage
+    }
+    setLoginModalOpen(false);
+    setCurrentTab('laundry');
+
+    if (isAuto) {
+      setAutoLogoutNotice('ระบบได้ออกจากระบบอัตโนมัติ เนื่องจากไม่มีการเคลื่อนไหวเกิน 10 นาที');
+      setTimeout(() => {
+        setAutoLogoutNotice(null);
+      }, 8000);
+    } else {
+      setAutoLogoutNotice(null);
+    }
   }, []);
+
+  // 10-Minute Inactivity Detector & Activity Listener
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Refresh last activity timestamp upon authentication
+    const initialNow = Date.now();
+    lastActivityTimeRef.current = initialNow;
+    try {
+      localStorage.setItem('proworkflow_last_activity_time', String(initialNow));
+    } catch {
+      // ignore
+    }
+
+    const handleUserActivity = () => {
+      const currentTime = Date.now();
+      lastActivityTimeRef.current = currentTime;
+
+      // Throttle writing to localStorage to at most once every 5 seconds
+      if (currentTime - lastStorageSyncTimeRef.current > 5000) {
+        lastStorageSyncTimeRef.current = currentTime;
+        try {
+          localStorage.setItem('proworkflow_last_activity_time', String(currentTime));
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const events: (keyof WindowEventMap)[] = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'wheel',
+      'click'
+    ];
+
+    events.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    // Check inactivity periodically every 5 seconds
+    const inactivityInterval = setInterval(() => {
+      const currentTime = Date.now();
+      const lastActiveLocal = parseInt(localStorage.getItem('proworkflow_last_activity_time') || '0', 10);
+      const effectiveLastActive = Math.max(lastActivityTimeRef.current, lastActiveLocal);
+
+      if (currentTime - effectiveLastActive >= INACTIVITY_TIMEOUT_MS) {
+        handleLogout(true);
+      }
+    }, 5000);
+
+    // Also check when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const currentTime = Date.now();
+        const lastActiveLocal = parseInt(localStorage.getItem('proworkflow_last_activity_time') || '0', 10);
+        const effectiveLastActive = Math.max(lastActivityTimeRef.current, lastActiveLocal);
+
+        if (currentTime - effectiveLastActive >= INACTIVITY_TIMEOUT_MS) {
+          handleLogout(true);
+        } else {
+          handleUserActivity();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      events.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(inactivityInterval);
+    };
+  }, [isAuthenticated, handleLogout]);
 
   // Prefetch OT and Google Sheet records immediately in background on startup
   useEffect(() => {
@@ -89,26 +227,18 @@ export default function App() {
   const handleLoginSuccess = (user: AdminUserAccount) => {
     setIsAuthenticated(true);
     setCurrentUser(user);
+    const now = Date.now();
+    lastActivityTimeRef.current = now;
+    lastStorageSyncTimeRef.current = now;
     try {
       localStorage.setItem('proworkflow_is_authenticated', 'true');
       localStorage.setItem('proworkflow_current_user', JSON.stringify(user));
+      localStorage.setItem('proworkflow_last_activity_time', String(now));
     } catch {
       // storage
     }
+    setAutoLogoutNotice(null);
     setLoginModalOpen(false);
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(DEFAULT_GUEST_USER);
-    try {
-      localStorage.setItem('proworkflow_is_authenticated', 'false');
-      localStorage.removeItem('proworkflow_current_user');
-    } catch {
-      // storage
-    }
-    setLoginModalOpen(false);
-    setCurrentTab('laundry');
   };
 
   const handleUpdateCurrentUser = (updated: AdminUserAccount) => {
@@ -1193,6 +1323,24 @@ export default function App() {
         onSelectService={handleSelectServiceFromPortal}
         currentTab={currentTab}
       />
+
+      {/* Auto-logout Notification Toast */}
+      {autoLogoutNotice && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-amber-600 text-white rounded-2xl shadow-2xl border border-amber-400 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md">
+          <Clock className="w-5 h-5 text-amber-200 shrink-0 animate-pulse" />
+          <div className="flex-1 text-xs sm:text-sm font-bold">
+            {autoLogoutNotice}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoLogoutNotice(null)}
+            className="p-1 hover:bg-white/20 rounded-lg transition-colors text-white cursor-pointer"
+            title="ปิด"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

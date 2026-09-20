@@ -29,8 +29,11 @@ import {
   Trash2,
   HardDrive,
   FolderUp,
+  FolderOpen,
   Download,
   Link as LinkIcon,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { AnnouncementItem } from '../types';
 import { AdminUserAccount } from '../data/mockData';
@@ -79,7 +82,18 @@ const APPS_SCRIPT_TEMPLATE = `/**
  */
 function doPost(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var ss;
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (eActive) {}
+    if (!ss) {
+      try {
+        ss = SpreadsheetApp.openById("1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU");
+      } catch (eOpen) {
+        ss = SpreadsheetApp.getActiveSpreadsheet();
+      }
+    }
+    var sheet = ss ? (ss.getSheetByName("การตอบแบบฟอร์ม 1") || ss.getSheets()[0]) : SpreadsheetApp.getActiveSheet();
     var data = {};
     
     // Parse incoming payload (JSON or Form Data)
@@ -301,6 +315,8 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [webhookSaveNotice, setWebhookSaveNotice] = useState<string | null>(null);
+  const [isDriveFolderUrlCopied, setIsDriveFolderUrlCopied] = useState(false);
+  const [isInlineWebhookExpanded, setIsInlineWebhookExpanded] = useState(false);
 
   // Sync operatorName if currentUser changes
   useEffect(() => {
@@ -378,6 +394,24 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  // Copy Google Drive Folder URL
+  const handleCopyDriveFolderUrl = () => {
+    navigator.clipboard.writeText(ANNOUNCEMENTS_DRIVE_FOLDER_URL);
+    setIsDriveFolderUrlCopied(true);
+    setTimeout(() => setIsDriveFolderUrlCopied(false), 2500);
+  };
+
+  // Download attached image to user's device for easy drag-and-drop into Google Drive
+  const handleDownloadAttachedImage = () => {
+    if (!attachedImageBase64) return;
+    const a = document.createElement('a');
+    a.href = attachedImageBase64;
+    a.download = attachedImageFileName || `announcement_${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   // Reset form
@@ -609,32 +643,16 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                 <h2 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
                   <span>{language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'New Announcement'}</span>
                 </h2>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
-                  Google Sheet
-                </span>
               </div>
               <p className="text-xs text-blue-100/90 font-medium">
                 {language === 'th'
-                  ? 'บันทึกข้อมูลข่าวสารและซิงก์เข้าสู่ Google Sheet แบบเรียลไทม์'
-                  : 'Add announcements and sync directly to Google Sheet'}
+                  ? 'สร้างและเผยแพร่ข่าวสารประชาสัมพันธ์ของโรงงาน'
+                  : 'Create and publish factory announcements'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Direct Google Sheet Link Icon */}
-            <a
-              href={ANNOUNCEMENTS_SHEET_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 hover:text-white transition-all border border-white/20 flex items-center gap-1.5 text-xs font-bold"
-              title={language === 'th' ? 'เปิดดู Google Sheet' : 'Open Google Sheet'}
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
-              <span className="hidden sm:inline">Google Sheet</span>
-            </a>
-
             {/* Close Button */}
             <button
               type="button"
@@ -648,57 +666,12 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           </div>
         </div>
 
-        {/* Tab Navigation Switcher */}
-        <div className="flex border-b border-slate-200 bg-slate-50/90 px-4 sm:px-6 pt-2.5 shrink-0 gap-2 overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('in-app')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-all cursor-pointer border-b-2 shrink-0 ${
-              activeTab === 'in-app'
-                ? 'bg-white text-indigo-700 border-indigo-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-white/60'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>{language === 'th' ? 'กรอกข้อมูลข่าวสาร' : 'Announcement Form'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('webhook-setup')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-all cursor-pointer border-b-2 shrink-0 ${
-              activeTab === 'webhook-setup'
-                ? 'bg-white text-emerald-700 border-emerald-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-white/60'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            <span>{language === 'th' ? 'ตั้งค่าซิงก์ Google Sheet (Webhook)' : 'Google Sheet Sync Setup'}</span>
-            {isWebhookConnected && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('external-links')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-all cursor-pointer border-b-2 shrink-0 ${
-              activeTab === 'external-links'
-                ? 'bg-white text-purple-700 border-purple-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-white/60'
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            <span>{language === 'th' ? 'ลิงก์ Google Sheet / Form' : 'Sheet & Form Links'}</span>
-          </button>
-        </div>
-
         {/* Modal Body Content */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
-          {/* TAB 1: In-App Form & Result Screen */}
+          {/* Main Announcement Form & Result Screen */}
           {activeTab === 'in-app' && (
             <div>
-              {createdItem ? (
+            {createdItem ? (
                 /* Success Screen with Direct Google Sheet Action */
                 <div className="py-4 px-2 sm:px-6 text-center space-y-5 animate-in fade-in zoom-in-95 duration-200">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-emerald-100 border-2 border-emerald-300 text-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
@@ -719,37 +692,155 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                   </div>
 
                   {/* Google Drive Status & Target Folder */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 text-left max-w-xl mx-auto space-y-2 shadow-xs">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                          <HardDrive className="w-4 h-4" />
+                  {lastSubmitResult?.driveUploaded ? (
+                    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl p-4 text-left max-w-xl mx-auto space-y-2.5 shadow-sm">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-emerald-950">รูปภาพถูกบันทึกเข้า Google Drive เรียบร้อยแล้ว!</span>
+                              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
+                                รูปภาพประกอบ (File responses)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-emerald-700 mt-0.5">
+                              ไฟล์ถูกส่งขึ้น Google Drive และสร้างลิงก์สำหรับเปิดดูรูปภาพในระบบอัตโนมัติ
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-black text-slate-900">โฟลเดอร์ Google Drive:</span>
-                            <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
-                              รูปภาพประกอบ (File responses)
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                          {lastSubmitResult?.driveUrl && (
+                            <a
+                              href={lastSubmitResult.driveUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-all"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>ดูรูปภาพ</span>
+                            </a>
+                          )}
+                          <a
+                            href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-bold shadow-xs transition-all"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>เปิดโฟลเดอร์</span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (attachedImageBase64 || createdItem?.rawImageUrl || createdItem?.imageUrl) ? (
+                    <div className="bg-amber-50/90 border-2 border-amber-300/90 rounded-2xl p-4 text-left max-w-xl mx-auto space-y-3 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                          <HardDrive className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-amber-950">บันทึกข้อมูลข่าวสารแล้ว แต่รูปภาพยังไม่ได้อยู่ใน Google Drive</span>
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
+                              ต้องนำรูปเข้า Drive
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            {lastSubmitResult?.driveUploaded
-                              ? 'รูปภาพประกอบถูกส่งเข้าเก็บในโฟลเดอร์ Google Drive แล้ว'
-                              : 'โฟลเดอร์จัดเก็บรูปภาพประกอบของระบบ'}
+                          <p className="text-xs text-amber-900 leading-relaxed">
+                            ระบบบันทึกข่าวสารในระบบเรียบร้อยแล้ว หากยังไม่ได้เชื่อมต่อ Google Apps Script Webhook เพื่ออัปโหลดอัตโนมัติ คุณสามารถนำรูปภาพเข้าสู่ Google Drive ได้ทันที:
                           </p>
                         </div>
                       </div>
-                      <a
-                        href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>เปิดโฟลเดอร์ใน Drive</span>
-                      </a>
+
+                      {/* Folder Link & Download Action */}
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-slate-700 block">โฟลเดอร์ Google Drive ปลายทาง:</span>
+                          <span className="text-xs font-black text-blue-700 truncate block">รูปภาพประกอบ (File responses)</span>
+                          <a
+                            href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-blue-600 hover:underline truncate block"
+                          >
+                            {ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                          </a>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+                          <a
+                            href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all flex-1 sm:flex-none cursor-pointer"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            <span>เปิดโฟลเดอร์ใน Drive</span>
+                          </a>
+                          {attachedImageBase64 && (
+                            <button
+                              type="button"
+                              onClick={handleDownloadAttachedImage}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition-all flex-1 sm:flex-none cursor-pointer"
+                              title="ดาวน์โหลดรูปภาพที่แนบลงเครื่องเพื่อนำไปลากใส่โฟลเดอร์ Drive"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>ดาวน์โหลดรูป</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={handleCopyDriveFolderUrl}
+                            className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-300 transition-all cursor-pointer"
+                            title="คัดลอกลิงก์โฟลเดอร์ Google Drive"
+                          >
+                            {isDriveFolderUrlCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 text-left max-w-xl mx-auto space-y-2 shadow-xs">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <FolderOpen className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-slate-900">โฟลเดอร์ Google Drive:</span>
+                              <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                                รูปภาพประกอบ (File responses)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              โฟลเดอร์จัดเก็บรูปภาพประกอบข่าวสารของระบบ
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                          <a
+                            href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>เปิดโฟลเดอร์ใน Drive</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={handleCopyDriveFolderUrl}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold shadow-xs transition-all cursor-pointer"
+                          >
+                            {isDriveFolderUrlCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* PROMINENT GOOGLE SHEET FAST-PASTE BOX (Form & Standard Formats) */}
                   <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-300/80 rounded-2xl p-4 sm:p-5 text-left max-w-xl mx-auto space-y-3 shadow-sm">
@@ -990,20 +1081,6 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
               ) : (
                 /* In-App Form */
                 <form onSubmit={handleSubmitInApp} className="space-y-4">
-                  {/* Status Banner */}
-                  <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200/80 text-blue-900 text-xs">
-                    <Sparkles className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                    <div className="leading-relaxed">
-                      <span className="font-bold">ระบบบันทึกข่าวประชาสัมพันธ์ & Google Sheet: </span>
-                      เมื่อบันทึกข้อมูลจะปรากฏในระบบทันที
-                      {isWebhookConnected ? (
-                        <span className="text-emerald-700 font-bold"> (พร้อมส่งเข้า Google Sheet อัตโนมัติผ่าน Apps Script Webhook)</span>
-                      ) : (
-                        <span className="text-blue-700"> (และพร้อมปุ่มคัดลอกแถวสำหรับนำไปวางลงใน Google Sheet ได้ทันที หรือตั้งค่า Webhook ในแท็บตั้งค่า)</span>
-                      )}
-                    </div>
-                  </div>
-
                   {submitError && (
                     <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -1148,8 +1225,8 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                   </div>
 
                   {/* Image Attachment & Drive Upload Section */}
-                  <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50/80 border border-slate-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <label className="text-xs font-black text-slate-800 tracking-wide uppercase flex items-center gap-1.5">
                         <ImageIcon className="w-4 h-4 text-indigo-600" />
                         <span>รูปภาพประกอบข่าวสาร (บันทึกเข้า Google Drive)</span>
@@ -1157,7 +1234,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                       </label>
 
                       {/* Mode Toggle Switcher */}
-                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl text-[11px] font-bold">
+                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl text-[11px] font-bold self-start sm:self-auto">
                         <button
                           type="button"
                           onClick={() => setImageAttachmentMode('upload')}
@@ -1180,14 +1257,14 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                           }`}
                         >
                           <Globe className="w-3.5 h-3.5" />
-                          <span>ระบุ URL / ลิงก์</span>
+                          <span>ระบุ URL / ลิงก์ Drive</span>
                         </button>
                       </div>
                     </div>
 
                     {/* Mode 1: Local File Upload to Google Drive */}
                     {imageAttachmentMode === 'upload' && (
-                      <div>
+                      <div className="space-y-3">
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1254,14 +1331,14 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                           </div>
                         ) : (
                           /* Selected Image Card */
-                          <div className="p-3 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-                            <div className="flex items-center gap-3">
+                          <div className="p-3.5 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                            <div className="flex items-center gap-3 min-w-0">
                               <img
                                 src={attachedImageBase64}
                                 alt="preview"
                                 className="h-16 w-20 object-cover rounded-lg border border-slate-200 bg-slate-100 shrink-0"
                               />
-                              <div className="space-y-0.5">
+                              <div className="space-y-0.5 min-w-0">
                                 <span className="font-bold text-xs text-slate-900 line-clamp-1 block">
                                   {attachedImageFileName || 'รูปภาพประกอบ'}
                                 </span>
@@ -1277,11 +1354,30 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 self-end sm:self-center">
+                            <div className="flex items-center gap-1.5 flex-wrap self-end sm:self-center shrink-0">
+                              <a
+                                href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition-all cursor-pointer"
+                                title="เปิดโฟลเดอร์ Google Drive เพื่อดูหรือลากไฟล์ใส่"
+                              >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                <span>เปิด Drive</span>
+                              </a>
+                              <button
+                                type="button"
+                                onClick={handleDownloadAttachedImage}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                                title="ดาวน์โหลดรูปภาพเก็บไว้ในเครื่อง"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>ดาวน์โหลด</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
-                                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
                               >
                                 เปลี่ยนรูป
                               </button>
@@ -1296,18 +1392,43 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                             </div>
                           </div>
                         )}
+
+                        {/* Webhook Auto-Drive Upload Status */}
+                        {isWebhookConnected && (
+                          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                            <span className="flex items-center gap-1.5 font-bold text-emerald-800">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>ระบบพร้อมอัปโหลดรูปภาพเข้า Google Drive อัตโนมัติเมื่อกดบันทึก</span>
+                            </span>
+                            <span className="text-[10px] text-emerald-600 font-mono bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                              Webhook เชื่อมต่อแล้ว
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* Mode 2: Direct URL / Google Drive Link */}
                     {imageAttachmentMode === 'url' && (
-                      <div className="space-y-1.5">
+                      <div className="space-y-2.5">
+                        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5 text-xs text-slate-700">
+                          <span className="font-black text-blue-950 block flex items-center gap-1.5">
+                            <FolderOpen className="w-4 h-4 text-blue-600" />
+                            <span>วิธีนำรูปภาพจาก Google Drive มาแสดง:</span>
+                          </span>
+                          <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                            <li>คลิกปุ่ม <strong>&quot;เปิดโฟลเดอร์ใน Drive&quot;</strong> ด้านบน แล้วอัปโหลดหรือเลือกรูปในโฟลเดอร์</li>
+                            <li>คลิกขวาที่รูปภาพใน Drive &gt; เลือก <strong>&quot;แชร์&quot;</strong> &gt; <strong>&quot;คัดลอกลิงก์&quot;</strong></li>
+                            <li>นำลิงก์มาวางในช่องด้านล่างนี้ ระบบจะแปลงเป็นภาพพรีวิวทันที</li>
+                          </ol>
+                        </div>
+
                         <input
                           type="url"
                           id="input-announcement-imageurl"
                           value={imageUrl}
                           onChange={(e) => setImageUrl(e.target.value)}
-                          placeholder="เช่น https://drive.google.com/file/d/... หรือลิงก์ภาพประกอบ .png, .jpg"
+                          placeholder="วางลิงก์ เช่น https://drive.google.com/file/d/... หรือ URL รูปภาพ"
                           className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm font-medium text-slate-900 transition-all outline-hidden bg-white"
                         />
                         <p className="text-[11px] text-slate-500">
@@ -1316,23 +1437,33 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
 
                         {/* Image Live Preview */}
                         {displayPreviewUrl && (
-                          <div className="mt-2 p-2.5 bg-white rounded-xl border border-slate-200 flex items-center gap-3">
-                            <img
-                              src={displayPreviewUrl}
-                              alt="preview"
-                              className="h-16 w-24 object-cover rounded-lg border border-slate-300 bg-white"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
-                              }}
-                            />
-                            <div className="text-xs text-slate-700">
-                              <span className="font-bold block flex items-center gap-1 text-emerald-700">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                พบรูปภาพพรีวิว
-                              </span>
-                              <span className="text-[11px] text-slate-500 truncate max-w-xs block">{imageUrl}</span>
+                          <div className="mt-2 p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img
+                                src={displayPreviewUrl}
+                                alt="preview"
+                                className="h-16 w-24 object-cover rounded-lg border border-slate-300 bg-white shrink-0"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                              <div className="text-xs text-slate-700 min-w-0">
+                                <span className="font-bold flex items-center gap-1 text-emerald-700">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>พบรูปภาพพรีวิว</span>
+                                </span>
+                                <span className="text-[11px] text-slate-500 truncate max-w-xs block mt-0.5">{imageUrl}</span>
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setImageUrl('')}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                              title="ล้าง URL"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         )}
                       </div>
