@@ -22,6 +22,21 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
 const LAUNDRY_DATA_FILE = path.join(DATA_DIR, "laundry_submissions.json");
 const ANNOUNCEMENTS_DATA_FILE = path.join(DATA_DIR, "announcements_submissions.json");
+const ANNOUNCEMENT_WEBHOOK_FILE = path.join(DATA_DIR, "announcement_webhook.json");
+
+let serverAnnouncementWebhookUrl: string = process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
+try {
+  if (fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
+    const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+      serverAnnouncementWebhookUrl = parsed.webhookUrl.trim();
+      console.log("Loaded server-side announcement webhook URL from file");
+    }
+  }
+} catch (e) {
+  console.warn("Could not load announcement webhook from file:", e);
+}
 const GOWN_DATA_FILE = path.join(DATA_DIR, "gown_submissions.json");
 
 // Helper to generate running tracking code identical to Laundry QR code
@@ -618,14 +633,65 @@ async function startServer() {
         exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}&_t=${nowTs}`;
       }
 
-      const response = await fetch(exportUrl, {
-        headers: {
-          Accept: "text/csv, text/plain, */*",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      });
+      const isAnnouncementsSheet =
+        targetGid === "1228686844" ||
+        sheetId === "1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU" ||
+        (sheetName && (sheetName.includes("ข่าวประชาสัมพันธ์") || sheetName.includes("announcement")));
+
+      let response: Response;
+      try {
+        response = await fetch(exportUrl, {
+          headers: {
+            Accept: "text/csv, text/plain, */*",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
+      } catch (fetchErr: any) {
+        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
+          const fallbackRows: string[][] = [
+            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+          ];
+          for (const sub of inMemoryAnnouncementSubmissions) {
+            const subDate = new Date(sub.createdAt || Date.now());
+            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            fallbackRows.push([
+              timeStr,
+              sub.title,
+              sub.content || "",
+              sub.department || "",
+              sub.startDate || "",
+              sub.endDate || "",
+              sub.imageUrl || "",
+            ]);
+          }
+          res.setHeader("Content-Type", "text/csv; charset=utf-8");
+          return res.send(stringifyCsv(fallbackRows));
+        }
+        return res.status(500).json({ error: fetchErr.message || "Failed to fetch Google Sheet" });
+      }
 
       if (!response.ok) {
+        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
+          const fallbackRows: string[][] = [
+            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+          ];
+          for (const sub of inMemoryAnnouncementSubmissions) {
+            const subDate = new Date(sub.createdAt || Date.now());
+            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            fallbackRows.push([
+              timeStr,
+              sub.title,
+              sub.content || "",
+              sub.department || "",
+              sub.startDate || "",
+              sub.endDate || "",
+              sub.imageUrl || "",
+            ]);
+          }
+          res.setHeader("Content-Type", "text/csv; charset=utf-8");
+          return res.send(stringifyCsv(fallbackRows));
+        }
+
         if (response.status === 401 || response.status === 403) {
           return res.status(response.status).json({
             error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์สาธารณะ (กรุณาตั้งค่าแชร์ใน Google Sheet เป็น 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' / Anyone with the link can view)",
@@ -645,6 +711,27 @@ async function startServer() {
         csvText.includes("accounts.google.com") ||
         csvText.includes("document-root")
       ) {
+        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
+          const fallbackRows: string[][] = [
+            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+          ];
+          for (const sub of inMemoryAnnouncementSubmissions) {
+            const subDate = new Date(sub.createdAt || Date.now());
+            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            fallbackRows.push([
+              timeStr,
+              sub.title,
+              sub.content || "",
+              sub.department || "",
+              sub.startDate || "",
+              sub.endDate || "",
+              sub.imageUrl || "",
+            ]);
+          }
+          res.setHeader("Content-Type", "text/csv; charset=utf-8");
+          return res.send(stringifyCsv(fallbackRows));
+        }
+
         return res.status(403).json({
           error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์แบบสาธารณะ (กรุณาตั้งค่า 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' ใน Google Sheet)",
           requiresAuth: true,
@@ -738,6 +825,41 @@ async function startServer() {
         }
       }
 
+      // If this is the Announcements sheet (gid=1228686844 or sheetId=1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU),
+      // enrich and ensure all saved announcements are present in the returned CSV
+      if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
+        try {
+          const rows = parseCsv(csvText);
+          if (rows.length > 0) {
+            const existingTitles = new Set(
+              rows.slice(1).map((r) => normalizeText(r[1] || r[0] || ""))
+            );
+
+            for (const sub of inMemoryAnnouncementSubmissions) {
+              const normTitle = normalizeText(sub.title);
+              if (normTitle && !existingTitles.has(normTitle)) {
+                existingTitles.add(normTitle);
+                const subDate = new Date(sub.createdAt || Date.now());
+                const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+
+                rows.push([
+                  timeStr,
+                  sub.title,
+                  sub.content || "",
+                  sub.department || "",
+                  sub.startDate || "",
+                  sub.endDate || "",
+                  sub.imageUrl || "",
+                ]);
+              }
+            }
+            csvText = stringifyCsv(rows);
+          }
+        } catch (enrichErr) {
+          console.warn("Could not enrich announcements CSV:", enrichErr);
+        }
+      }
+
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       return res.send(csvText);
@@ -752,6 +874,37 @@ async function startServer() {
       success: true,
       submissions: inMemoryAnnouncementSubmissions,
       count: inMemoryAnnouncementSubmissions.length,
+    });
+  });
+
+  // Get and set global announcement Apps Script webhook URL
+  app.get("/api/announcement-webhook", (_req, res) => {
+    const effectiveUrl = serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
+    res.json({
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+    });
+  });
+
+  app.post("/api/announcement-webhook", (req, res) => {
+    const { webhookUrl } = req.body || {};
+    if (typeof webhookUrl === "string") {
+      serverAnnouncementWebhookUrl = webhookUrl.trim();
+      try {
+        fs.writeFileSync(
+          ANNOUNCEMENT_WEBHOOK_FILE,
+          JSON.stringify({ webhookUrl: serverAnnouncementWebhookUrl }, null, 2),
+          "utf-8"
+        );
+      } catch (err) {
+        console.warn("Could not persist announcement webhook to disk:", err);
+      }
+    }
+    const effectiveUrl = serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
+    res.json({
+      success: true,
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
     });
   });
 
@@ -2365,7 +2518,7 @@ async function startServer() {
       const endDate = formatToSheetDate(rawEndDate) || "";
 
       // Try Google Apps Script Webhook or Google Form Submission if accessible
-      const webhookUrl = (payload.webhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      const webhookUrl = (payload.webhookUrl || serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
       let syncedToGoogle = false;
       let driveUploaded = false;
       let resolvedImageUrl = imageUrl;
@@ -2425,6 +2578,14 @@ async function startServer() {
 
               if (resData && (resData.success === true || resData.status === "ok" || resData.driveUploaded || resData.imageUrl || resData.driveUrl)) {
                 syncedToGoogle = true;
+                if (webhookUrl && serverAnnouncementWebhookUrl !== webhookUrl) {
+                  serverAnnouncementWebhookUrl = webhookUrl;
+                  try {
+                    fs.writeFileSync(ANNOUNCEMENT_WEBHOOK_FILE, JSON.stringify({ webhookUrl }, null, 2), "utf-8");
+                  } catch (wErr) {
+                    console.warn("Could not auto-persist working webhook:", wErr);
+                  }
+                }
                 const driveLink = resData.imageUrl || resData.driveUrl || resData.fileUrl || resData.url;
                 if (driveLink && typeof driveLink === "string" && (driveLink.includes("drive.google.com") || driveLink.includes("docs.google.com") || driveLink.startsWith("http"))) {
                   resolvedImageUrl = driveLink;

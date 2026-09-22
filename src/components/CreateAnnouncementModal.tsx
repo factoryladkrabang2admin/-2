@@ -34,6 +34,7 @@ import {
   Link as LinkIcon,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from 'lucide-react';
 import { AnnouncementItem } from '../types';
 import { AdminUserAccount } from '../data/mockData';
@@ -357,6 +358,8 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   const [webhookSaveNotice, setWebhookSaveNotice] = useState<string | null>(null);
   const [isDriveFolderUrlCopied, setIsDriveFolderUrlCopied] = useState(false);
   const [isInlineWebhookExpanded, setIsInlineWebhookExpanded] = useState(false);
+  const [isRetryingSyncWithWebhook, setIsRetryingSyncWithWebhook] = useState(false);
+  const [retrySyncError, setRetrySyncError] = useState<string | null>(null);
 
   // Sync operatorName if currentUser changes
   useEffect(() => {
@@ -367,6 +370,25 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       }
     }
   }, [currentUser]);
+
+  // Sync Webhook URL from server configuration on mount
+  useEffect(() => {
+    fetch('/api/announcement-webhook')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.webhookUrl && typeof data.webhookUrl === 'string' && data.webhookUrl.trim()) {
+          const url = data.webhookUrl.trim();
+          setWebhookUrl((prev) => {
+            if (!prev) {
+              setAnnouncementsWebhookUrl(url);
+              return url;
+            }
+            return prev;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Handle local image file selection with client-side auto-compression for speed & reliability
   const handleImageFilePicked = (file: File) => {
@@ -565,10 +587,67 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   };
 
   // Handle saving Webhook URL
-  const handleSaveWebhook = () => {
-    setAnnouncementsWebhookUrl(webhookUrl);
-    setWebhookSaveNotice('บันทึก Webhook URL สำเร็จเรียบร้อย');
+  const handleSaveWebhook = async () => {
+    const cleanUrl = webhookUrl.trim();
+    setAnnouncementsWebhookUrl(cleanUrl);
+    try {
+      await fetch('/api/announcement-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: cleanUrl }),
+      });
+    } catch {
+      // ignore
+    }
+    setWebhookSaveNotice('บันทึก Webhook URL สำเร็จเรียบร้อย (ซิงค์ทั่วทั้งระบบ)');
     setTimeout(() => setWebhookSaveNotice(null), 3000);
+  };
+
+  // Retry sending the newly created announcement to Google Sheet via Webhook
+  const handleRetrySyncWithWebhook = async (customUrl?: string) => {
+    const urlToUse = (customUrl || webhookUrl).trim();
+    if (!urlToUse || !urlToUse.startsWith('http')) {
+      setRetrySyncError('กรุณากรอก Webhook URL ให้ถูกต้อง (ขึ้นต้นด้วย https://)');
+      return;
+    }
+    if (!createdItem) return;
+
+    setIsRetryingSyncWithWebhook(true);
+    setRetrySyncError(null);
+    try {
+      setWebhookUrl(urlToUse);
+      setAnnouncementsWebhookUrl(urlToUse);
+
+      const formattedStartDate = formatIsoToThaiSheetDate(startDate);
+      const formattedEndDate = hasEndDate && endDate ? formatIsoToThaiSheetDate(endDate) : undefined;
+
+      const result = await submitAnnouncementRecord({
+        title: createdItem.title,
+        content: createdItem.content,
+        department: createdItem.department,
+        startDate: createdItem.startDate || formattedStartDate,
+        endDate: createdItem.endDate || formattedEndDate,
+        imageUrl: createdItem.imageUrl,
+        imageBase64: attachedImageBase64 || undefined,
+        imageFileName: attachedImageFileName || undefined,
+        driveFolderId: ANNOUNCEMENTS_DRIVE_FOLDER_ID,
+        operatorName: operatorName.trim() || undefined,
+        webhookUrl: urlToUse,
+      });
+
+      setLastSubmitResult(result);
+      if (result.googleSheetSynced) {
+        if (onRefreshFromSheet) {
+          onRefreshFromSheet().catch(() => {});
+        }
+      } else {
+        setRetrySyncError(result.error || 'ไม่สามารถส่งข้อมูลเข้า Google Sheet ได้ กรุณาตรวจสอบสิทธิ์การแชร์ของ Apps Script Webhook');
+      }
+    } catch (err: any) {
+      setRetrySyncError(err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } finally {
+      setIsRetryingSyncWithWebhook(false);
+    }
   };
 
   // Handle testing Webhook
@@ -723,6 +802,53 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           </div>
         </div>
 
+        {/* Modal Navigation Tabs */}
+        <div className="px-5 sm:px-6 pt-3 pb-0 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('in-app')}
+            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'in-app'
+                ? 'border-indigo-600 text-indigo-700 bg-white shadow-xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Megaphone className="w-4 h-4" />
+            <span>{language === 'th' ? 'แบบฟอร์มเพิ่มข่าว' : 'Announcement Form'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('webhook-setup')}
+            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'webhook-setup'
+                ? 'border-emerald-600 text-emerald-700 bg-white shadow-xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{language === 'th' ? 'ตั้งค่าเชื่อมต่อ Google Sheet' : 'Google Sheet Setup'}</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isWebhookConnected ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'
+              }`}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('external-links')}
+            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'external-links'
+                ? 'border-purple-600 text-purple-700 bg-white shadow-xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>{language === 'th' ? 'ลิงก์ภายนอก' : 'External Links'}</span>
+          </button>
+        </div>
+
         {/* Modal Body Content */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
           {/* Main Announcement Form & Result Screen */}
@@ -744,9 +870,92 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                     <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto">
                       {lastSubmitResult?.googleSheetSynced
                         ? 'ข้อมูลถูกส่งเข้าสู่ Google Sheet ผ่าน Apps Script Webhook และอัปเดตลงระบบเรียบร้อยแล้ว'
-                        : 'ข้อมูลถูกบันทึกและแสดงในระบบทันที พร้อมจัดเตรียมแถวข้อมูลสำหรับวางลง Google Sheet'}
+                        : 'ข้อมูลถูกบันทึกและแสดงผลในระบบเรียบร้อยแล้ว'}
                     </p>
                   </div>
+
+                  {/* Immediate Alert and Solutions if Not Yet Synced to Google Sheet */}
+                  {!lastSubmitResult?.googleSheetSynced && (
+                    <div className="bg-amber-50/95 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 text-left max-w-xl mx-auto space-y-3.5 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                          <AlertCircle className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <span className="text-xs sm:text-sm font-black text-amber-950 block">
+                            ข้อมูลแสดงในระบบแล้ว แต่ยังไม่ได้บันทึกลง Google Sheet
+                          </span>
+                          <p className="text-xs text-amber-900 leading-relaxed">
+                            ระบบบันทึกข่าวสารในระบบเรียบร้อยแล้ว หากต้องการให้แถวข้อมูลนี้บันทึกลงใน Google Sheet ด้วย คุณสามารถทำได้ทันทีผ่าน 2 ช่องทางด้านล่าง:
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Method 1: Instant Webhook Retry Input */}
+                      <div className="bg-white rounded-xl p-3.5 border border-amber-200 space-y-2">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">1</span>
+                            <span>วิธีที่ 1: ส่งเข้า Google Sheet ทันทีด้วย Apps Script Webhook</span>
+                          </span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="url"
+                            value={webhookUrl}
+                            onChange={(e) => setWebhookUrl(e.target.value)}
+                            placeholder="https://script.google.com/macros/s/.../exec"
+                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <button
+                            type="button"
+                            disabled={isRetryingSyncWithWebhook}
+                            onClick={() => handleRetrySyncWithWebhook()}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                          >
+                            {isRetryingSyncWithWebhook ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>กำลังส่ง...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>ส่งเข้า Sheet ตอนนี้</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        {retrySyncError && (
+                          <div className="text-[11px] text-rose-600 font-semibold flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{retrySyncError}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Method 2: 1-Click Copy & Open Sheet */}
+                      <div className="bg-white rounded-xl p-3.5 border border-amber-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold">2</span>
+                            <span>วิธีที่ 2: คัดลอกแถวข้อมูลแล้วเปิด Google Sheet เพื่อวาง (Paste)</span>
+                          </span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5 ml-6">
+                            ระบบจะคัดลอกแถวข้อมูลลงคลิปบอร์ดและเปิดหน้า Google Sheet ให้ทันที
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSheetAndPaste('google_form')}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
+                        >
+                          <Copy className="w-4 h-4" />
+                          <span>คัดลอก & เปิด Sheet</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Google Drive Status & Target Folder */}
                   {lastSubmitResult?.driveUploaded ? (
@@ -1138,6 +1347,112 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
               ) : (
                 /* In-App Form */
                 <form onSubmit={handleSubmitInApp} className="space-y-4">
+                  {/* Google Sheet Sync Status Indicator & Quick Connect */}
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs transition-all ${
+                      isWebhookConnected
+                        ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-900'
+                        : 'bg-amber-50/80 border-amber-200/90 text-amber-900'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        {isWebhookConnected ? (
+                          <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                        ) : (
+                          <div className="w-7 h-7 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                            <AlertCircle className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-xs">
+                              {isWebhookConnected
+                                ? 'Google Sheet: พร้อมบันทึกแถวอัตโนมัติ'
+                                : 'Google Sheet: ยังไม่ได้เชื่อมต่อ Webhook สำหรับเขียนลง Sheet'}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                isWebhookConnected
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                            >
+                              {isWebhookConnected ? 'ซิงค์ลง Sheet ทันที' : 'บันทึกลงระบบทันที'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] opacity-85 mt-0.5">
+                            {isWebhookConnected
+                              ? 'ข้อมูลและรูปภาพจะถูกส่งเข้า Google Sheet และ Google Drive อัตโนมัติเมื่อกดบันทึก'
+                              : 'ระบบจะบันทึกและแสดงข่าวในระบบทันที หากต้องการให้เขียนลง Google Sheet อัตโนมัติ กรุณาใส่ Webhook URL'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsInlineWebhookExpanded(!isInlineWebhookExpanded)}
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs border transition-all shrink-0 cursor-pointer self-start sm:self-auto ${
+                          isWebhookConnected
+                            ? 'bg-white/80 hover:bg-white text-emerald-800 border-emerald-300'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white border-transparent shadow-xs'
+                        }`}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        <span>
+                          {isInlineWebhookExpanded
+                            ? 'ซ่อนการตั้งค่า'
+                            : isWebhookConnected
+                            ? 'เปลี่ยน Webhook'
+                            : 'ใส่ Webhook เพื่อบันทึกอัตโนมัติ'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Collapsible Webhook Quick-Setup Input */}
+                    {isInlineWebhookExpanded && (
+                      <div className="mt-3 pt-3 border-t border-slate-200/60 space-y-2">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          วาง Google Apps Script Webhook URL (exec):
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={webhookUrl}
+                            onChange={(e) => setWebhookUrl(e.target.value)}
+                            placeholder="https://script.google.com/macros/s/.../exec"
+                            className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSaveWebhook}
+                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all shrink-0 cursor-pointer"
+                          >
+                            บันทึก URL
+                          </button>
+                        </div>
+                        {webhookSaveNotice && (
+                          <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{webhookSaveNotice}</span>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-slate-500">
+                          ยังไม่มี Webhook? คลิกที่แท็บ{' '}
+                          <span
+                            className="font-bold text-indigo-600 cursor-pointer underline"
+                            onClick={() => setActiveTab('webhook-setup')}
+                          >
+                            "ตั้งค่าเชื่อมต่อ Google Sheet"
+                          </span>{' '}
+                          ด้านบนเพื่อคัดลอกโค้ด Apps Script ไปติดตั้งฟรีใน 1 นาที
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   {submitError && (
                     <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />

@@ -2750,11 +2750,18 @@ export function getAnnouncementsWebhookUrl(): string {
 export function setAnnouncementsWebhookUrl(url: string): void {
   if (typeof window === 'undefined') return;
   try {
-    if (!url || !url.trim()) {
+    const cleanUrl = url ? url.trim() : '';
+    if (!cleanUrl) {
       localStorage.removeItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY);
     } else {
-      localStorage.setItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY, url.trim());
+      localStorage.setItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY, cleanUrl);
     }
+    // Also sync to server in background
+    fetch('/api/announcement-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: cleanUrl }),
+    }).catch(() => {});
   } catch (err) {
     console.error('Could not save announcements webhook to localStorage:', err);
   }
@@ -3374,7 +3381,13 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
       csvText = lastSuccessfulAnnouncementsCsvText;
     }
 
-    const announcements = csvText ? convertSheetRowsToAnnouncements(csvText) : [];
+    const rawSheetAnnouncements = csvText ? convertSheetRowsToAnnouncements(csvText) : [];
+    const localAnnouncements = getLocalAnnouncements();
+
+    // Merge: ensure local announcements created by user are always preserved and displayed at the top
+    const sheetTitles = new Set(rawSheetAnnouncements.map((a) => a.title.trim().toLowerCase()));
+    const unmergedLocal = localAnnouncements.filter((a) => !sheetTitles.has(a.title.trim().toLowerCase()));
+    const announcements = [...unmergedLocal, ...rawSheetAnnouncements];
 
     return {
       success: true,
