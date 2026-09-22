@@ -2238,7 +2238,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <p className="text-[11px] text-emerald-700">{t.soc2Desc}</p>
 
-                  <div className="mt-2.5 pt-2 border-t border-emerald-200/70 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-emerald-800 font-medium">
+                  <div className="mt-2.5 pt-2 border-t border-emerald-200/70 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] text-emerald-800 font-medium">
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>{language === 'th' ? 'รหัสผ่านขั้นต่ำ 8 ตัวอักษร (A-Z, a-z, 0-9)' : 'Password Policy: 8+ chars (A-Z, a-z, 0-9)'}</span>
@@ -2246,6 +2246,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>{language === 'th' ? 'การบันทึกประวัติการเข้าใช้งาน Audit Trail' : 'Real-time Security Audit Logging'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{language === 'th' ? 'ออกจากระบบอัตโนมัติเมื่อไม่ใช้งาน 2 ชม.' : 'Auto-logout after 2 hours inactivity'}</span>
                     </div>
                   </div>
                 </div>

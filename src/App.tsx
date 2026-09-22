@@ -44,8 +44,8 @@ import { WeatherData, fetchCurrentWeather } from './services/weatherService';
 import { realtimeHub, RealtimeMessage } from './services/realtimeService';
 import { fetchGoogleSheetLaundryOrders, fetchGoogleSheetMaintenanceTickets, fetchGoogleSheetOtRecords, fetchGoogleSheetAnnouncements, GOOGLE_SHEET_URL } from './services/googleSheetSyncService';
 
-// 10 minutes inactivity timeout
-const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+// 2 hours inactivity timeout (เมื่อไม่มีการทำรายการใดๆ ใน 2 ชั่วโมงให้ระบบ log out อัตโนมัติ)
+const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 export default function App() {
   // Main State: default to 'laundry' for guest users so they land directly on public content
@@ -57,10 +57,10 @@ export default function App() {
   // Floating Service Portal Window: Show on page load per user request
   const [servicePortalOpen, setServicePortalOpen] = useState<boolean>(true);
 
-  // Notification for 10-minute auto-logout
+  // Notification for 2-hour auto-logout
   const [autoLogoutNotice, setAutoLogoutNotice] = useState<string | null>(null);
 
-  // Authentication State - Keeps user logged in, checks 10-min inactivity window
+  // Authentication State - Keeps user logged in, checks 2-hour inactivity window
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const isAuth = localStorage.getItem('proworkflow_is_authenticated') === 'true';
@@ -69,7 +69,7 @@ export default function App() {
 
       if (isAuth && userJson) {
         if (lastActive > 0 && Date.now() - lastActive > INACTIVITY_TIMEOUT_MS) {
-          // Inactive for more than 10 minutes while tab was closed/reopened
+          // Inactive for more than 2 hours while tab was closed/reopened
           localStorage.setItem('proworkflow_is_authenticated', 'false');
           localStorage.removeItem('proworkflow_current_user');
           localStorage.removeItem('proworkflow_last_activity_time');
@@ -118,7 +118,7 @@ export default function App() {
     setCurrentTab('laundry');
 
     if (isAuto) {
-      setAutoLogoutNotice('ระบบได้ออกจากระบบอัตโนมัติ เนื่องจากไม่มีการเคลื่อนไหวเกิน 10 นาที');
+      setAutoLogoutNotice('ระบบได้ออกจากระบบอัตโนมัติ เนื่องจากไม่มีการทำรายการใดๆ ใน 2 ชั่วโมง');
       setTimeout(() => {
         setAutoLogoutNotice(null);
       }, 8000);
@@ -127,7 +127,7 @@ export default function App() {
     }
   }, []);
 
-  // 10-Minute Inactivity Detector & Activity Listener
+  // 2-Hour Inactivity Detector & Activity Listener
   useEffect(() => {
     if (!isAuthenticated) return;
 

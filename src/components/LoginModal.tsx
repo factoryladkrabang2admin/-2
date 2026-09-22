@@ -254,9 +254,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 />
                 <span>{language === 'th' ? 'จดจำการเข้าสู่ระบบ' : 'Remember me'}</span>
               </label>
-              <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+              <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1" title={language === 'th' ? 'ออกจากระบบอัตโนมัติหากไม่มีการทำรายการใน 2 ชั่วโมง' : 'Auto logout after 2 hours inactivity'}>
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{language === 'th' ? 'ระบบความปลอดภัย' : 'Secure'}</span>
+                <span>{language === 'th' ? 'ความปลอดภัย (2 ชม.)' : 'Secure (2h)'}</span>
               </span>
             </div>
 
