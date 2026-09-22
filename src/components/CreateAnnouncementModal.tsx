@@ -21,6 +21,7 @@ import {
   FileSpreadsheet,
   Settings,
   ArrowRight,
+  ArrowLeft,
   ClipboardPaste,
   ShieldCheck,
   HelpCircle,
@@ -341,6 +342,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
 
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaveSuccess, setIsSaveSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdItem, setCreatedItem] = useState<AnnouncementItem | null>(null);
   const [lastSubmitResult, setLastSubmitResult] = useState<AnnouncementSubmitResult | null>(null);
@@ -494,7 +496,16 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     setCreatedItem(null);
     setLastSubmitResult(null);
     setSubmitError(null);
+    setIsSaveSuccess(false);
   };
+
+  // Reset success state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setIsSaveSuccess(false);
+      setSubmitError(null);
+    }
+  }, [isOpen]);
 
   // Convert input date YYYY-MM-DD to DD/MM/YYYY for Thai sheet standard
   const formatIsoToThaiSheetDate = (iso: string): string => {
@@ -516,6 +527,11 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   // Handle in-app form submission
   const handleSubmitInApp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaveSuccess) {
+      handleResetForm();
+      onClose();
+      return;
+    }
     setSubmitError(null);
 
     if (!title.trim()) {
@@ -555,7 +571,8 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       setLastSubmitResult(result);
 
       if (result.success && result.announcement) {
-        setCreatedItem(result.announcement);
+        setIsSaveSuccess(true);
+        setSubmitError(null);
 
         // Remember department for autocomplete memory
         try {
@@ -576,11 +593,19 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
         if (onAnnouncementCreated) {
           onAnnouncementCreated(result.announcement);
         }
+
+        // Delay closing so the user clearly sees the button change to "บันทึกเรียบร้อย"
+        setTimeout(() => {
+          handleResetForm();
+          onClose();
+        }, 1500);
       } else {
         setSubmitError(result.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+        setIsSaveSuccess(false);
       }
     } catch (err: any) {
       setSubmitError(err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      setIsSaveSuccess(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -788,65 +813,56 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* ปุ่ม ตั้งค่าเชื่อมต่อ Google sheet (Icon only on header) */}
+            <button
+              type="button"
+              id="btn-header-webhook-setup"
+              onClick={() => setActiveTab(activeTab === 'webhook-setup' ? 'in-app' : 'webhook-setup')}
+              className={`relative p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
+                activeTab === 'webhook-setup'
+                  ? 'bg-white text-emerald-800 border-white shadow-md'
+                  : 'bg-white/10 hover:bg-white/25 text-white/90 hover:text-white border-white/20'
+              }`}
+              title={language === 'th' ? 'ตั้งค่าเชื่อมต่อ Google Sheet' : 'Google Sheet Setup'}
+              aria-label={language === 'th' ? 'ตั้งค่าเชื่อมต่อ Google Sheet' : 'Google Sheet Setup'}
+            >
+              <FileSpreadsheet className="w-5 h-5" />
+              <span
+                className={`absolute top-1 right-1 w-2 h-2 rounded-full ring-2 ring-indigo-900 ${
+                  isWebhookConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                }`}
+              />
+            </button>
+
+            {/* ปุ่ม ลิงก์ภายนอก (Icon only on header) */}
+            <button
+              type="button"
+              id="btn-header-external-links"
+              onClick={() => setActiveTab(activeTab === 'external-links' ? 'in-app' : 'external-links')}
+              className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
+                activeTab === 'external-links'
+                  ? 'bg-white text-purple-800 border-white shadow-md'
+                  : 'bg-white/10 hover:bg-white/25 text-white/90 hover:text-white border-white/20'
+              }`}
+              title={language === 'th' ? 'ลิงก์ภายนอก' : 'External Links'}
+              aria-label={language === 'th' ? 'ลิงก์ภายนอก' : 'External Links'}
+            >
+              <ExternalLink className="w-5 h-5" />
+            </button>
+
             {/* Close Button */}
             <button
               type="button"
               id="btn-close-create-announcement-modal"
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/25 text-white/90 hover:text-white transition-all border border-white/20 cursor-pointer"
-              aria-label="Close"
+              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/25 text-white/90 hover:text-white transition-all border border-white/20 cursor-pointer ml-0.5 sm:ml-1"
+              aria-label={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
+              title={language === 'th' ? 'ปิดหน้าต่าง' : 'Close'}
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-        </div>
-
-        {/* Modal Navigation Tabs */}
-        <div className="px-5 sm:px-6 pt-3 pb-0 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('in-app')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'in-app'
-                ? 'border-indigo-600 text-indigo-700 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Megaphone className="w-4 h-4" />
-            <span>{language === 'th' ? 'แบบฟอร์มเพิ่มข่าว' : 'Announcement Form'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('webhook-setup')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'webhook-setup'
-                ? 'border-emerald-600 text-emerald-700 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>{language === 'th' ? 'ตั้งค่าเชื่อมต่อ Google Sheet' : 'Google Sheet Setup'}</span>
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isWebhookConnected ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'
-              }`}
-            />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('external-links')}
-            className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'external-links'
-                ? 'border-purple-600 text-purple-700 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>{language === 'th' ? 'ลิงก์ภายนอก' : 'External Links'}</span>
-          </button>
         </div>
 
         {/* Modal Body Content */}
@@ -1347,112 +1363,6 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
               ) : (
                 /* In-App Form */
                 <form onSubmit={handleSubmitInApp} className="space-y-4">
-                  {/* Google Sheet Sync Status Indicator & Quick Connect */}
-                  <div
-                    className={`p-3.5 rounded-2xl border text-xs transition-all ${
-                      isWebhookConnected
-                        ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-900'
-                        : 'bg-amber-50/80 border-amber-200/90 text-amber-900'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        {isWebhookConnected ? (
-                          <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                        ) : (
-                          <div className="w-7 h-7 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                            <AlertCircle className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-black text-xs">
-                              {isWebhookConnected
-                                ? 'Google Sheet: พร้อมบันทึกแถวอัตโนมัติ'
-                                : 'Google Sheet: ยังไม่ได้เชื่อมต่อ Webhook สำหรับเขียนลง Sheet'}
-                            </span>
-                            <span
-                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                                isWebhookConnected
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
-                              }`}
-                            >
-                              {isWebhookConnected ? 'ซิงค์ลง Sheet ทันที' : 'บันทึกลงระบบทันที'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] opacity-85 mt-0.5">
-                            {isWebhookConnected
-                              ? 'ข้อมูลและรูปภาพจะถูกส่งเข้า Google Sheet และ Google Drive อัตโนมัติเมื่อกดบันทึก'
-                              : 'ระบบจะบันทึกและแสดงข่าวในระบบทันที หากต้องการให้เขียนลง Google Sheet อัตโนมัติ กรุณาใส่ Webhook URL'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsInlineWebhookExpanded(!isInlineWebhookExpanded)}
-                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs border transition-all shrink-0 cursor-pointer self-start sm:self-auto ${
-                          isWebhookConnected
-                            ? 'bg-white/80 hover:bg-white text-emerald-800 border-emerald-300'
-                            : 'bg-amber-600 hover:bg-amber-700 text-white border-transparent shadow-xs'
-                        }`}
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        <span>
-                          {isInlineWebhookExpanded
-                            ? 'ซ่อนการตั้งค่า'
-                            : isWebhookConnected
-                            ? 'เปลี่ยน Webhook'
-                            : 'ใส่ Webhook เพื่อบันทึกอัตโนมัติ'}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* Collapsible Webhook Quick-Setup Input */}
-                    {isInlineWebhookExpanded && (
-                      <div className="mt-3 pt-3 border-t border-slate-200/60 space-y-2">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          วาง Google Apps Script Webhook URL (exec):
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="url"
-                            value={webhookUrl}
-                            onChange={(e) => setWebhookUrl(e.target.value)}
-                            placeholder="https://script.google.com/macros/s/.../exec"
-                            className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleSaveWebhook}
-                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all shrink-0 cursor-pointer"
-                          >
-                            บันทึก URL
-                          </button>
-                        </div>
-                        {webhookSaveNotice && (
-                          <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" />
-                            <span>{webhookSaveNotice}</span>
-                          </div>
-                        )}
-                        <p className="text-[10px] text-slate-500">
-                          ยังไม่มี Webhook? คลิกที่แท็บ{' '}
-                          <span
-                            className="font-bold text-indigo-600 cursor-pointer underline"
-                            onClick={() => setActiveTab('webhook-setup')}
-                          >
-                            "ตั้งค่าเชื่อมต่อ Google Sheet"
-                          </span>{' '}
-                          ด้านบนเพื่อคัดลอกโค้ด Apps Script ไปติดตั้งฟรีใน 1 นาที
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
                   {submitError && (
                     <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -1833,12 +1743,21 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                     <span className="text-slate-400">สถานะ: จะเปิดให้แสดงทันที (Active)</span>
                   </div>
 
+                  {/* Success Notice */}
+                  {isSaveSuccess && (
+                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>บันทึกข้อมูลข่าวประชาสัมพันธ์เรียบร้อยแล้ว</span>
+                    </div>
+                  )}
+
                   {/* Form Action Buttons */}
                   <div className="flex items-center justify-end gap-3 pt-2">
                     <button
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
+                      disabled={isSubmitting}
+                      className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer disabled:opacity-50"
                     >
                       ยกเลิก
                     </button>
@@ -1847,17 +1766,26 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                       type="submit"
                       id="btn-submit-announcement"
                       disabled={isSubmitting}
-                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 shadow-md hover:shadow-lg hover:shadow-indigo-500/30 active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isSaveSuccess
+                          ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/30'
+                          : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 shadow-md hover:shadow-lg hover:shadow-indigo-500/30 active:scale-95'
+                      }`}
                     >
                       {isSubmitting ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
                           <span>กำลังบันทึกข้อมูล...</span>
                         </>
+                      ) : isSaveSuccess ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-white" />
+                          <span>บันทึกเรียบร้อย</span>
+                        </>
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
-                          <span>บันทึกและส่งข้อมูลข่าวสาร</span>
+                          <span>บันทึกข้อมูล</span>
                         </>
                       )}
                     </button>
@@ -1870,6 +1798,21 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           {/* TAB 2: Google Apps Script Webhook Setup */}
           {activeTab === 'webhook-setup' && (
             <div className="space-y-5">
+              {/* Back to Form Header Bar */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('in-app')}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 font-bold text-xs transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4 text-indigo-600" />
+                  <span>{language === 'th' ? 'กลับสู่แบบฟอร์มเพิ่มข่าว' : 'Back to Announcement Form'}</span>
+                </button>
+                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  {language === 'th' ? 'การตั้งค่า Google Sheet' : 'Google Sheet Setup'}
+                </span>
+              </div>
+
               {/* Sheet Card */}
               <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -2037,6 +1980,21 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           {/* TAB 3: External Links (Form & Sheet) */}
           {activeTab === 'external-links' && (
             <div className="space-y-4">
+              {/* Back to Form Header Bar */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('in-app')}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 font-bold text-xs transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4 text-indigo-600" />
+                  <span>{language === 'th' ? 'กลับสู่แบบฟอร์มเพิ่มข่าว' : 'Back to Announcement Form'}</span>
+                </button>
+                <span className="text-xs font-bold text-purple-800 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+                  {language === 'th' ? 'ลิงก์ภายนอก' : 'External Links'}
+                </span>
+              </div>
+
               <div className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 border-2 border-purple-200 rounded-2xl p-4 sm:p-5 space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
