@@ -41,6 +41,7 @@ export interface Translations {
   equipmentRequisition: string;
   chlorineCheck: string;
   documentDelivery: string;
+  equipmentInventory: string;
   settings: string;
   profile: string;
   enterpriseHub: string;
@@ -294,6 +295,7 @@ export const translations: Record<Language, Translations> = {
     equipmentRequisition: 'เบิกอุปกรณ์',
     chlorineCheck: 'สุ่มตรวจคลอรีน',
     documentDelivery: 'รับ-ส่ง เอกสาร / พัสดุ',
+    equipmentInventory: 'คลังอุปกรณ์',
     settings: 'การตั้งค่า',
     profile: 'โปรไฟล์',
     enterpriseHub: 'ศูนย์กลางองค์กร',
@@ -545,6 +547,7 @@ export const translations: Record<Language, Translations> = {
     equipmentRequisition: 'Equipment Requisition',
     chlorineCheck: 'Chlorine Inspection',
     documentDelivery: 'Document / Parcel',
+    equipmentInventory: 'Equipment Inventory',
     settings: 'Settings',
     profile: 'Profile',
     enterpriseHub: 'Enterprise Hub',

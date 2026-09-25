@@ -23,8 +23,11 @@ const PARCEL_DATA_FILE = path.join(DATA_DIR, "parcel_submissions.json");
 const LAUNDRY_DATA_FILE = path.join(DATA_DIR, "laundry_submissions.json");
 const ANNOUNCEMENTS_DATA_FILE = path.join(DATA_DIR, "announcements_submissions.json");
 const ANNOUNCEMENT_WEBHOOK_FILE = path.join(DATA_DIR, "announcement_webhook.json");
+const EQUIPMENT_INVENTORY_DATA_FILE = path.join(DATA_DIR, "equipment_inventory_submissions.json");
+const EQUIPMENT_INVENTORY_WEBHOOK_FILE = path.join(DATA_DIR, "equipment_inventory_webhook.json");
 
 let serverAnnouncementWebhookUrl: string = process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
+let serverInventoryWebhookUrl: string = process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "";
 try {
   if (fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
     const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
@@ -36,6 +39,35 @@ try {
   }
 } catch (e) {
   console.warn("Could not load announcement webhook from file:", e);
+}
+
+try {
+  if (fs.existsSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE)) {
+    const raw = fs.readFileSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+      serverInventoryWebhookUrl = parsed.webhookUrl.trim();
+      console.log("Loaded server-side equipment inventory webhook URL from file");
+    }
+  }
+} catch (e) {
+  console.warn("Could not load equipment inventory webhook from file:", e);
+}
+
+let inMemoryInventoryTransactions: any[] = [];
+const forwardedInventoryTxIds = new Set<string>();
+try {
+  if (fs.existsSync(EQUIPMENT_INVENTORY_DATA_FILE)) {
+    const raw = fs.readFileSync(EQUIPMENT_INVENTORY_DATA_FILE, "utf-8");
+    inMemoryInventoryTransactions = JSON.parse(raw);
+    for (const item of inMemoryInventoryTransactions) {
+      if (item && item.id) {
+        forwardedInventoryTxIds.add(item.id);
+      }
+    }
+  }
+} catch (e) {
+  console.warn("Could not load equipment inventory submissions from file:", e);
 }
 const GOWN_DATA_FILE = path.join(DATA_DIR, "gown_submissions.json");
 
@@ -2433,6 +2465,133 @@ async function startServer() {
       return res.status(500).json({
         success: false,
         error: err.message || "Internal server error during cleaning requisition submission",
+      });
+    }
+  });
+
+  // Equipment Inventory Webhook & Submission endpoints
+  app.get("/api/equipment-inventory-webhook", (_req, res) => {
+    const effectiveUrl = serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "";
+    res.json({
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+    });
+  });
+
+  app.post("/api/equipment-inventory-webhook", (req, res) => {
+    const { webhookUrl } = req.body || {};
+    if (typeof webhookUrl === "string") {
+      serverInventoryWebhookUrl = webhookUrl.trim();
+      try {
+        fs.writeFileSync(
+          EQUIPMENT_INVENTORY_WEBHOOK_FILE,
+          JSON.stringify({ webhookUrl: serverInventoryWebhookUrl }, null, 2),
+          "utf-8"
+        );
+      } catch (err) {
+        console.warn("Could not persist equipment inventory webhook to disk:", err);
+      }
+    }
+    const effectiveUrl = serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "";
+    res.json({
+      success: true,
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+    });
+  });
+
+  app.get("/api/equipment-inventory-submissions", (_req, res) => {
+    res.json({
+      success: true,
+      submissions: inMemoryInventoryTransactions,
+      count: inMemoryInventoryTransactions.length,
+    });
+  });
+
+  app.post("/api/equipment-inventory-submit", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const tx = payload.transaction || payload;
+      const targetWebhook = payload.webhookUrl || serverInventoryWebhookUrl;
+      const txId = (tx && tx.id) || payload.txId || "";
+
+      // Deduplication check: if this transaction ID was already forwarded, skip re-triggering webhook
+      const alreadyForwarded = txId && forwardedInventoryTxIds.has(txId);
+
+      if (tx && !alreadyForwarded) {
+        inMemoryInventoryTransactions.unshift(tx);
+        if (inMemoryInventoryTransactions.length > 500) {
+          inMemoryInventoryTransactions = inMemoryInventoryTransactions.slice(0, 500);
+        }
+        if (txId) {
+          forwardedInventoryTxIds.add(txId);
+          if (forwardedInventoryTxIds.size > 1000) {
+            const firstKey = forwardedInventoryTxIds.values().next().value;
+            if (firstKey) forwardedInventoryTxIds.delete(firstKey);
+          }
+        }
+        try {
+          fs.writeFileSync(
+            EQUIPMENT_INVENTORY_DATA_FILE,
+            JSON.stringify(inMemoryInventoryTransactions, null, 2),
+            "utf-8"
+          );
+        } catch (err) {
+          console.warn("Could not save equipment inventory submissions:", err);
+        }
+      }
+
+      let googleSheetSynced = false;
+      if (!alreadyForwarded && targetWebhook && targetWebhook.startsWith("http")) {
+        try {
+          const webhookPayload = {
+            txId: txId || `tx-${Date.now()}`,
+            action: tx.type || "sale",
+            item: tx.productName || payload.product?.name || "",
+            quantity: Math.abs(tx.quantity || 1),
+            unitPrice: tx.unitPrice || 0,
+            totalAmount: tx.totalAmount || 0,
+            customer: tx.customerName || "-",
+            department: tx.department || "-",
+            operator: tx.operatorName || "-",
+            note: tx.note || "-",
+            date: tx.dateStr || "",
+            timestamp: tx.timestamp || "",
+            remainingStock: payload.product?.currentStock,
+          };
+          const fRes = await fetch(targetWebhook, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(webhookPayload),
+            redirect: "follow",
+          });
+          googleSheetSynced = fRes.ok || fRes.status === 200 || fRes.status === 302;
+          if (txId) {
+            forwardedInventoryTxIds.add(txId);
+            if (forwardedInventoryTxIds.size > 1000) {
+              const firstKey = forwardedInventoryTxIds.values().next().value;
+              if (firstKey) forwardedInventoryTxIds.delete(firstKey);
+            }
+          }
+        } catch (webhookErr) {
+          console.warn("Error forwarding to Google Sheet Apps Script webhook:", webhookErr);
+        }
+      } else if (alreadyForwarded) {
+        googleSheetSynced = true;
+      }
+
+      return res.json({
+        success: true,
+        message: alreadyForwarded ? "รายการนี้ถูกส่งไปยัง Google Sheet แล้ว" : "บันทึกรายการคลังอุปกรณ์สำเร็จ",
+        googleSheetSynced,
+        alreadyForwarded: !!alreadyForwarded,
+        transaction: tx,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-inventory-submit:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Internal error in equipment inventory submission",
       });
     }
   });

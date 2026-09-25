@@ -13,10 +13,11 @@ import {
   Megaphone,
   PackageCheck,
   FlaskConical,
-  Package
+  Package,
+  Warehouse
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { DEFAULT_ADMIN_USER, AdminUserAccount } from '../data/mockData';
+import { DEFAULT_ADMIN_USER, AdminUserAccount, canAccessEquipmentInventory } from '../data/mockData';
 import { 
   BreadIcon, 
   BreadKind, 
@@ -62,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     breadKind: BreadKind; 
     breadName: string;
     requiresAuth: boolean;
+    requiresAdmin?: boolean;
     isExternal?: boolean;
     url?: string;
   }[] = [
@@ -155,15 +157,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
       breadName: 'แซนด์วิชขนมปังนุ่ม',
       requiresAuth: false,
     },
+    {
+      id: 'equipment_inventory',
+      label: t.equipmentInventory,
+      icon: <Warehouse className="w-5 h-5" />,
+      breadKind: 'croissant',
+      breadName: 'ครัวซองต์เนยสดอบใหม่',
+      requiresAuth: true,
+      requiresAdmin: true,
+    },
   ];
 
   const visibleNavItems = useMemo(() => {
+    const hasAdminAccess = canAccessEquipmentInventory(currentUser, isAuthenticated);
     if (isAuthenticated) {
-      return navItems;
+      return navItems.filter((item) => {
+        if (item.requiresAdmin) {
+          return hasAdminAccess;
+        }
+        return true;
+      });
     }
     // General users can only view Laundry and Meeting Rooms
-    return navItems.filter((item) => !item.requiresAuth);
-  }, [isAuthenticated, navItems]);
+    return navItems.filter((item) => !item.requiresAuth && !item.requiresAdmin);
+  }, [isAuthenticated, navItems, currentUser]);
 
   return (
     <>

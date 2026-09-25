@@ -291,6 +291,16 @@ export function canAccessRestrictedEquipment(user?: AdminUserAccount | null, isA
   return true;
 }
 
+/**
+ * ตรวจสอบสิทธิ์การมองเห็นและทำรายการสำหรับหัวข้อคลังอุปกรณ์
+ * ข้อกำหนด: จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะผู้ดูแลและแอดมินเพจ เท่านั้น
+ */
+export function canAccessEquipmentInventory(user?: AdminUserAccount | null, isAuthenticated: boolean = true): boolean {
+  if (!isAuthenticated || !user) return false;
+  if (user.username === 'guest') return false;
+  return isUserAdminOrSupervisor(user, isAuthenticated);
+}
+
 
 export interface StaffEmployeeInfo {
   employeeId: string;

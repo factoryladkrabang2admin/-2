@@ -4331,12 +4331,11 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     let finalTrackingCode: string | undefined = rowTrackingCode || undefined;
     try {
       const localSubs = getLocalParcelRecords();
-      const norm = (s: string) => (s || '').replace(/\s+/g, '').toLowerCase();
       const match = localSubs.find(
         (sub) =>
-          norm(sub.senderName) === norm(senderName) &&
-          norm(sub.recipientName) === norm(recipientName) &&
-          (sub.itemTitle || sub.trackingCode)
+          sub.timestamp === timestamp &&
+          sub.actionType === actionType &&
+          sub.itemTitle === itemTitle
       );
       if (match) {
         if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {

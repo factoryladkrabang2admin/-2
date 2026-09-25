@@ -9,6 +9,7 @@ import {
   AdminUserAccount,
   isUserAdminOrSupervisor,
   canCreateLaundryOrder,
+  canAccessEquipmentInventory,
   saveUpdatedUserCredentials
 } from './data/mockData';
 import { INITIAL_LAUNDRY_ORDERS } from './data/mockLaundryData';
@@ -26,6 +27,7 @@ import { EquipmentView } from './components/EquipmentView';
 import { ChlorineView } from './components/ChlorineView';
 import { MeetingRoomView } from './components/MeetingRoomView';
 import { ParcelDeliveryView } from './components/ParcelDeliveryView';
+import { EquipmentInventoryView } from './components/EquipmentInventoryView';
 import { RagsGlovesLogView } from './components/RagsGlovesLogView';
 import { RestrictedAccessView } from './components/RestrictedAccessView';
 import { InviteMemberModal } from './components/InviteMemberModal';
@@ -1170,6 +1172,25 @@ export default function App() {
               isAuthenticated={isAuthenticated}
               initialTrackCode={parcelTrackCode}
             />
+          )}
+
+          {currentTab === 'equipment_inventory' && (
+            canAccessEquipmentInventory(currentUser, isAuthenticated) ? (
+              <EquipmentInventoryView
+                currentUser={currentUser}
+                isAuthenticated={isAuthenticated}
+              />
+            ) : (
+              <RestrictedAccessView
+                currentTab="equipment_inventory"
+                onOpenLogin={() => setLoginModalOpen(true)}
+                onNavigateToLaundry={() => {
+                  setLaundrySubTab('pipeline');
+                  setCurrentTab('laundry');
+                }}
+                onNavigateToMeetingRoom={() => setCurrentTab('meeting_room')}
+              />
+            )
           )}
 
           {currentTab === 'laundry' && (

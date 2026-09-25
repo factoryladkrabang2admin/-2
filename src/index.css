@@ -1695,4 +1695,107 @@ html.dark .animated-parcel-pink-header [class*="bg-white"] {
   animation: otConfirmSway 2s ease-in-out infinite;
 }
 
+/* ==========================================================================
+   Equipment Inventory Animated Brown-White Header & Warehouse Motion
+   ========================================================================== */
+@keyframes brownWhiteFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes warehouseFloatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+
+@keyframes warehouseFloatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(9px) rotate(-3deg);
+  }
+}
+
+@keyframes warehousePulseGlow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.45;
+  }
+}
+
+@keyframes warehouseDriftSlow {
+  0% {
+    transform: translateX(0px) translateY(0px);
+  }
+  50% {
+    transform: translateX(10px) translateY(-8px);
+  }
+  100% {
+    transform: translateX(0px) translateY(0px);
+  }
+}
+
+.animate-warehouse-float {
+  animation: warehouseFloatSlow 5s ease-in-out infinite;
+}
+
+.animate-warehouse-float-reverse {
+  animation: warehouseFloatReverse 6.5s ease-in-out infinite;
+}
+
+.animate-warehouse-pulse-glow {
+  animation: warehousePulseGlow 4s ease-in-out infinite;
+}
+
+.animate-warehouse-drift {
+  animation: warehouseDriftSlow 8s ease-in-out infinite;
+}
+
+.warehouse-header-gradient {
+  background: linear-gradient(
+    130deg,
+    #6d4727 0%,
+    #8f623a 15%,
+    #ba8e5e 32%,
+    #ebd5be 50%,
+    #faf6f0 68%,
+    #d9bc9b 82%,
+    #7a502c 100%
+  );
+  background-size: 280% 280%;
+  animation: brownWhiteFlow 12s ease infinite;
+}
+
+html.dark .warehouse-header-gradient {
+  background: linear-gradient(
+    130deg,
+    #2c1a0e 0%,
+    #422916 18%,
+    #694426 35%,
+    #8e623b 52%,
+    #4f311a 70%,
+    #301b0f 85%,
+    #5a371c 100%
+  );
+  background-size: 280% 280%;
+  animation: brownWhiteFlow 12s ease infinite;
+}
+
+
 

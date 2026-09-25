@@ -163,22 +163,12 @@ export function normalizeParcelTrackingCode(code?: string): string {
 export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Set<string> {
   const receivedCodes = new Set<string>();
 
-  // 1. From records in memory
+  // 1. From records in memory: ONLY from 'รับ' records that have an explicit tracking code
   if (Array.isArray(records)) {
     records.forEach((r) => {
-      if (r.actionType === 'รับ') {
-        if (r.trackingCode) {
-          const norm = normalizeParcelTrackingCode(r.trackingCode);
-          if (norm) receivedCodes.add(norm);
-        }
-      } else if (r.actionType === 'ส่ง') {
-        const isStatusReceived =
-          (r.status || '').includes('รับแล้ว') ||
-          (r.note || '').includes('รับแล้ว');
-        if (isStatusReceived && r.trackingCode) {
-          const norm = normalizeParcelTrackingCode(r.trackingCode);
-          if (norm) receivedCodes.add(norm);
-        }
+      if (r.actionType === 'รับ' && r.trackingCode) {
+        const norm = normalizeParcelTrackingCode(r.trackingCode);
+        if (norm) receivedCodes.add(norm);
       }
     });
   }
@@ -208,11 +198,11 @@ export function getReceivedTrackingCodesSet(records: ParcelDeliveryRecord[]): Se
  * Checks if a parcel record represents a received document/parcel, OR
  * if an outgoing ("ส่ง") document/parcel has been received ("รับแล้ว").
  *
- * STRICT RULE:
- * 1. Incoming ("รับ") is always received.
+ * STRICT RULES:
+ * 1. Incoming ("รับ") is always confirmed received.
  * 2. Outgoing ("ส่ง"):
- *    - If the item title of receive and send are the same, DO NOT change status to 'รับแล้ว'.
- *    - ONLY exact matching tracking codes can change the status to 'รับแล้ว'.
+ *    - Status changes to 'รับแล้ว' ONLY when its tracking code matches a received ("รับ") record's tracking code.
+ *    - If item titles match but tracking codes do not, DO NOT change status to 'รับแล้ว'.
  *    - If the record has no tracking code, it CANNOT change status to 'รับแล้ว'.
  */
 export function isParcelConfirmedReceived(
@@ -225,22 +215,14 @@ export function isParcelConfirmedReceived(
   // 1. Incoming ("รับ") is always received
   if (record.actionType === 'รับ') return true;
 
-  // 2. Explicit status or note indicating "รับแล้ว"
-  if (
-    (record.status || '').includes('รับแล้ว') ||
-    (record.note || '').includes('รับแล้ว')
-  ) {
-    return true;
-  }
-
-  // 3. For Outgoing ("ส่ง") records:
-  // Must have a tracking code to be confirmed received.
+  // 2. For Outgoing ("ส่ง") records:
+  // Must have a valid tracking code to be confirmed received.
   const normCode = normalizeParcelTrackingCode(record.trackingCode);
   if (!normCode) {
     return false;
   }
 
-  // Check against received tracking codes set (only contains valid tracking codes)
+  // Check against received tracking codes set (only contains valid tracking codes from 'รับ' records)
   const set = receivedCodesSet || (allRecords ? getReceivedTrackingCodesSet(allRecords) : null);
   if (set && set.has(normCode)) {
     return true;

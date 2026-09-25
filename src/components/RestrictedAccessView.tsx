@@ -38,6 +38,8 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({
         return language === 'th' ? 'ระบบสุ่มตรวจคลอรีน (Chlorine Inspection)' : 'Chlorine Inspection';
       case 'document_delivery':
         return language === 'th' ? 'ระบบรับ-ส่ง เอกสาร / พัสดุ (Document / Parcel)' : 'Document / Parcel';
+      case 'equipment_inventory':
+        return language === 'th' ? 'คลังอุปกรณ์ (Equipment Warehouse)' : 'Equipment Warehouse';
       case 'reports':
         return language === 'th' ? 'รายงานและสถิติ (Reports & Analytics)' : 'Reports & Analytics';
       default:
@@ -65,7 +67,11 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({
         {/* Badge */}
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold mb-3 shadow-2xs">
           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-          <span>{language === 'th' ? 'สิทธิ์เฉพาะพนักงานที่ลงทะเบียนเท่านั้น' : 'Registered Staff Only'}</span>
+          <span>
+            {currentTab === 'equipment_inventory'
+              ? (language === 'th' ? 'สิทธิ์เฉพาะผู้ดูแลและแอดมินเพจเท่านั้น' : 'Admin & Page Supervisor Only')
+              : (language === 'th' ? 'สิทธิ์เฉพาะพนักงานที่ลงทะเบียนเท่านั้น' : 'Registered Staff Only')}
+          </span>
         </div>
 
         {/* Title */}
@@ -75,14 +81,26 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({
 
         {/* Description */}
         <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed mb-6">
-          {language === 'th' ? (
-            <>
-              ผู้ใช้งานทั่วไปสามารถดูได้เฉพาะหัวข้อ <strong className="text-blue-900 font-bold">"ข้อมูลการซัก-อบผ้า"</strong> และ <strong className="text-blue-900 font-bold">"ห้องประชุม"</strong> เท่านั้น ส่วนหัวข้อนี้สงวนสิทธิ์เฉพาะพนักงานและผู้ดูแลระบบที่ลงทะเบียนเรียบร้อยแล้ว
-            </>
+          {currentTab === 'equipment_inventory' ? (
+            language === 'th' ? (
+              <>
+                หัวข้อ <strong className="text-amber-900 font-bold">"คลังอุปกรณ์"</strong> จำกัดสิทธิ์การมองเห็นและทำรายการได้เฉพาะ <strong className="text-blue-900 font-bold">ผู้ดูแลและแอดมินเพจ</strong> เท่านั้น กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแลหรือติดต่อผู้ดูแลระบบ
+              </>
+            ) : (
+              <>
+                The <strong className="text-amber-900 font-bold">"Equipment Warehouse"</strong> section is strictly restricted to <strong className="text-blue-900 font-bold">Administrators and Page Admins</strong>. Please sign in with an authorized administrator account.
+              </>
+            )
           ) : (
-            <>
-              General users can only access <strong className="text-blue-900 font-bold">"Laundry Tracking"</strong> and <strong className="text-blue-900 font-bold">"Meeting Rooms"</strong>. This section is strictly restricted to registered staff.
-            </>
+            language === 'th' ? (
+              <>
+                ผู้ใช้งานทั่วไปสามารถดูได้เฉพาะหัวข้อ <strong className="text-blue-900 font-bold">"ข้อมูลการซัก-อบผ้า"</strong> และ <strong className="text-blue-900 font-bold">"ห้องประชุม"</strong> เท่านั้น ส่วนหัวข้อนี้สงวนสิทธิ์เฉพาะพนักงานและผู้ดูแลระบบที่ลงทะเบียนเรียบร้อยแล้ว
+              </>
+            ) : (
+              <>
+                General users can only access <strong className="text-blue-900 font-bold">"Laundry Tracking"</strong> and <strong className="text-blue-900 font-bold">"Meeting Rooms"</strong>. This section is strictly restricted to registered staff.
+              </>
+            )
           )}
         </p>
 

@@ -134,14 +134,19 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     : '';
 
   // Effective tracking code preview when receiving ('รับ')
+  // เงื่อนไข: ให้เฉพาะหมายเลขรหัสติดตามที่ตรงกันกับรหัสส่งเท่านั้น (หากไม่มีจากส่งหรือไม่มีรหัสติดตาม ก็สามารถรับได้เช่นกัน)
   const projectedReceiveTrackingCode = actionType === 'รับ'
-    ? (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : ''))
+    ? (matchedParcel?.trackingCode || '')
     : '';
+
+  // ตรวจสอบความถูกต้องของรหัสติดตามสำหรับการรับ:
+  // หากมีการพิมพ์ค้นหารหัส จะต้องพบรายการส่งที่ตรงกันเท่านั้น หรือหากไม่มีรหัสก็สามารถรับได้
+  const isTrackingValidForReceive = actionType === 'ส่ง' || !searchTrackingCode.trim() || !!matchedParcel;
 
   // ตรวจสอบการทำรายการซ้ำแบบเรียลไทม์ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
   const duplicateStatus = useMemo(() => {
     const codeToCheck = actionType === 'รับ'
-      ? (searchTrackingCode.trim() || matchedParcel?.trackingCode || undefined)
+      ? (matchedParcel?.trackingCode || undefined)
       : undefined;
 
     return checkParcelAlreadyReceived({
@@ -152,7 +157,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       actionType,
       allRecords: existingRecords,
     });
-  }, [searchTrackingCode, matchedParcel, itemTitle, senderName, recipientName, actionType, existingRecords]);
+  }, [matchedParcel, itemTitle, senderName, recipientName, actionType, existingRecords]);
 
   // Field validation flags - all fields are mandatory
   const isSenderNameValid = senderName.trim().length > 0;
@@ -167,6 +172,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
     isRecipientNameValid &&
     isRecipientDeptValid &&
     isItemTitleValid &&
+    isTrackingValidForReceive &&
     !duplicateStatus.isAlreadyReceived;
 
   const wasOpenRef = useRef(false);
@@ -283,7 +289,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   };
 
   // Handler for searching tracking code when actionType is 'รับ'
-  // เมื่อใส่รหัสแล้ว ให้ดึงข้อมูลที่ส่งใส่ในช่องที่เหลือให้ถูกต้อง
+  // เงื่อนไข: ให้เฉพาะหมายเลขรหัสติดตามที่ตรงกันกับรหัสส่งเท่านั้น
   const handleTrackingCodeSearch = (code: string) => {
     setSearchTrackingCode(code);
     if (isSuccess) setIsSuccess(false);
@@ -294,9 +300,9 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       return;
     }
 
-    // Find matching parcel with tracking code
+    // Find matching parcel with tracking code - ONLY from 'ส่ง' (Outgoing) records
     const match = existingRecords.find((r) => {
-      if (!r.trackingCode) return false;
+      if (r.actionType !== 'ส่ง' || !r.trackingCode) return false;
       const rClean = r.trackingCode.toLowerCase().replace(/[\s\-_]/g, '');
       return rClean === clean || rClean.includes(clean) || clean.includes(rClean);
     });
@@ -352,10 +358,22 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
       return;
     }
 
+    // เงื่อนไขการรับพัสดุ:
+    // 1. ให้เฉพาะหมายเลขรหัสติดตามที่ตรงกันกับรหัสส่งเท่านั้น
+    // 2. หากรายการรับไม่มีจากส่งหรือรหัสติดตามก็สามารถรับได้เช่นกัน
+    if (actionType === 'รับ' && searchTrackingCode.trim() && !matchedParcel) {
+      setErrorMessage(
+        language === 'th'
+          ? `เงื่อนไขการรับพัสดุ: รหัสติดตาม "${searchTrackingCode.trim()}" ไม่ตรงกับรหัสส่งในระบบ (หากรายการรับไม่มีจากส่งหรือรหัสติดตาม กรุณากด "ล้าง" เพื่อรับพัสดุทั่วไป)`
+          : `Receive condition: Tracking code "${searchTrackingCode.trim()}" does not match any outgoing parcel. Clear tracking code field to receive general parcel.`
+      );
+      return;
+    }
+
     const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
     const effectiveTrackingCode = actionType === 'ส่ง'
       ? generateParcelTrackingCode(currentTs, existingRecords)
-      : (matchedParcel?.trackingCode || (searchTrackingCode.trim() ? searchTrackingCode.trim() : undefined));
+      : (matchedParcel?.trackingCode || undefined);
 
     // ตรวจสอบการทำรายการซ้ำ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
     const duplicateCheck = checkParcelAlreadyReceived({
@@ -894,27 +912,33 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
                     </div>
                   )}
 
-                  {!matchedParcel && projectedReceiveTrackingCode && !duplicateStatus.isAlreadyReceived && (
-                    <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between">
-                      <span className="text-[11px] text-emerald-800 dark:text-emerald-200 font-semibold">
-                        {language === 'th' ? 'รหัสติดตามที่จะบันทึกรับ:' : 'Assigned Tracking Code:'}
-                      </span>
-                      <span className="font-mono font-bold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
-                        <span className="font-black">{projectedReceiveTrackingCode}</span>
-                        <span className="font-sans font-bold text-[10px] text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-800 px-1.5 py-0.2 rounded">
-                          {language === 'th' ? 'รับแล้ว' : 'Received'}
+                  {/* Warning when entered tracking code doesn't match any outgoing record */}
+                  {searchTrackingCode.trim() && !matchedParcel && (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 text-xs text-amber-900 dark:text-amber-200 space-y-1 animate-in fade-in">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>
+                          {language === 'th' 
+                            ? `ไม่พบรหัสติดตาม "${searchTrackingCode}" ในรายการส่ง` 
+                            : `Tracking code "${searchTrackingCode}" not found in outgoing records`}
                         </span>
-                      </span>
+                      </div>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-5.5 leading-relaxed">
+                        {language === 'th'
+                          ? 'เงื่อนไขการรับพัสดุ: ให้เฉพาะหมายเลขรหัสติดตามที่ตรงกันกับรหัสส่งเท่านั้น (หากรายการรับไม่มีจากส่งหรือไม่มีรหัสติดตาม กรุณากด "ล้าง" ด้านบนเพื่อรับพัสดุทั่วไป)'
+                          : 'Condition: Only tracking codes matching an outgoing parcel are allowed. (If this incoming parcel has no send record or no tracking code, please click "Clear" above to receive as a general parcel.)'}
+                      </p>
                     </div>
                   )}
 
-                  {searchTrackingCode.trim() && !matchedParcel && (
-                    <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {/* General Receive Hint when tracking search is empty */}
+                  {!searchTrackingCode.trim() && (
+                    <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-emerald-200 dark:border-emerald-800/60 text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                      <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>
-                        {language === 'th' 
-                          ? `ไม่พบรหัสติดตาม "${searchTrackingCode}" ในรายการที่ส่ง สามารถกรอกข้อมูลเองด้านล่างได้` 
-                          : `Tracking code "${searchTrackingCode}" not found in outgoing records. You can fill out details below.`}
+                        {language === 'th'
+                          ? 'หากรายการรับไม่มีจากส่งหรือไม่มีรหัสติดตาม สามารถกรอกข้อมูลเพื่อรับพัสดุได้เช่นกัน'
+                          : 'If this incoming parcel has no send record or tracking code, you can fill details below to receive directly.'}
                       </span>
                     </div>
                   )}

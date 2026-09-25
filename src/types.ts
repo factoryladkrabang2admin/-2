@@ -1,4 +1,40 @@
-export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'document_delivery' | 'rags_gloves' | 'settings' | 'profile';
+export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'document_delivery' | 'equipment_inventory' | 'rags_gloves' | 'settings' | 'profile';
+
+export type InventoryCategory = 'all' | 'ppe' | 'headwear' | 'hygiene' | 'uniform' | 'boots';
+
+export interface InventoryProduct {
+  id: string;
+  name: string;
+  category: 'ppe' | 'headwear' | 'hygiene' | 'uniform' | 'boots';
+  categoryName: string;
+  unit: string;
+  initialStock: number;      // ยอดตั้งต้น
+  stockIn: number;           // เพิ่มสต็อก
+  price: number;             // ราคาขาย (฿)
+  soldCount: number;         // จำนวนขาย
+  currentStock: number;      // คงเหลือ (initialStock + stockIn - soldCount)
+  stockValue: number;        // มูลค่าคงเหลือ (currentStock * price)
+  lastUpdatedDate?: string;  // วันที่
+  iconName?: string;
+  description?: string;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  timestamp: string;         // วันที่และเวลา เช่น "23/09/2026, 15:30:00"
+  dateStr: string;           // วันที่ เช่น "23/09/2026"
+  type: 'sale' | 'restock' | 'adjust'; // 'sale' (ขาย/เบิก), 'restock' (เพิ่มสต็อก), 'adjust' (ปรับปรุงสต็อก)
+  productId: string;
+  productName: string;
+  quantity: number;          // จำนวน (+ สำหรับ restock, - สำหรับ sale)
+  unitPrice?: number;        // ราคาขายต่อหน่วย (สำหรับ sale)
+  totalAmount?: number;      // ราคารวม (สำหรับ sale)
+  customerName?: string;     // ชื่อผู้ซื้อ / ผู้เบิก
+  department?: string;       // แผนก
+  operatorName?: string;     // ผู้ทำรายการ
+  note?: string;             // หมายเหตุ
+  googleSheetSynced?: boolean;
+}
 
 export type ParcelActionType = 'ส่ง' | 'รับ' | string;
 
