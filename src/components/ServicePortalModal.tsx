@@ -1,12 +1,12 @@
 import React from 'react';
-import { Shirt, Package, X, Sparkles, ArrowRight } from 'lucide-react';
+import { Shirt, Package, PackageCheck, X, Sparkles, ArrowRight } from 'lucide-react';
 import { NavigationTab } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface ServicePortalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectService: (service: 'laundry' | 'document_delivery') => void;
+  onSelectService: (service: 'laundry' | 'document_delivery' | 'equipment') => void;
   currentTab?: NavigationTab;
 }
 
@@ -34,9 +34,9 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
       />
 
       {/* Main Floating Modal Window */}
-      <div className="relative w-full max-w-lg sm:max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200 flex flex-col my-auto mx-1">
+      <div className="relative w-full max-w-lg sm:max-w-2xl md:max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200 flex flex-col my-auto mx-1">
         {/* Top Accent Strip */}
-        <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-indigo-600 via-rose-500 to-amber-500" />
+        <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-rose-500 to-emerald-500" />
 
         {/* Modal Header */}
         <div className="p-4 sm:p-6 pb-2 flex items-center justify-between gap-3">
@@ -65,9 +65,9 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body: 2 Main Service Cards (คลังอุปกรณ์ แสดงเฉพาะในแถวด้านซ้าย) */}
+        {/* Modal Body: 3 Main Service Cards */}
         <div className="p-3 sm:p-6 pt-2 pb-5 sm:pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-lg mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 max-w-3xl mx-auto">
             {/* Box 1: ข้อมูลการซัก-อบผ้า */}
             <button
               type="button"
@@ -119,6 +119,32 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
                 <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
               </div>
             </button>
+
+            {/* Box 3: เบิกอุปกรณ์ */}
+            <button
+              type="button"
+              id="portal-option-equipment"
+              onClick={() => onSelectService('equipment')}
+              className={`group relative flex flex-col items-center justify-between text-center px-3 py-4 sm:p-5 rounded-2xl border transition-all duration-200 cursor-pointer shadow-xs hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
+                currentTab === 'equipment'
+                  ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-500/20'
+                  : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700'
+              }`}
+            >
+              <div className="flex flex-col items-center w-full min-w-0">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-md sm:shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-all mb-2 sm:mb-3">
+                  <PackageCheck className="w-6 h-6 sm:w-8 sm:h-8 stroke-[2]" />
+                </div>
+                <h3 className="text-[13px] min-[360px]:text-sm sm:text-base font-bold sm:font-black text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors leading-tight text-center whitespace-nowrap tracking-tight w-full">
+                  {language === 'th' ? 'เบิกอุปกรณ์' : 'Equipment Requisition'}
+                </h3>
+              </div>
+
+              <div className="mt-2.5 sm:mt-3 pt-2 border-t border-slate-200/80 dark:border-slate-700/60 w-full flex items-center justify-center gap-1 text-[11px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
+                <span>{language === 'th' ? 'เข้าสู่บริการ' : 'Open Service'}</span>
+                <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+              </div>
+            </button>
           </div>
         </div>
 
@@ -137,3 +163,4 @@ export const ServicePortalModal: React.FC<ServicePortalModalProps> = ({
     </div>
   );
 };
+

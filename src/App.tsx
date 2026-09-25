@@ -309,7 +309,7 @@ export default function App() {
   };
 
   // Handler for Service Portal floating selector: directs immediately to chosen service
-  const handleSelectServiceFromPortal = (service: 'laundry' | 'document_delivery') => {
+  const handleSelectServiceFromPortal = (service: 'laundry' | 'document_delivery' | 'equipment') => {
     setCurrentTab(service);
     if (service === 'laundry') {
       setLaundrySubTab('pipeline');
