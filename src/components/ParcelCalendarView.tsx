@@ -358,17 +358,13 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          !isSent
+                          isConfirmedReceived || !isSent
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
-                            : isConfirmedReceived
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200'
                         }`}>
-                          {!isSent 
-                            ? (language === 'th' ? '📥 รายการรับ' : '📥 Incoming') 
-                            : isConfirmedReceived 
-                              ? (language === 'th' ? '📤 รายการส่ง (รับแล้ว)' : '📤 Sent (Received)') 
-                              : (language === 'th' ? '📤 รายการส่ง' : '📤 Outgoing')}
+                          {isConfirmedReceived || !isSent 
+                            ? (language === 'th' ? '📥 รับแล้ว (ล่าสุด)' : '📥 Received (Latest)') 
+                            : (language === 'th' ? '📤 รายการส่ง (รอรับ)' : '📤 Outgoing (Pending)')}
                         </span>
                         <span className="text-xs text-slate-400">{rec.timeStr || rec.timestamp}</span>
                       </div>
@@ -472,18 +468,14 @@ export const ParcelCalendarView: React.FC<ParcelCalendarViewProps> = ({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                            !isSent
+                            isConfirmedReceived || !isSent
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
-                              : isConfirmedReceived
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
-                                : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-200 dark:border-rose-800' 
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-200 dark:border-rose-800' 
                           }`}>
-                            {!isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
-                            {!isSent 
-                              ? (language === 'th' ? 'รายการรับ' : 'Incoming') 
-                              : isConfirmedReceived 
-                                ? (language === 'th' ? 'รายการส่ง (รับแล้ว)' : 'Sent (Received)') 
-                                : (language === 'th' ? 'รายการส่ง' : 'Outgoing')}
+                            {isConfirmedReceived || !isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                            {isConfirmedReceived || !isSent 
+                              ? (language === 'th' ? 'รับแล้ว (ล่าสุด)' : 'Received (Latest)') 
+                              : (language === 'th' ? 'รายการส่ง (รอรับ)' : 'Outgoing (Pending)')}
                           </span>
                           <span className="text-xs text-slate-400 flex items-center gap-1">
                             <Clock className="w-3 h-3" />

@@ -129,15 +129,195 @@ export function getParcelTrackingUrl(trackingCode: string): string {
 }
 
 /**
+ * Parses timestamp string into unix millisecond number for comparison
+ */
+export function parseParcelTimestamp(ts?: string): number {
+  if (!ts) return 0;
+  try {
+    const parts = ts.split(/[\s,]+/);
+    const datePart = parts[0];
+    const timePart = parts[1] || '00:00:00';
+    const dSub = datePart.split(/[\/\-]/);
+    if (dSub.length === 3) {
+      let d = parseInt(dSub[0], 10);
+      let m = parseInt(dSub[1], 10);
+      let y = parseInt(dSub[2], 10);
+      if (dSub[0].length === 4) {
+        y = parseInt(dSub[0], 10);
+        m = parseInt(dSub[1], 10);
+        d = parseInt(dSub[2], 10);
+      }
+      if (y < 100) y += 2000;
+      if (y > 2400) y -= 543;
+      const tSub = timePart.split(':');
+      const hh = parseInt(tSub[0] || '0', 10);
+      const mm = parseInt(tSub[1] || '0', 10);
+      const ss = parseInt(tSub[2] || '0', 10);
+      return new Date(y, m - 1, d, hh, mm, ss).getTime();
+    }
+  } catch (e) {}
+  return 0;
+}
+
+/**
+ * Consolidates and unifies parcel records following the Laundry & Drying workflow:
+ * "เมื่อรายการส่งถูกขึ้นรับเอกสารแล้วให้แสดงเป็นข้อมูลล่าสุดเฉพาะข้อมูลรับแล้ว เหมือน ข้อมูลการซักผ้า - อบผ้า"
+ *
+ * RULES:
+ * 1. An outgoing item ("ส่ง") that has been received ("รับแล้ว") with a matching tracking code
+ *    transitions to display as the LATEST record showing specifically the received data ("เฉพาะข้อมูลรับแล้ว"):
+ *    - actionType: 'รับ'
+ *    - status: 'รับแล้ว'
+ *    - timestamp / dateStr / timeStr: reflects the latest receive timestamp
+ *    - sentTimestamp / sentRecord: preserves the dispatch record for history
+ *    - The older outgoing "ส่ง" record is consolidated and not shown as a redundant separate row
+ * 2. An outgoing item ("ส่ง") that has NOT yet been received remains displayed as 'ส่ง' (status: 'รอรับ').
+ * 3. An incoming item ("รับ") created directly remains displayed as 'รับ' (status: 'รับแล้ว').
+ */
+export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
+  if (!records || !Array.isArray(records) || records.length === 0) return [];
+
+  const receivedByCode = new Map<string, ParcelDeliveryRecord>();
+  const receiveRecordsWithoutCode: ParcelDeliveryRecord[] = [];
+  const sendRecords: ParcelDeliveryRecord[] = [];
+
+  for (const item of records) {
+    if (!item) continue;
+    const rec: ParcelDeliveryRecord = { ...item };
+    const normCode = normalizeParcelTrackingCode(rec.trackingCode);
+
+    if (rec.actionType === 'รับ' || rec.status === 'รับแล้ว') {
+      rec.actionType = 'รับ';
+      rec.status = 'รับแล้ว';
+      if (normCode) {
+        const existing = receivedByCode.get(normCode);
+        if (!existing) {
+          receivedByCode.set(normCode, rec);
+        } else {
+          const tNew = parseParcelTimestamp(rec.timestamp) || rec.seq || 0;
+          const tOld = parseParcelTimestamp(existing.timestamp) || existing.seq || 0;
+          if (tNew >= tOld) {
+            receivedByCode.set(normCode, rec);
+          }
+        }
+      } else {
+        receiveRecordsWithoutCode.push(rec);
+      }
+    } else {
+      sendRecords.push(rec);
+    }
+  }
+
+  // Also check local storage for newly submitted receive records that haven't synced to sheet yet
+  let localSubs: ParcelDeliveryRecord[] = [];
+  try {
+    localSubs = getLocalParcelRecords();
+  } catch {}
+
+  for (const localRec of localSubs) {
+    if ((localRec.actionType === 'รับ' || localRec.status === 'รับแล้ว') && localRec.trackingCode) {
+      const norm = normalizeParcelTrackingCode(localRec.trackingCode);
+      if (norm && !receivedByCode.has(norm)) {
+        receivedByCode.set(norm, { ...localRec, actionType: 'รับ', status: 'รับแล้ว' });
+      }
+    }
+  }
+
+  // Also check cached received tracking codes
+  const cachedReceivedSet = getReceivedTrackingCodesSet(records);
+
+  const unreceivedSends: ParcelDeliveryRecord[] = [];
+
+  for (const sendRec of sendRecords) {
+    const normCode = normalizeParcelTrackingCode(sendRec.trackingCode);
+
+    if (normCode && receivedByCode.has(normCode)) {
+      // Match found! Outgoing item has been received.
+      // Display as the LATEST record showing specifically the received data ("เฉพาะข้อมูลรับแล้ว"):
+      const recvRec = receivedByCode.get(normCode)!;
+      recvRec.actionType = 'รับ';
+      recvRec.status = 'รับแล้ว';
+      recvRec.sentTimestamp = sendRec.timestamp;
+      recvRec.sentDateStr = sendRec.dateStr;
+      recvRec.sentTimeStr = sendRec.timeStr;
+      recvRec.sentRecord = sendRec;
+      if (!recvRec.senderName || recvRec.senderName === '-') {
+        recvRec.senderName = sendRec.senderName;
+      }
+      if (!recvRec.senderDepartment || recvRec.senderDepartment === '-') {
+        recvRec.senderDepartment = sendRec.senderDepartment;
+      }
+      if (!recvRec.itemTitle || recvRec.itemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
+        recvRec.itemTitle = sendRec.itemTitle;
+      }
+      // Outgoing record is consolidated into the latest received record
+    } else if (normCode && cachedReceivedSet.has(normCode)) {
+      // It was marked received locally or in cache, but no full 'รับ' record in Sheet rows yet
+      const localMatch = localSubs.find(
+        (r) => (r.actionType === 'รับ' || r.status === 'รับแล้ว') && normalizeParcelTrackingCode(r.trackingCode) === normCode
+      );
+      if (localMatch) {
+        const convertedRec: ParcelDeliveryRecord = {
+          ...localMatch,
+          actionType: 'รับ',
+          status: 'รับแล้ว',
+          sentTimestamp: sendRec.timestamp,
+          sentDateStr: sendRec.dateStr,
+          sentTimeStr: sendRec.timeStr,
+          sentRecord: { ...sendRec },
+        };
+        if (!convertedRec.senderName || convertedRec.senderName === '-') {
+          convertedRec.senderName = sendRec.senderName;
+        }
+        if (!convertedRec.senderDepartment || convertedRec.senderDepartment === '-') {
+          convertedRec.senderDepartment = sendRec.senderDepartment;
+        }
+        receivedByCode.set(normCode, convertedRec);
+      } else {
+        const convertedRec: ParcelDeliveryRecord = {
+          ...sendRec,
+          id: `rec-converted-${sendRec.id}`,
+          actionType: 'รับ',
+          status: 'รับแล้ว',
+          sentTimestamp: sendRec.timestamp,
+          sentDateStr: sendRec.dateStr,
+          sentTimeStr: sendRec.timeStr,
+          sentRecord: { ...sendRec },
+        };
+        receivedByCode.set(normCode, convertedRec);
+      }
+    } else {
+      sendRec.status = 'รอรับ';
+      unreceivedSends.push(sendRec);
+    }
+  }
+
+  const consolidated: ParcelDeliveryRecord[] = [
+    ...Array.from(receivedByCode.values()),
+    ...receiveRecordsWithoutCode,
+    ...unreceivedSends,
+  ];
+
+  // Sort latest first (newest activity at top)
+  consolidated.sort((a, b) => {
+    const valA = parseParcelTimestamp(a.timestamp);
+    const valB = parseParcelTimestamp(b.timestamp);
+    if (valB !== valA && valB > 0 && valA > 0) {
+      return valB - valA;
+    }
+    return (b.seq || 0) - (a.seq || 0);
+  });
+
+  return consolidated;
+}
+
+/**
  * Assigns tracking codes to parcel records:
  * - Keeps original authoritative tracking codes from Google Sheet / submissions.
- * - STRICT RULE: Does NOT link or assign tracking codes based on matching item titles.
- * - A receive ('รับ') record only possesses a tracking code if it was explicitly created/submitted with one.
+ * - Consolidates received items following the Laundry & Drying lifecycle model.
  */
 export function assignTrackingCodesToParcels(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
   if (!records || records.length === 0) return [];
-
-  // Return records preserving authentic tracking codes, strictly avoiding synthetic cross-linking by item title
   return records;
 }
 
@@ -212,8 +392,8 @@ export function isParcelConfirmedReceived(
 ): boolean {
   if (!record) return false;
 
-  // 1. Incoming ("รับ") is always received
-  if (record.actionType === 'รับ') return true;
+  // 1. Incoming ("รับ") or status 'รับแล้ว' is always received
+  if (record.actionType === 'รับ' || record.status === 'รับแล้ว') return true;
 
   // 2. For Outgoing ("ส่ง") records:
   // Must have a valid tracking code to be confirmed received.

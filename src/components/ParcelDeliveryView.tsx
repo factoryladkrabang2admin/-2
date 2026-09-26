@@ -38,6 +38,7 @@ import {
   fetchGoogleSheetParcelRecords, 
   PARCEL_SHEET_URL,
   deduplicateParcelRecords,
+  mergeParcelRecords,
   getLocalParcelRecords,
   formatCurrentThaiParcelTimestamp
 } from '../services/googleSheetSyncService';
@@ -137,7 +138,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     try {
       const res = await fetchGoogleSheetParcelRecords();
       if (res && res.records) {
-        setRecords(deduplicateParcelRecords(res.records));
+        setRecords(res.records);
         setLastSyncedAt(res.lastSyncedAt);
       }
     } catch (err) {
@@ -164,7 +165,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return () => clearInterval(interval);
   }, [loadData]);
 
-  // Function to search and match a parcel by tracking code or ID
+  // Function to search and match a parcel by tracking code or ID strictly from Google Sheet records
   const findParcelByTrackCode = useCallback((code: string, candidateRecords: ParcelDeliveryRecord[]) => {
     if (!code) return null;
     const cleanTrack = code.replace(/[\s\-_]+/g, '').toLowerCase();
@@ -181,15 +182,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     // 1. Check in candidate records
     let matched = candidateRecords.find(isMatch);
 
-    // 2. Check in local storage submissions
-    if (!matched) {
-      try {
-        const localRecords = getLocalParcelRecords();
-        matched = localRecords.find(isMatch);
-      } catch {}
-    }
-
-    // 3. Fallback: match by sequence number at the end of tracking code (e.g. 01 in LKB2-26091201)
+    // 2. Fallback: match by sequence number at the end of tracking code (e.g. 01 in LKB2-26091201)
     if (!matched && cleanTrack.length >= 2) {
       const lastDigits = parseInt(cleanTrack.slice(-2), 10);
       if (!isNaN(lastDigits) && lastDigits > 0) {
@@ -214,21 +207,15 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return code;
   }, [initialTrackCode]);
 
-  // Immediate check on mount (using local records if server records are still fetching)
+  // Immediate check on mount
   // Send the tracking code directly to the search input so the user sees it and filters records immediately
   useEffect(() => {
     const code = getActiveTrackCode();
     if (code) {
       setSearchQuery(code);
       setQuickFilter('all');
-      const localRecords = getLocalParcelRecords();
-      const matched = findParcelByTrackCode(code, localRecords);
-      if (matched) {
-        setSelectedRecord(matched);
-        setIsDetailOpen(true);
-      }
     }
-  }, [getActiveTrackCode, findParcelByTrackCode]);
+  }, [getActiveTrackCode]);
 
   // Auto-open modal when records are loaded or updated if URL has ?track=...
   useEffect(() => {
@@ -244,32 +231,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       if (matched) {
         setSelectedRecord(matched);
         setIsDetailOpen(true);
-        return;
       }
     }
-
-    // Fallback if not found after records loaded
-    if (!loading && records.length > 0 && !selectedRecord) {
-      const cleanTrack = code.replace(/[\s\-_]+/g, '').toUpperCase();
-      const tempRecord: ParcelDeliveryRecord = {
-        id: `temp-${cleanTrack}`,
-        seq: 1,
-        timestamp: formatCurrentThaiParcelTimestamp(),
-        actionType: 'ส่ง',
-        senderName: 'ระบบงานพัสดุและไปรษณีย์',
-        senderDepartment: 'ธุรการลาดกระบัง',
-        recipientName: 'ผู้รับตามหน้าซอง / ปลายทาง',
-        recipientDepartment: 'ลาดกระบัง',
-        itemTitle: `พัสดุ/เอกสาร รหัส ${code}`,
-        operatorName: 'ระบบส่วนกลาง',
-        operatorDepartment: 'ธุรการ',
-        status: 'บันทึกข้อมูลเข้าระบบเรียบร้อยแล้ว',
-        trackingCode: code
-      };
-      setSelectedRecord(tempRecord);
-      setIsDetailOpen(true);
-    }
-  }, [records, loading, getActiveTrackCode, findParcelByTrackCode, selectedRecord]);
+  }, [records, getActiveTrackCode, findParcelByTrackCode]);
 
   // Handler to close detail and cleanly remove ?track from URL
   const handleCloseDetailModal = () => {
@@ -318,8 +282,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       const isDirectTrackingMatch = Boolean(cleanQuery && cleanTracking && (cleanTracking.includes(cleanQuery) || cleanQuery.includes(cleanTracking)));
 
       // Quick filter (if user is specifically searching/scanning a tracking number, don't filter out by today)
-      if (quickFilter === 'ส่ง' && record.actionType !== 'ส่ง') return false;
-      if (quickFilter === 'รับ' && record.actionType !== 'รับ') return false;
+      const isRecordReceived = record.actionType === 'รับ' || isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
+      if (quickFilter === 'ส่ง' && isRecordReceived) return false;
+      if (quickFilter === 'รับ' && !isRecordReceived) return false;
       if (quickFilter === 'today' && !isDirectTrackingMatch && !isRecordToday(record)) return false;
 
       // Advanced Action type filter
@@ -416,8 +381,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     // When filtering is used, use filteredRecords; otherwise default to today's records
     const targetRecords = isFiltered ? filteredRecords : todayRecords;
     const totalCount = targetRecords.length;
-    const sentCount = targetRecords.filter(r => r.actionType === 'ส่ง').length;
-    const receivedCount = targetRecords.filter(r => r.actionType === 'รับ').length;
+    const sentCount = targetRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length;
+    const receivedCount = targetRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length;
 
     const sentPct = totalCount > 0 ? Math.round((sentCount / totalCount) * 100) : 0;
     const receivedPct = totalCount > 0 ? Math.round((receivedCount / totalCount) * 100) : 0;
@@ -464,10 +429,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       latestDept,
       latestActivityText,
       allTimeTotal: records.length,
-      allTimeSent: records.filter(r => r.actionType === 'ส่ง').length,
-      allTimeReceived: records.filter(r => r.actionType === 'รับ').length,
+      allTimeSent: records.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length,
+      allTimeReceived: records.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length,
     };
-  }, [records, filteredRecords, isFiltered, language]);
+  }, [records, filteredRecords, isFiltered, language, receivedTrackingCodesSet]);
 
   // Table pagination
   const totalPagesTable = Math.ceil(filteredRecords.length / itemsPerPageTable) || 1;
@@ -938,18 +903,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       {/* Action Type */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                          isSent 
-                            ? isConfirmedReceived
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300 dark:border-rose-800' 
-                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
+                          isConfirmedReceived || !isSent
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300 dark:border-rose-800'
                         }`}>
-                          {isSent ? <Send className="w-3 h-3" /> : <Inbox className="w-3 h-3" />}
-                          {isSent 
-                            ? (isConfirmedReceived 
-                                ? (language === 'th' ? 'ส่ง (รับแล้ว)' : 'Sent (Received)') 
-                                : (language === 'th' ? 'ส่ง' : 'Send')) 
-                            : (language === 'th' ? 'รับ' : 'Receive')}
+                          {isConfirmedReceived || !isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                          {isConfirmedReceived || !isSent
+                            ? (language === 'th' ? 'รับแล้ว' : 'Received')
+                            : (language === 'th' ? 'ส่ง (รอรับ)' : 'Sent (Pending)')}
                         </span>
                       </td>
 
@@ -1115,18 +1076,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                        !isSent 
+                        isConfirmedReceived || !isSent 
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300' 
-                          : isConfirmedReceived
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 border border-emerald-300'
-                            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200 border border-rose-300'
                       }`}>
-                        {!isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
-                        {!isSent 
-                          ? (language === 'th' ? 'รายการรับ' : 'Incoming') 
-                          : isConfirmedReceived 
-                            ? (language === 'th' ? 'รายการส่ง (รับแล้ว)' : 'Sent (Received)') 
-                            : (language === 'th' ? 'รายการส่ง' : 'Outgoing')}
+                        {isConfirmedReceived || !isSent ? <Inbox className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                        {isConfirmedReceived || !isSent 
+                          ? (language === 'th' ? 'รับแล้ว (ข้อมูลล่าสุด)' : 'Received (Latest)') 
+                          : (language === 'th' ? 'รายการส่ง (รอรับ)' : 'Outgoing (Pending)')}
                       </span>
 
                       {record.trackingCode && (
@@ -1247,23 +1204,23 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    {language === 'th' ? 'รายการส่ง (Outgoing)' : 'Outgoing (Send)'}
+                    {language === 'th' ? 'รายการส่ง (รอรับ)' : 'Outgoing (Pending)'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {language === 'th' ? 'เอกสารและพัสดุขาออก' : 'Outgoing documents and parcels'}
+                    {language === 'th' ? 'เอกสารและพัสดุขาออกที่รอการรับ' : 'Outgoing documents waiting for receipt'}
                   </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold text-xs">
                 {language === 'th' 
-                  ? `${filteredRecords.filter(r => r.actionType === 'ส่ง').length} รายการ`
-                  : `${filteredRecords.filter(r => r.actionType === 'ส่ง').length} items`}
+                  ? `${filteredRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} รายการ`
+                  : `${filteredRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} items`}
               </span>
             </div>
 
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
               {filteredRecords
-                .filter(r => r.actionType === 'ส่ง')
+                .filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet))
                 .map((record, index) => {
                   const isReceived = isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
                   return (
@@ -1340,23 +1297,23 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    {language === 'th' ? 'รายการรับ (Incoming)' : 'Incoming (Receive)'}
+                    {language === 'th' ? 'รายการรับแล้ว (ข้อมูลล่าสุด)' : 'Received (Latest)'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {language === 'th' ? 'เอกสารและพัสดุขาเข้า' : 'Incoming documents and parcels'}
+                    {language === 'th' ? 'เอกสารและพัสดุที่รับแล้วเสร็จสิ้น' : 'Completed received documents and parcels'}
                   </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
                 {language === 'th' 
-                  ? `${filteredRecords.filter(r => r.actionType === 'รับ').length} รายการ`
-                  : `${filteredRecords.filter(r => r.actionType === 'รับ').length} items`}
+                  ? `${filteredRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} รายการ`
+                  : `${filteredRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} items`}
               </span>
             </div>
 
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
               {filteredRecords
-                .filter(r => r.actionType === 'รับ')
+                .filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet))
                 .map((record, index) => (
                   <div
                     key={`${record.id}-${record.seq || index}`}

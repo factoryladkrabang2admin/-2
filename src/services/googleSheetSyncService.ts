@@ -20,7 +20,8 @@ import {
 import { INITIAL_RAGS_GLOVES_DATA } from '../data/mockRagsGlovesData';
 import { 
   assignTrackingCodesToParcels, 
-  generateParcelTrackingCode 
+  generateParcelTrackingCode,
+  consolidateParcelRecords
 } from '../utils/parcelTrackingUtils';
 
 export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432#gid=1327805432';
@@ -4327,28 +4328,11 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
       }
     }
 
-    let finalItemTitle = itemTitle;
-    let finalTrackingCode: string | undefined = rowTrackingCode || undefined;
-    try {
-      const localSubs = getLocalParcelRecords();
-      const match = localSubs.find(
-        (sub) =>
-          sub.timestamp === timestamp &&
-          sub.actionType === actionType &&
-          sub.itemTitle === itemTitle
-      );
-      if (match) {
-        if (!finalItemTitle || finalItemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
-          finalItemTitle = match.itemTitle;
-        }
-        if (!finalTrackingCode && match.trackingCode) {
-          finalTrackingCode = match.trackingCode;
-        }
-      }
-    } catch {}
+    const finalItemTitle = itemTitle || 'ไม่ระบุชื่อเอกสาร/พัสดุ';
+    const finalTrackingCode = rowTrackingCode || undefined;
 
     records.push({
-      id: `parcel-${i}`,
+      id: `parcel-sheet-row-${i}`,
       seq: i,
       timestamp: timestamp || 'ไม่ระบุเวลา',
       actionType,
@@ -4356,12 +4340,12 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
       senderDepartment: senderDepartment || '-',
       recipientName: recipientName || '-',
       recipientDepartment: recipientDepartment || '-',
-      itemTitle: finalItemTitle || 'ไม่ระบุชื่อเอกสาร/พัสดุ',
+      itemTitle: finalItemTitle,
       operatorName: operatorName || '-',
       operatorDepartment: operatorDepartment || '-',
       dateStr,
       timeStr,
-      status: 'บันทึกสำเร็จ',
+      status: actionType === 'รับ' ? 'รับแล้ว' : 'บันทึกสำเร็จ',
       trackingCode: finalTrackingCode,
     });
   }
@@ -4404,8 +4388,7 @@ export function convertSheetRowsToParcelRecords(csvText: string): ParcelDelivery
     return b.seq - a.seq; // Higher row seq is newer in Google Sheet
   });
 
-  // Automatically assign running tracking codes to "ส่ง" records matching laundry tracking system
-  return assignTrackingCodesToParcels(records);
+  return records;
 }
 
 export const PARCEL_LOCAL_STORAGE_KEY = 'proworkflow_created_parcels_v1';
@@ -4498,9 +4481,11 @@ export function saveLocalParcelRecord(record: ParcelDeliveryRecord): void {
 
 export function mergeParcelRecords(
   sheetRecords: ParcelDeliveryRecord[],
-  _localRecords?: ParcelDeliveryRecord[]
+  localRecords?: ParcelDeliveryRecord[]
 ): ParcelDeliveryRecord[] {
-  return deduplicateParcelRecords(Array.isArray(sheetRecords) ? sheetRecords : []);
+  const locals = localRecords || getLocalParcelRecords();
+  const combined = [...(Array.isArray(sheetRecords) ? sheetRecords : []), ...locals];
+  return deduplicateParcelRecords(combined);
 }
 
 export function formatCurrentThaiParcelTimestamp(d: Date = new Date()): string {

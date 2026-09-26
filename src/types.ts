@@ -57,6 +57,10 @@ export interface ParcelDeliveryRecord {
   receivedAt?: string;             // วันที่เวลาที่รับ
   receivedByNote?: string;         // บันทึกการรับ เช่น ผู้รับ/แผนก
   note?: string;                   // หมายเหตุเพิ่มเติม
+  sentTimestamp?: string;          // วันที่เวลาที่ส่งต้นทาง (หากมีการส่งก่อนรับ)
+  sentDateStr?: string;
+  sentTimeStr?: string;
+  sentRecord?: ParcelDeliveryRecord; // ข้อมูลบันทึกรายการส่งต้นทาง
 }
 
 export interface ChlorineInspectionRecord {

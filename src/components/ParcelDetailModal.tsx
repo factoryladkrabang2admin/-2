@@ -80,29 +80,23 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide border ${
-                    !isSending 
+                    isConfirmedReceived || !isSending
                       ? 'bg-emerald-900/40 text-emerald-100 border-emerald-400/60 shadow-xs'
-                      : isConfirmedReceived
-                        ? 'bg-emerald-900/40 text-emerald-100 border-emerald-400/60 shadow-xs'
-                        : 'bg-rose-900/30 text-rose-100 border-white/30'
+                      : 'bg-rose-900/30 text-rose-100 border-white/30'
                   }`}>
-                    {!isSending 
-                      ? (language === 'th' ? '📥 รายการรับ' : '📥 Incoming') 
-                      : isConfirmedReceived 
-                        ? (language === 'th' ? '📤 รายการส่ง (รับแล้ว)' : '📤 Sent (Received)') 
-                        : (language === 'th' ? '📤 รายการส่ง' : '📤 Outgoing')}
+                    {isConfirmedReceived || !isSending 
+                      ? (language === 'th' ? '📥 รับเอกสาร / พัสดุแล้ว (ข้อมูลล่าสุด)' : '📥 Received (Latest)') 
+                      : (language === 'th' ? '📤 รายการส่ง (รอรับ)' : '📤 Outgoing (Pending)')}
                   </span>
                   {parcel.trackingCode && (
                     <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border backdrop-blur-xs ${
-                      isConfirmedReceived
+                      isConfirmedReceived || !isSending
                         ? 'bg-emerald-950/70 text-emerald-100 border-emerald-400/70 shadow-xs'
                         : 'bg-white/20 text-white border-white/30'
                     }`}>
                       <span>
-                        {isConfirmedReceived 
-                          ? (isSending 
-                              ? (language === 'th' ? 'รหัสติดตาม (รับแล้ว):' : 'Tracking Code (Received):') 
-                              : (language === 'th' ? 'รหัสติดตามที่รับ:' : 'Received Tracking:')) 
+                        {isConfirmedReceived || !isSending
+                          ? (language === 'th' ? 'รหัสติดตาม (รับแล้ว):' : 'Tracking Code (Received):')
                           : (language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:')}
                       </span>
                       <span className={`tracking-wider font-black ${isConfirmedReceived ? 'text-emerald-300' : ''}`}>
@@ -163,6 +157,12 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                   <Building2 className="w-3 h-3 text-slate-400" />
                   {parcel.senderDepartment}
                 </div>
+                {parcel.sentTimestamp && (
+                  <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1 mt-1.5 pt-1 border-t border-pink-100 dark:border-slate-700">
+                    <Clock className="w-3 h-3 text-rose-500 shrink-0" />
+                    <span>{language === 'th' ? `ส่งเมื่อ: ${parcel.sentTimestamp}` : `Sent: ${parcel.sentTimestamp}`}</span>
+                  </div>
+                )}
               </div>
 
               {/* Arrow */}
@@ -186,6 +186,12 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                   <Building2 className="w-3 h-3 text-slate-400" />
                   {parcel.recipientDepartment}
                 </div>
+                {(!isSending || isConfirmedReceived) && (
+                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-1.5 pt-1 border-t border-emerald-100 dark:border-slate-700">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                    <span>{language === 'th' ? `รับแล้วเมื่อ: ${parcel.receivedAt || parcel.timestamp}` : `Received: ${parcel.receivedAt || parcel.timestamp}`}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -199,13 +205,11 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                    {language === 'th' ? 'สถานะการรับเอกสาร / พัสดุ' : 'Document / Parcel Status'}
+                    {language === 'th' ? 'สถานะการรับเอกสาร / พัสดุ (ล่าสุด)' : 'Latest Status'}
                   </div>
                   <div className="font-bold text-sm text-emerald-900 dark:text-emerald-100 flex items-center gap-2 flex-wrap">
                     <span>
-                      {isSending 
-                        ? (language === 'th' ? 'เอกสาร / พัสดุขาส่งนี้ ปลายทางได้กดรับเรียบร้อยแล้ว' : 'This outgoing document/parcel has been confirmed received by the recipient.') 
-                        : (language === 'th' ? 'รับเอกสาร / พัสดุแล้ว' : 'Document / parcel received')}
+                      {language === 'th' ? 'รับเอกสาร / พัสดุแล้ว' : 'Document / parcel received'}
                     </span>
                     {parcel.trackingCode && (
                       <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-700 shadow-2xs">
@@ -237,12 +241,17 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
             {/* Timestamp */}
             <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700">
               <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                <Clock className="w-4 h-4 text-pink-500" />
-                {language === 'th' ? 'วันและเวลาที่บันทึก' : 'Recorded Date & Time'}
+                <Clock className="w-4 h-4 text-emerald-600" />
+                {language === 'th' ? 'วันและเวลาที่รับแล้ว (ข้อมูลล่าสุด)' : 'Latest Received Date & Time'}
               </div>
               <div className="text-base font-bold text-slate-900 dark:text-white">
-                {parcel.timestamp}
+                {parcel.receivedAt || parcel.timestamp}
               </div>
+              {parcel.sentTimestamp && (
+                <div className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                  <span>{language === 'th' ? `(วันและเวลาที่ส่ง: ${parcel.sentTimestamp})` : `(Original dispatch: ${parcel.sentTimestamp})`}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
