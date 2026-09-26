@@ -15,7 +15,6 @@ import {
   Package, 
   X,
   Tag,
-  FileSpreadsheet,
   Filter,
   Sparkles
 } from 'lucide-react';
@@ -566,7 +565,6 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                   {selectedDayOrders.map((order) => {
                     const totalItemQty = order.items.reduce((s, i) => s + i.quantity, 0);
                     const isReady = order.stage === 'ready' || order.stage === 'delivered';
-                    const isSheetOrder = order.id.startsWith('gsheet-');
                     const garmentTypeName = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
                                            order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'General Linen');
                     const deptStyle = getDepartmentColor(order.customerRoomOrDept);
@@ -582,18 +580,12 @@ export const LaundryCalendarView: React.FC<LaundryCalendarViewProps> = ({
                         className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-[#0061a5] hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
                       >
                         <div>
-                          {/* Top Row: Code & Sheet Badge & Status */}
+                          {/* Top Row: Code & Status */}
                           <div className="flex items-start justify-between gap-2 mb-2.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono text-xs font-bold text-[#002045] bg-[#f3f3f4] px-2 py-0.5 rounded-md border border-slate-200">
                                 {order.trackingCode}
                               </span>
-                              {isSheetOrder && (
-                                <span className="inline-flex items-center gap-0.5 text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                  <FileSpreadsheet className="w-2.5 h-2.5" />
-                                  Sheet
-                                </span>
-                              )}
                             </div>
                             
                             <span

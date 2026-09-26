@@ -4253,6 +4253,7 @@ export const PARCEL_FALLBACK_CSV = '';
 export interface ParcelSyncResult {
   success: boolean;
   records: ParcelDeliveryRecord[];
+  rawRecords?: ParcelDeliveryRecord[];
   rawRowsCount: number;
   lastSyncedAt: Date;
   error?: string;
@@ -4669,10 +4670,14 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
     ];
     const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v3');
     const parsedRecords = csv ? convertSheetRowsToParcelRecords(csv) : [];
+    const localRecords = getLocalParcelRecords();
+    const merged = mergeParcelRecords(parsedRecords, localRecords);
+    const consolidated = consolidateParcelRecords(merged);
 
     return {
       success: true,
-      records: parsedRecords,
+      records: consolidated,
+      rawRecords: merged,
       rawRowsCount: parsedRecords.length,
       lastSyncedAt: new Date(),
     };

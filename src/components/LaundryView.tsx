@@ -1093,9 +1093,9 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
             </div>
           ) : viewMode === 'board' ? (
             /* ========================================================================= */
-            /* VIEW: PIPELINE / BOARD VIEW (กระดานขั้นตอน 3 คอลัมน์ เหมือนหัวข้อการแจ้งซ่อม) */
+            /* VIEW: PIPELINE / BOARD VIEW (กระดานขั้นตอน 2 คอลัมน์: อยู่ระหว่างซัก / ซักเสร็จแล้ว) */
             /* ========================================================================= */
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Column 1: อยู่ระหว่างซัก / กำลังดำเนินการ (In Washing / In Progress) */}
               <div className="bg-amber-50/40 rounded-3xl p-4 border border-amber-200 flex flex-col max-h-[75vh]">
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-200 shrink-0">
@@ -1268,78 +1268,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                   )}
                 </div>
               </div>
-
-              {/* Column 3: ส่งมอบเรียบร้อย / ปิดงาน (Delivered / Completed) */}
-              <div className="bg-emerald-50/40 rounded-3xl p-4 border border-emerald-200 flex flex-col max-h-[75vh]">
-                <div className="flex items-center justify-between pb-3 mb-3 border-b border-emerald-200 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                    <h3 className="text-sm font-bold text-emerald-950">
-                      {language === 'th' ? 'ส่งมอบเรียบร้อย / ปิดงาน' : 'Delivered / Completed'}
-                    </h3>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-200 text-emerald-950 font-mono text-xs font-bold">
-                    {sortedFilteredOrders.filter((o) => o.stage === 'delivered').length}
-                  </span>
-                </div>
-
-                <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-                  {sortedFilteredOrders
-                    .filter((o) => o.stage === 'delivered')
-                    .map((order) => {
-                      const totalItemQty = order.items.reduce((s, i) => s + i.quantity, 0);
-                      const garmentTypeName = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
-                                             order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'General Linen');
-                      const deptStyle = getDepartmentColor(order.customerRoomOrDept);
-                      const garmentStyle = getGarmentColor(garmentTypeName);
-                      const orderDateStr = getOrderDateString(order) || currentDateStr;
-                      return (
-                        <div
-                          key={order.id}
-                          onClick={() => onSelectOrder(order)}
-                          className="bg-white p-4 rounded-2xl border border-emerald-200/80 hover:shadow-md hover:border-emerald-400 transition-all cursor-pointer space-y-2.5 group relative"
-                        >
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-mono font-bold text-[#002045] group-hover:text-emerald-700 transition-colors">
-                              {order.trackingCode}
-                            </span>
-                            <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              {language === 'th' ? 'ส่งมอบแล้ว' : 'Delivered'}
-                            </span>
-                          </div>
-
-                          {/* Garment Type Badge with distinct color */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={`text-xs font-bold px-2 py-1 rounded-lg border flex items-center gap-1.5 line-clamp-1 max-w-[200px] ${garmentStyle.pill}`}>
-                              <Shirt className={`w-3.5 h-3.5 shrink-0 ${garmentStyle.icon}`} />
-                              <span className="truncate">{garmentTypeName}</span>
-                            </div>
-                            <span className="text-xs font-black font-mono text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded-md shrink-0">
-                              {totalItemQty} <span className="text-[10px] font-normal">{language === 'th' ? 'ชิ้น' : 'pcs'}</span>
-                            </span>
-                          </div>
-
-                          {/* Department with distinct color */}
-                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-[11px]">
-                            <div className={`px-2 py-0.5 rounded-md truncate font-bold border flex items-center gap-1 max-w-[150px] ${deptStyle.pill}`}>
-                              <Building2 className={`w-3 h-3 shrink-0 ${deptStyle.icon}`} />
-                              <span className="truncate">{order.customerRoomOrDept || (language === 'th' ? 'แผนกทั่วไป' : 'General')}</span>
-                            </div>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                              {orderDateStr}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  {sortedFilteredOrders.filter((o) => o.stage === 'delivered').length === 0 && (
-                    <div className="py-8 text-center text-xs text-emerald-800/60 font-medium">
-                      {language === 'th' ? 'ไม่มีรายการที่ปิดงานส่งมอบแล้ว' : 'No delivered orders'}
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           ) : viewMode === 'grid' ? (
             /* Grid View */
@@ -1347,7 +1275,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {paginatedOrders.map((order) => {
                   const totalItemQty = order.items.reduce((s, i) => s + i.quantity, 0);
-                  const isSheetOrder = order.id.startsWith('gsheet-');
                   const garmentTypeName = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
                                          order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'General Linen');
                   const deptStyle = getDepartmentColor(order.customerRoomOrDept);
@@ -1368,12 +1295,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                             {getOrderDateString(order) && getOrderDateString(order)! < currentDateStr && (order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered')) && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
                                 {language === 'th' ? 'ข้ามวัน' : 'Cross-day'}
-                              </span>
-                            )}
-                            {isSheetOrder && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                <FileSpreadsheet className="w-3 h-3" />
-                                Sheet
                               </span>
                             )}
                           </div>
@@ -1555,7 +1476,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                     </thead>
                     <tbody className="divide-y divide-[#e2e8f0]">
                       {paginatedOrders.map((order) => {
-                        const isSheetOrder = order.id.startsWith('gsheet-');
                         const garmentTypeName = order.notes?.match(/ประเภทผ้า:\s*([^|]+)/)?.[1]?.trim() || 
                                                order.items[0]?.name || (language === 'th' ? 'ผ้าทั่วไป' : 'General Linen');
                         const totalItemQty = order.items.reduce((s, i) => s + i.quantity, 0);
@@ -1574,12 +1494,6 @@ export const LaundryView: React.FC<LaundryViewProps> = ({
                                 {getOrderDateString(order) && getOrderDateString(order)! < currentDateStr && (order.stage === 'washing' || (order.stage !== 'ready' && order.stage !== 'delivered')) && (
                                   <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
                                     {language === 'th' ? 'ข้ามวัน' : 'Cross-day'}
-                                  </span>
-                                )}
-                                {isSheetOrder && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                    <FileSpreadsheet className="w-3 h-3" />
-                                    Sheet
                                   </span>
                                 )}
                               </div>

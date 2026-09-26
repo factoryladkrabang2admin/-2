@@ -66,6 +66,50 @@ export function extractParcelDateTag(input?: string | Date): { yy: string; mm: s
 }
 
 /**
+ * Checks if a parcel record was sent or created within the current day (วันปัจจุบัน).
+ * Supports Western calendar, Thai Buddhist calendar, and Asia/Bangkok timezone.
+ */
+export function isParcelRecordToday(
+  record?: { dateStr?: string; timestamp?: string; sentDateStr?: string; sentTimestamp?: string } | null
+): boolean {
+  if (!record) return false;
+  const target = record.sentDateStr || record.sentTimestamp || record.dateStr || record.timestamp;
+  if (!target) return false;
+
+  const today = new Date();
+  const d = today.getDate();
+  const m = today.getMonth() + 1;
+  const y = today.getFullYear();
+
+  let bkkD = d;
+  let bkkM = m;
+  let bkkY = y;
+  try {
+    const bkkParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok' }).format(today).split('/');
+    bkkD = parseInt(bkkParts[0], 10);
+    bkkM = parseInt(bkkParts[1], 10);
+    bkkY = parseInt(bkkParts[2], 10);
+  } catch {}
+
+  const clean = String(target).trim().split(/[\s,]+/)[0];
+  const parts = clean.split(/[-/.]/);
+  if (parts.length === 3) {
+    let pd = parseInt(parts[0], 10);
+    let pm = parseInt(parts[1], 10);
+    let py = parseInt(parts[2], 10);
+    if (pd > 1000) {
+      py = pd;
+      pd = parseInt(parts[2], 10);
+    }
+    if (py > 2400) py -= 543;
+    if (py < 100) py += 2000;
+
+    return (pd === d && pm === m && py === y) || (pd === bkkD && pm === bkkM && py === bkkY);
+  }
+  return false;
+}
+
+/**
  * Generates tracking code for Parcel Delivery using the EXACT same format and running sequence
  * as the Laundry Status Tracking QR Code:
  * Format: "LKB2 - YYMMDDXX" (e.g. "LKB2 - 26091201", "LKB2 - 26091202")
@@ -208,17 +252,24 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
     }
   }
 
-  // Also check local storage for newly submitted receive records that haven't synced to sheet yet
+  // Also check local storage for newly submitted records that haven't synced to sheet yet
   let localSubs: ParcelDeliveryRecord[] = [];
   try {
     localSubs = getLocalParcelRecords();
   } catch {}
 
   for (const localRec of localSubs) {
-    if ((localRec.actionType === 'รับ' || localRec.status === 'รับแล้ว') && localRec.trackingCode) {
-      const norm = normalizeParcelTrackingCode(localRec.trackingCode);
-      if (norm && !receivedByCode.has(norm)) {
+    if (!localRec || !localRec.trackingCode) continue;
+    const norm = normalizeParcelTrackingCode(localRec.trackingCode);
+    if (!norm) continue;
+
+    if (localRec.actionType === 'รับ' || localRec.status === 'รับแล้ว') {
+      if (!receivedByCode.has(norm)) {
         receivedByCode.set(norm, { ...localRec, actionType: 'รับ', status: 'รับแล้ว' });
+      }
+    } else if (localRec.actionType === 'ส่ง') {
+      if (!receivedByCode.has(norm) && !sendRecords.some(r => normalizeParcelTrackingCode(r.trackingCode) === norm)) {
+        sendRecords.push({ ...localRec, actionType: 'ส่ง', status: 'รอรับ' });
       }
     }
   }
@@ -226,7 +277,16 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
   // Also check cached received tracking codes
   const cachedReceivedSet = getReceivedTrackingCodesSet(records);
 
+  // Sort send records so newest appears first
+  sendRecords.sort((a, b) => {
+    const valA = parseParcelTimestamp(a.timestamp);
+    const valB = parseParcelTimestamp(b.timestamp);
+    if (valB !== valA && valB > 0 && valA > 0) return valB - valA;
+    return (b.seq || 0) - (a.seq || 0);
+  });
+
   const unreceivedSends: ParcelDeliveryRecord[] = [];
+  const seenSendCodes = new Set<string>();
 
   for (const sendRec of sendRecords) {
     const normCode = normalizeParcelTrackingCode(sendRec.trackingCode);
@@ -237,10 +297,18 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
       const recvRec = receivedByCode.get(normCode)!;
       recvRec.actionType = 'รับ';
       recvRec.status = 'รับแล้ว';
-      recvRec.sentTimestamp = sendRec.timestamp;
-      recvRec.sentDateStr = sendRec.dateStr;
-      recvRec.sentTimeStr = sendRec.timeStr;
-      recvRec.sentRecord = sendRec;
+      if (!recvRec.sentTimestamp && sendRec.timestamp) {
+        recvRec.sentTimestamp = sendRec.timestamp;
+      }
+      if (!recvRec.sentDateStr && sendRec.dateStr) {
+        recvRec.sentDateStr = sendRec.dateStr;
+      }
+      if (!recvRec.sentTimeStr && sendRec.timeStr) {
+        recvRec.sentTimeStr = sendRec.timeStr;
+      }
+      if (!recvRec.sentRecord) {
+        recvRec.sentRecord = sendRec;
+      }
       if (!recvRec.senderName || recvRec.senderName === '-') {
         recvRec.senderName = sendRec.senderName;
       }
@@ -250,7 +318,7 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
       if (!recvRec.itemTitle || recvRec.itemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
         recvRec.itemTitle = sendRec.itemTitle;
       }
-      // Outgoing record is consolidated into the latest received record
+      // Outgoing record is consolidated into the latest received record (NOT added to unreceivedSends)
     } else if (normCode && cachedReceivedSet.has(normCode)) {
       // It was marked received locally or in cache, but no full 'รับ' record in Sheet rows yet
       const localMatch = localSubs.find(
@@ -287,8 +355,17 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
         receivedByCode.set(normCode, convertedRec);
       }
     } else {
-      sendRec.status = 'รอรับ';
-      unreceivedSends.push(sendRec);
+      // Unreceived send item
+      if (normCode) {
+        if (!seenSendCodes.has(normCode)) {
+          seenSendCodes.add(normCode);
+          sendRec.status = 'รอรับ';
+          unreceivedSends.push(sendRec);
+        }
+      } else {
+        sendRec.status = 'รอรับ';
+        unreceivedSends.push(sendRec);
+      }
     }
   }
 

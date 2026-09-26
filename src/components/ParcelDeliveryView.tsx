@@ -52,7 +52,9 @@ import { ParcelCalendarView } from './ParcelCalendarView';
 import { CreateParcelRecordModal } from './CreateParcelRecordModal';
 import { 
   getReceivedTrackingCodesSet, 
-  isParcelConfirmedReceived 
+  isParcelConfirmedReceived,
+  consolidateParcelRecords,
+  isParcelRecordToday
 } from '../utils/parcelTrackingUtils';
 
 interface ParcelDeliveryViewProps {
@@ -76,6 +78,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
   // Core records state
   const [records, setRecords] = useState<ParcelDeliveryRecord[]>([]);
+  const [rawRecords, setRawRecords] = useState<ParcelDeliveryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -104,9 +107,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return () => window.removeEventListener('parcel_received_updated', handleReceivedUpdate);
   }, []);
 
-  const receivedTrackingCodesSet = useMemo(() => {
-    return getReceivedTrackingCodesSet(records);
+  // Consolidate parcel records so received tracking codes replace/supersede send records
+  const consolidatedRecords = useMemo(() => {
+    return consolidateParcelRecords(records);
   }, [records, localReceivedVer]);
+
+  const receivedTrackingCodesSet = useMemo(() => {
+    return getReceivedTrackingCodesSet(consolidatedRecords);
+  }, [consolidatedRecords, localReceivedVer]);
 
   const handleQuickReceive = useCallback((record: ParcelDeliveryRecord) => {
     setRecordToReceive(record);
@@ -139,6 +147,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       const res = await fetchGoogleSheetParcelRecords();
       if (res && res.records) {
         setRecords(res.records);
+        setRawRecords(res.rawRecords || res.records);
         setLastSyncedAt(res.lastSyncedAt);
       }
     } catch (err) {
@@ -226,14 +235,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     setSearchQuery(code);
     setQuickFilter('all');
 
-    if (records.length > 0) {
-      const matched = findParcelByTrackCode(code, records);
+    if (consolidatedRecords.length > 0) {
+      const matched = findParcelByTrackCode(code, consolidatedRecords);
       if (matched) {
         setSelectedRecord(matched);
         setIsDetailOpen(true);
       }
     }
-  }, [records, getActiveTrackCode, findParcelByTrackCode]);
+  }, [consolidatedRecords, getActiveTrackCode, findParcelByTrackCode]);
 
   // Handler to close detail and cleanly remove ?track from URL
   const handleCloseDetailModal = () => {
@@ -246,46 +255,41 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     }
   };
 
-  // Check if a record is from today
-  const isRecordToday = (record: ParcelDeliveryRecord) => {
-    if (!record.dateStr && !record.timestamp) return false;
-    const target = record.dateStr || record.timestamp;
-    const today = new Date();
-    const d = today.getDate();
-    const m = today.getMonth() + 1;
-    const y = today.getFullYear();
-
-    const clean = target.split(/[\s,]+/)[0];
-    const parts = clean.split(/[-/.]/);
-    if (parts.length === 3) {
-      let pd = parseInt(parts[0], 10);
-      let pm = parseInt(parts[1], 10);
-      let py = parseInt(parts[2], 10);
-      if (pd > 1000) {
-        py = pd;
-        pd = parseInt(parts[2], 10);
-      }
-      if (py > 2400) py -= 543;
-      if (py < 100) py += 2000;
-      return pd === d && pm === m && py === y;
+  // Base records for filter:
+  // Shows records directly from Google Sheet
+  const baseRecordsForFilter = useMemo(() => {
+    const rawList = rawRecords.length > 0 ? rawRecords : records;
+    if (quickFilter === 'ส่ง' || filters.actionType === 'ส่ง') {
+      return rawList.filter(r => r.actionType === 'ส่ง');
     }
-    return false;
-  };
+    if (quickFilter === 'รับ' || filters.actionType === 'รับ') {
+      return rawList.filter(r => r.actionType === 'รับ');
+    }
+    if (quickFilter === 'today') {
+      return rawList.filter(r => isParcelRecordToday(r));
+    }
+    return rawList;
+  }, [quickFilter, filters.actionType, rawRecords, records]);
 
-  // Filtered records
+  // Filtered records based on selected quick filter and advanced filters
   const filteredRecords = useMemo(() => {
-    return records.filter(record => {
+    return baseRecordsForFilter.filter(record => {
       // General Search query or keyword filter
       const query = (searchQuery || filters.keyword).toLowerCase().trim();
       const cleanQuery = query.replace(/[\s\-_]/g, '');
       const cleanTracking = (record.trackingCode || '').toLowerCase().replace(/[\s\-_]/g, '');
       const isDirectTrackingMatch = Boolean(cleanQuery && cleanTracking && (cleanTracking.includes(cleanQuery) || cleanQuery.includes(cleanTracking)));
 
-      // Quick filter (if user is specifically searching/scanning a tracking number, don't filter out by today)
-      const isRecordReceived = record.actionType === 'รับ' || isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
-      if (quickFilter === 'ส่ง' && isRecordReceived) return false;
-      if (quickFilter === 'รับ' && !isRecordReceived) return false;
-      if (quickFilter === 'today' && !isDirectTrackingMatch && !isRecordToday(record)) return false;
+      // Quick filter - strictly by Google Sheet action type
+      if (quickFilter === 'ส่ง') {
+        if (record.actionType !== 'ส่ง') return false;
+      } else if (quickFilter === 'รับ') {
+        if (record.actionType !== 'รับ') return false;
+      } else if (quickFilter === 'today') {
+        if (!filters.startDate && !filters.endDate && !isDirectTrackingMatch && !isParcelRecordToday(record)) {
+          return false;
+        }
+      }
 
       // Advanced Action type filter
       if (filters.actionType !== 'all' && record.actionType !== filters.actionType) {
@@ -349,7 +353,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
       return true;
     });
-  }, [records, quickFilter, filters, searchQuery]);
+  }, [baseRecordsForFilter, quickFilter, filters, searchQuery]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -374,21 +378,31 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return activeFiltersCount > 0 || quickFilter !== 'all' || searchQuery.trim().length > 0;
   }, [activeFiltersCount, quickFilter, searchQuery]);
 
-  // KPI Metrics Calculation (Dynamically adapts to active filters when filtering is used)
+  // KPI Metrics Calculation (Directly from Google Sheet data)
   const metrics = useMemo(() => {
-    const todayRecords = records.filter(r => isRecordToday(r));
-    
-    // When filtering is used, use filteredRecords; otherwise default to today's records
-    const targetRecords = isFiltered ? filteredRecords : todayRecords;
-    const totalCount = targetRecords.length;
-    const sentCount = targetRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length;
-    const receivedCount = targetRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length;
+    const rawList = rawRecords.length > 0 ? rawRecords : records;
+    const sheetSentRecords = rawList.filter(r => r.actionType === 'ส่ง');
+    const sheetReceivedRecords = rawList.filter(r => r.actionType === 'รับ');
 
-    const sentPct = totalCount > 0 ? Math.round((sentCount / totalCount) * 100) : 0;
-    const receivedPct = totalCount > 0 ? Math.round((receivedCount / totalCount) * 100) : 0;
+    const sheetSentCount = sheetSentRecords.length;
+    const sheetReceivedCount = sheetReceivedRecords.length;
+    const sheetTotalCount = rawList.length;
 
-    // Latest active department & update details (newest record first)
-    const latestRecord = targetRecords.length > 0 ? targetRecords[0] : (isFiltered ? null : (records.length > 0 ? records[0] : null));
+    const sentPct = sheetTotalCount > 0 ? Math.round((sheetSentCount / sheetTotalCount) * 100) : 0;
+    const receivedPct = sheetTotalCount > 0 ? Math.round((sheetReceivedCount / sheetTotalCount) * 100) : 0;
+
+    // Today counts kept for reference
+    const todayRawSentRecords = rawList.filter(r => r.actionType === 'ส่ง' && isParcelRecordToday(r));
+    const todayRawReceivedRecords = rawList.filter(r => r.actionType === 'รับ' && isParcelRecordToday(r));
+    const todayAllRawRecords = rawList.filter(r => isParcelRecordToday(r));
+
+    const todaySentCount = todayRawSentRecords.length;
+    const todayReceivedCount = todayRawReceivedRecords.length;
+    const todayTotalCount = todayAllRawRecords.length;
+
+    // Latest active department & update details
+    const targetRecords = isFiltered ? filteredRecords : rawList;
+    const latestRecord = targetRecords.length > 0 ? targetRecords[0] : (consolidatedRecords.length > 0 ? consolidatedRecords[0] : null);
     let latestDept = '-';
     let latestActivityText = isFiltered 
       ? (language === 'th' ? 'ไม่มีข้อมูลตามตัวกรองที่เลือก' : 'No records match filter') 
@@ -412,27 +426,29 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       const timeOrDate = latestRecord.timeStr || latestRecord.dateStr || (latestRecord.timestamp ? latestRecord.timestamp.split(/[\s,]+/)[0] : '');
       const actionType = latestRecord.actionType === 'ส่ง'
         ? (language === 'th' ? 'ส่ง' : 'Send')
-        : latestRecord.actionType === 'รับ'
-          ? (language === 'th' ? 'รับ' : 'Receive')
-          : (language === 'th' ? 'รายการ' : 'Item');
+        : (language === 'th' ? 'รับ' : 'Receive');
       const itemTitle = latestRecord.itemTitle || (language === 'th' ? 'ไม่มีชื่อรายการ' : 'Untitled');
       latestActivityText = `${actionType}: ${itemTitle} (${timeOrDate})`;
     }
 
     return {
       isFiltered,
-      total: totalCount,
-      sent: sentCount,
-      received: receivedCount,
+      total: isFiltered ? filteredRecords.length : sheetTotalCount,
+      sheetTotalCount,
+      sheetSentCount,
+      sheetReceivedCount,
+      todayTotalCount,
+      todaySentCount,
+      todayReceivedCount,
       sentPct,
       receivedPct,
       latestDept,
       latestActivityText,
-      allTimeTotal: records.length,
-      allTimeSent: records.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length,
-      allTimeReceived: records.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length,
+      allTimeTotal: sheetTotalCount,
+      allTimeSent: sheetSentCount,
+      allTimeReceived: sheetReceivedCount,
     };
-  }, [records, filteredRecords, isFiltered, language, receivedTrackingCodesSet]);
+  }, [consolidatedRecords, filteredRecords, isFiltered, language, rawRecords, records, quickFilter]);
 
   // Table pagination
   const totalPagesTable = Math.ceil(filteredRecords.length / itemsPerPageTable) || 1;
@@ -447,6 +463,162 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     const start = (currentPageCards - 1) * itemsPerPageCards;
     return filteredRecords.slice(start, start + itemsPerPageCards);
   }, [filteredRecords, currentPageCards]);
+
+  // Records specifically for Board View's Outgoing (กล่อง รายการส่ง) column:
+  // Shows outgoing records directly from Google Sheet,
+  // without referencing whether they have been received or not ("โดยไม่ต้องอ้างอิงว่ารับแล้ว ให้เป็นข้อมูลดิบในส่วนที่เป็นรายการส่งเลย")
+  const boardSentRecords = useMemo(() => {
+    const list = rawRecords.length > 0 ? rawRecords : records;
+    return list.filter(r => {
+      // Must be an outgoing 'ส่ง' record directly from Google Sheet data
+      if (r.actionType !== 'ส่ง') {
+        return false;
+      }
+
+      // DO NOT reference whether it has been received ("โดยไม่ต้องอ้างอิงว่ารับแล้ว ให้เป็นข้อมูลดิบในส่วนที่เป็นรายการส่งเลย")
+
+      const query = (searchQuery || filters.keyword).toLowerCase().trim();
+      const cleanQuery = query.replace(/[\s\-_]/g, '');
+      const cleanTracking = (r.trackingCode || '').toLowerCase().replace(/[\s\-_]/g, '');
+      const isDirectTrackingMatch = Boolean(cleanQuery && cleanTracking && (cleanTracking.includes(cleanQuery) || cleanQuery.includes(cleanTracking)));
+
+      // Department filters
+      if (filters.senderDepartment !== 'all' && r.senderDepartment !== filters.senderDepartment) {
+        return false;
+      }
+      if (filters.recipientDepartment !== 'all' && r.recipientDepartment !== filters.recipientDepartment) {
+        return false;
+      }
+
+      // Keyword match across all key fields (Document Title, Sender, Recipient, Operator, Tracking Code)
+      if (query && !isDirectTrackingMatch) {
+        const matchTitle = r.itemTitle?.toLowerCase().includes(query);
+        const matchSender = r.senderName?.toLowerCase().includes(query) || r.senderDepartment?.toLowerCase().includes(query);
+        const matchRecipient = r.recipientName?.toLowerCase().includes(query) || r.recipientDepartment?.toLowerCase().includes(query);
+        const matchOperator = r.operatorName?.toLowerCase().includes(query) || r.operatorDepartment?.toLowerCase().includes(query);
+        const matchTracking = r.trackingCode?.toLowerCase().includes(query);
+
+        if (!matchTitle && !matchSender && !matchRecipient && !matchOperator && !matchTracking) {
+          return false;
+        }
+      }
+
+      // If user explicitly chose a date range in filters, or searched for direct tracking code, show it
+      if (filters.startDate || filters.endDate || isDirectTrackingMatch) {
+        if (filters.startDate || filters.endDate) {
+          const raw = r.dateStr || r.timestamp;
+          const clean = raw.split(/[\s,]+/)[0];
+          const parts = clean.split(/[-/.]/);
+          if (parts.length === 3) {
+            let pd = parseInt(parts[0], 10);
+            let pm = parseInt(parts[1], 10);
+            let py = parseInt(parts[2], 10);
+            if (pd > 1000) { py = pd; pd = parseInt(parts[2], 10); }
+            if (py > 2400) py -= 543;
+            if (py < 100) py += 2000;
+            const recTime = new Date(py, pm - 1, pd).getTime();
+            if (filters.startDate) {
+              const startParts = filters.startDate.split('-');
+              const startTime = new Date(parseInt(startParts[0], 10), parseInt(startParts[1], 10) - 1, parseInt(startParts[2], 10)).getTime();
+              if (recTime < startTime) return false;
+            }
+            if (filters.endDate) {
+              const endParts = filters.endDate.split('-');
+              const endTime = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10), 23, 59, 59).getTime();
+              if (recTime > endTime) return false;
+            }
+          }
+        }
+        return true;
+      }
+
+      // Otherwise, show items sent from Google Sheet
+      return true;
+    });
+  }, [rawRecords, records, filters, searchQuery]);
+
+  // Records specifically for Board View's Received (กล่อง รายการรับ) column:
+  // Shows incoming records from Google Sheet without including outgoing items
+  const boardReceivedRecords = useMemo(() => {
+    const list = rawRecords.length > 0 ? rawRecords : records;
+    return list.filter(r => {
+      // Must be an incoming 'รับ' record directly from Google Sheet data
+      if (r.actionType !== 'รับ') {
+        return false;
+      }
+
+      const query = (searchQuery || filters.keyword).toLowerCase().trim();
+      const cleanQuery = query.replace(/[\s\-_]/g, '');
+      const cleanTracking = (r.trackingCode || '').toLowerCase().replace(/[\s\-_]/g, '');
+      const isDirectTrackingMatch = Boolean(cleanQuery && cleanTracking && (cleanTracking.includes(cleanQuery) || cleanQuery.includes(cleanTracking)));
+
+      // Department filters
+      if (filters.senderDepartment !== 'all' && r.senderDepartment !== filters.senderDepartment) {
+        return false;
+      }
+      if (filters.recipientDepartment !== 'all' && r.recipientDepartment !== filters.recipientDepartment) {
+        return false;
+      }
+
+      // Keyword match across all key fields (Document Title, Sender, Recipient, Operator, Tracking Code)
+      if (query && !isDirectTrackingMatch) {
+        const matchTitle = r.itemTitle?.toLowerCase().includes(query);
+        const matchSender = r.senderName?.toLowerCase().includes(query) || r.senderDepartment?.toLowerCase().includes(query);
+        const matchRecipient = r.recipientName?.toLowerCase().includes(query) || r.recipientDepartment?.toLowerCase().includes(query);
+        const matchOperator = r.operatorName?.toLowerCase().includes(query) || r.operatorDepartment?.toLowerCase().includes(query);
+        const matchTracking = r.trackingCode?.toLowerCase().includes(query);
+
+        if (!matchTitle && !matchSender && !matchRecipient && !matchOperator && !matchTracking) {
+          return false;
+        }
+      }
+
+      // If user explicitly chose a date range in filters, or searched for direct tracking code, show it
+      if (filters.startDate || filters.endDate || isDirectTrackingMatch) {
+        if (filters.startDate || filters.endDate) {
+          const raw = r.dateStr || r.timestamp;
+          const clean = raw.split(/[\s,]+/)[0];
+          const parts = clean.split(/[-/.]/);
+          if (parts.length === 3) {
+            let pd = parseInt(parts[0], 10);
+            let pm = parseInt(parts[1], 10);
+            let py = parseInt(parts[2], 10);
+            if (pd > 1000) { py = pd; pd = parseInt(parts[2], 10); }
+            if (py > 2400) py -= 543;
+            if (py < 100) py += 2000;
+            const recTime = new Date(py, pm - 1, pd).getTime();
+            if (filters.startDate) {
+              const startParts = filters.startDate.split('-');
+              const startTime = new Date(parseInt(startParts[0], 10), parseInt(startParts[1], 10) - 1, parseInt(startParts[2], 10)).getTime();
+              if (recTime < startTime) return false;
+            }
+            if (filters.endDate) {
+              const endParts = filters.endDate.split('-');
+              const endTime = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10), 23, 59, 59).getTime();
+              if (recTime > endTime) return false;
+            }
+          }
+        }
+        return true;
+      }
+
+      // Otherwise, show items received from Google Sheet
+      return true;
+    });
+  }, [rawRecords, records, filters, searchQuery]);
+
+  // Click on a KPI Box toggles that filter and displays the corresponding records from Google Sheet
+  const handleBoxClick = (targetFilter: 'all' | 'ส่ง' | 'รับ') => {
+    if (targetFilter === 'all') {
+      setQuickFilter('all');
+    } else {
+      setQuickFilter(prev => prev === targetFilter ? 'all' : targetFilter);
+    }
+    const anchor = document.getElementById('parcel-records-view-anchor');
+    if (anchor && typeof window !== 'undefined' && window.innerWidth < 768) {
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
 
   const clearAllFilters = () => {
     setQuickFilter('all');
@@ -629,71 +801,140 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           </div>
         </div>
 
-        {/* Metric Cards Row (4 Cards) */}
+        {/* Metric Cards Row (4 Cards) - All 3 boxes are interactive and clickable */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative z-10">
-          {/* Card 1: Total */}
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-pink-200/80 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                {language === 'th' ? 'รายการทั้งหมด' : 'Total Records'}
+          {/* Card 1: Total Records (ข้อมูลจาก Google Sheet) */}
+          <button
+            type="button"
+            onClick={() => handleBoxClick('all')}
+            className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
+              quickFilter === 'all'
+                ? 'bg-pink-100/90 dark:bg-pink-950/60 border-pink-500 shadow-md ring-2 ring-pink-500/50 scale-[1.01]'
+                : 'bg-white/80 dark:bg-slate-900/80 border-pink-200/80 dark:border-slate-800 shadow-xs hover:border-pink-300 hover:shadow-md hover:scale-[1.01]'
+            }`}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการทั้งหมด (Google Sheet)' : 'Click to view all records (Google Sheet)'}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Boxes className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                  {language === 'th' ? 'รายการทั้งหมด' : 'Total Records'}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  quickFilter === 'all'
+                    ? 'text-white bg-pink-600 shadow-2xs'
+                    : 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60 group-hover:bg-pink-200'
+                }`}>
+                  <FileSpreadsheet className="w-2.5 h-2.5" />
+                  Google Sheet
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1.5 flex items-baseline gap-2">
+                <span>{metrics.sheetTotalCount.toLocaleString()}</span>
+                <span className="text-xs font-bold text-slate-400">
+                  {language === 'th' ? 'รายการ' : 'items'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-pink-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400 truncate">
+                {language === 'th' ? 'ข้อมูลจาก Google Sheet' : 'Google Sheet Data'}
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                metrics.isFiltered
-                  ? 'text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200/80 dark:border-purple-800'
-                  : 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60'
-              }`}>
-                {metrics.isFiltered ? (language === 'th' ? 'ตามตัวกรอง' : 'Filtered') : (language === 'th' ? 'วันนี้' : 'Today')}
+              <span className="font-bold text-pink-600 dark:text-pink-400 text-[10px] shrink-0 ml-1">
+                {quickFilter === 'all' 
+                  ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
+                  : (language === 'th' ? 'กดเพื่อดู' : 'Click to view')}
               </span>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1.5">
-              {metrics.total.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {metrics.isFiltered 
-                ? (language === 'th' ? 'ตามเงื่อนไขที่เลือกกรอง' : 'Filtered results') 
-                : (language === 'th' ? 'พัสดุและเอกสารประจำวันนี้' : "Today's items")}
-            </div>
-          </div>
+          </button>
 
-          {/* Card 2: Sent */}
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-rose-200/80 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <Send className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
+          {/* Card 2: Sent (ข้อมูลส่ง จาก Google Sheet) */}
+          <button
+            type="button"
+            onClick={() => handleBoxClick('ส่ง')}
+            className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
+              quickFilter === 'ส่ง'
+                ? 'bg-rose-100/90 dark:bg-rose-950/60 border-rose-500 shadow-md ring-2 ring-rose-500/50 scale-[1.01]'
+                : 'bg-white/80 dark:bg-slate-900/80 border-rose-200/80 dark:border-slate-800 shadow-xs hover:border-rose-300 hover:shadow-md hover:scale-[1.01]'
+            }`}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการส่ง (Google Sheet)' : 'Click to view outgoing records (Google Sheet)'}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                  <Send className="w-3.5 h-3.5" />
+                  {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
+                </span>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  quickFilter === 'ส่ง'
+                    ? 'text-white bg-rose-600 shadow-2xs'
+                    : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 group-hover:bg-rose-100'
+                }`}>
+                  {metrics.sentPct}%
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-rose-700 dark:text-rose-300 mt-1.5 flex items-baseline gap-2">
+                <span>{metrics.sheetSentCount.toLocaleString()}</span>
+                <span className="text-xs font-bold text-rose-500/80 dark:text-rose-400/80">
+                  {language === 'th' ? 'รายการ' : 'items'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-rose-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+              <span className="text-rose-500 dark:text-rose-400 truncate">
+                {language === 'th' ? 'ข้อมูลจาก Google Sheet' : 'Google Sheet Data'}
               </span>
-              <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded-full">
-                {metrics.sentPct}%
+              <span className="font-bold text-rose-600 dark:text-rose-400 text-[10px] shrink-0 ml-1">
+                {quickFilter === 'ส่ง' 
+                  ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
+                  : (language === 'th' ? 'กดเพื่อดู' : 'Click to view')}
               </span>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-rose-700 dark:text-rose-300 mt-1.5">
-              {metrics.sent.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-rose-500 dark:text-rose-400 mt-0.5 truncate">
-              {metrics.isFiltered 
-                ? (language === 'th' ? 'เอกสาร/พัสดุขาออกตามตัวกรอง' : 'Filtered outgoing items') 
-                : (language === 'th' ? 'เอกสาร/พัสดุขาออกวันนี้' : 'Outgoing items today')}
-            </div>
-          </div>
+          </button>
 
-          {/* Card 3: Received */}
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-emerald-200/80 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <Inbox className="w-3.5 h-3.5" /> {language === 'th' ? 'รายการรับ' : 'Incoming'}
+          {/* Card 3: Received (ข้อมูลรับ จาก Google Sheet) */}
+          <button
+            type="button"
+            onClick={() => handleBoxClick('รับ')}
+            className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
+              quickFilter === 'รับ'
+                ? 'bg-emerald-100/90 dark:bg-emerald-950/60 border-emerald-500 shadow-md ring-2 ring-emerald-500/50 scale-[1.01]'
+                : 'bg-white/80 dark:bg-slate-900/80 border-emerald-200/80 dark:border-slate-800 shadow-xs hover:border-emerald-300 hover:shadow-md hover:scale-[1.01]'
+            }`}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการรับ (Google Sheet)' : 'Click to view incoming records (Google Sheet)'}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Inbox className="w-3.5 h-3.5" />
+                  {language === 'th' ? 'รายการรับ' : 'Incoming'}
+                </span>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  quickFilter === 'รับ'
+                    ? 'text-white bg-emerald-600 shadow-2xs'
+                    : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 group-hover:bg-emerald-100'
+                }`}>
+                  {metrics.receivedPct}%
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-300 mt-1.5 flex items-baseline gap-2">
+                <span>{metrics.sheetReceivedCount.toLocaleString()}</span>
+                <span className="text-xs font-bold text-emerald-500/80 dark:text-emerald-400/80">
+                  {language === 'th' ? 'รายการ' : 'items'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-emerald-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+              <span className="text-emerald-500 dark:text-emerald-400 truncate">
+                {language === 'th' ? 'ข้อมูลจาก Google Sheet' : 'Google Sheet Data'}
               </span>
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
-                {metrics.receivedPct}%
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] shrink-0 ml-1">
+                {quickFilter === 'รับ' 
+                  ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
+                  : (language === 'th' ? 'กดเพื่อดู' : 'Click to view')}
               </span>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-300 mt-1.5">
-              {metrics.received.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-emerald-500 dark:text-emerald-400 mt-0.5 truncate">
-              {metrics.isFiltered 
-                ? (language === 'th' ? 'เอกสาร/พัสดุขาเข้าตามตัวกรอง' : 'Filtered incoming items') 
-                : (language === 'th' ? 'เอกสาร/พัสดุขาเข้าวันนี้' : 'Incoming items today')}
-            </div>
-          </div>
+          </button>
 
           {/* Card 4: Latest Active Department */}
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-pink-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
@@ -752,40 +993,29 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                   : 'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-pink-200 dark:border-slate-700 hover:bg-white'
               }`}
             >
-              {language === 'th' ? `ทั้งหมด (${records.length})` : `All (${records.length})`}
+              {language === 'th' ? `ทั้งหมด (${metrics.sheetTotalCount})` : `All (${metrics.sheetTotalCount})`}
             </button>
             <button
               onClick={() => setQuickFilter('ส่ง')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 quickFilter === 'ส่ง'
-                  ? 'bg-rose-600 text-white shadow-xs'
+                  ? 'bg-rose-600 text-white shadow-xs ring-2 ring-rose-400/40'
                   : 'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-rose-200 dark:border-slate-700 hover:bg-white'
               }`}
             >
               <Send className="w-3 h-3" />
-              {language === 'th' ? `รายการส่ง (${metrics.allTimeSent})` : `Outgoing (${metrics.allTimeSent})`}
+              {language === 'th' ? `รายการส่ง (${metrics.sheetSentCount})` : `Outgoing (${metrics.sheetSentCount})`}
             </button>
             <button
               onClick={() => setQuickFilter('รับ')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                 quickFilter === 'รับ'
-                  ? 'bg-emerald-600 text-white shadow-xs'
+                  ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400/40'
                   : 'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-emerald-200 dark:border-slate-700 hover:bg-white'
               }`}
             >
               <Inbox className="w-3 h-3" />
-              {language === 'th' ? `รายการรับ (${metrics.allTimeReceived})` : `Incoming (${metrics.allTimeReceived})`}
-            </button>
-            <button
-              onClick={() => setQuickFilter('today')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
-                quickFilter === 'today'
-                  ? 'bg-pink-700 text-white shadow-xs'
-                  : 'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-pink-200 dark:border-slate-700 hover:bg-white'
-              }`}
-            >
-              <Calendar className="w-3 h-3" />
-              {language === 'th' ? 'วันนี้' : 'Today'}
+              {language === 'th' ? `รายการรับ (${metrics.sheetReceivedCount})` : `Incoming (${metrics.sheetReceivedCount})`}
             </button>
           </div>
         </div>
@@ -796,7 +1026,10 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
             <span className="text-slate-500 dark:text-slate-400 font-medium">{language === 'th' ? 'ตัวกรองที่เลือก:' : 'Active filters:'}</span>
             {quickFilter !== 'all' && (
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
-                {language === 'th' ? 'ด่วน:' : 'Quick:'} {quickFilter === 'today' ? (language === 'th' ? 'วันนี้' : 'Today') : quickFilter === 'ส่ง' ? (language === 'th' ? 'ส่ง' : 'Send') : (language === 'th' ? 'รับ' : 'Receive')}
+                {language === 'th' ? 'ด่วน:' : 'Quick:'}{' '}
+                {quickFilter === 'ส่ง' 
+                  ? (language === 'th' ? 'รายการส่ง (Google Sheet)' : 'Outgoing (Google Sheet)') 
+                  : (language === 'th' ? 'รายการรับ (Google Sheet)' : 'Incoming (Google Sheet)')}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setQuickFilter('all')} />
               </span>
             )}
@@ -836,6 +1069,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       </div>
 
       {/* 2. Main Content View Area */}
+      <div id="parcel-records-view-anchor" className="scroll-mt-6" />
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-pink-100 dark:border-slate-800 space-y-3">
           <RefreshCw className="w-8 h-8 text-pink-600 animate-spin" />
@@ -1204,24 +1438,33 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    {language === 'th' ? 'รายการส่ง (รอรับ)' : 'Outgoing (Pending)'}
+                    {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {language === 'th' ? 'เอกสารและพัสดุขาออกที่รอการรับ' : 'Outgoing documents waiting for receipt'}
+                    {language === 'th' ? 'ข้อมูลส่งจาก Google Sheet' : 'Outgoing items (Google Sheet)'}
                   </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold text-xs">
                 {language === 'th' 
-                  ? `${filteredRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} รายการ`
-                  : `${filteredRecords.filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} items`}
+                  ? `${boardSentRecords.length} รายการ`
+                  : `${boardSentRecords.length} items`}
               </span>
             </div>
 
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-              {filteredRecords
-                .filter(r => r.actionType === 'ส่ง' && !isParcelConfirmedReceived(r, records, receivedTrackingCodesSet))
-                .map((record, index) => {
+              {boardSentRecords.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 space-y-2">
+                  <Package className="w-10 h-10 opacity-30 stroke-1" />
+                  <p className="text-xs font-semibold">
+                    {language === 'th' ? 'ไม่มีรายการส่ง' : 'No outgoing items'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'th' ? 'ดึงตามข้อมูลใน Google Sheet' : 'Retrieved from Google Sheet data'}
+                  </p>
+                </div>
+              ) : (
+                boardSentRecords.map((record, index) => {
                   const isReceived = isParcelConfirmedReceived(record, records, receivedTrackingCodesSet);
                   return (
                     <div
@@ -1284,7 +1527,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       </div>
                     </div>
                   );
-                })}
+                })
+              )}
             </div>
           </div>
 
@@ -1297,24 +1541,33 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                    {language === 'th' ? 'รายการรับแล้ว (ข้อมูลล่าสุด)' : 'Received (Latest)'}
+                    {language === 'th' ? 'รายการรับ' : 'Incoming / Received'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    {language === 'th' ? 'เอกสารและพัสดุที่รับแล้วเสร็จสิ้น' : 'Completed received documents and parcels'}
+                    {language === 'th' ? 'ข้อมูลรับจาก Google Sheet' : 'Received items (Google Sheet)'}
                   </p>
                 </div>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
                 {language === 'th' 
-                  ? `${filteredRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} รายการ`
-                  : `${filteredRecords.filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet)).length} items`}
+                  ? `${boardReceivedRecords.length} รายการ`
+                  : `${boardReceivedRecords.length} items`}
               </span>
             </div>
 
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-              {filteredRecords
-                .filter(r => r.actionType === 'รับ' || isParcelConfirmedReceived(r, records, receivedTrackingCodesSet))
-                .map((record, index) => (
+              {boardReceivedRecords.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 space-y-2">
+                  <Package className="w-10 h-10 opacity-30 stroke-1" />
+                  <p className="text-xs font-semibold">
+                    {language === 'th' ? 'ไม่มีรายการรับ' : 'No incoming items'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {language === 'th' ? 'ดึงตามข้อมูลใน Google Sheet' : 'Retrieved from Google Sheet data'}
+                  </p>
+                </div>
+              ) : (
+                boardReceivedRecords.map((record, index) => (
                   <div
                     key={`${record.id}-${record.seq || index}`}
                     onClick={() => handleOpenDetail(record)}
@@ -1355,7 +1608,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       </span>
                     </div>
                   </div>
-                ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1372,7 +1626,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       <ParcelDetailModal
         isOpen={isDetailOpen}
         parcel={selectedRecord}
-        allRecords={records}
+        allRecords={consolidatedRecords}
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
         onClose={handleCloseDetailModal}
@@ -1385,14 +1639,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         onClose={() => setIsFilterOpen(false)}
         filters={filters}
         onApply={(newFilters) => setFilters(newFilters)}
-        records={records}
+        records={consolidatedRecords}
       />
 
       {/* Analytics Modal */}
       <ParcelAnalyticsModal
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
-        records={records}
+        records={consolidatedRecords}
       />
 
       {/* Create Record Modal (Both Receive & Send, strictly matching Google Sheet columns) */}
@@ -1403,7 +1657,11 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           setRecordToReceive(null);
         }}
         initialRecordToReceive={recordToReceive}
-        onRecordCreated={() => {
+        onRecordCreated={(newRecord) => {
+          if (newRecord) {
+            setRecords((prev) => consolidateParcelRecords([newRecord, ...prev]));
+            setRawRecords((prev) => [newRecord, ...prev]);
+          }
           // Immediately reload from Google Sheet, and reload again after short delay for Sheet synchronization
           loadData(true, false);
           setTimeout(() => {
@@ -1412,7 +1670,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         }}
         currentUser={currentUser}
         isAuthenticated={isAuthenticated}
-        existingRecords={records}
+        existingRecords={consolidatedRecords}
       />
     </div>
   );
