@@ -3647,6 +3647,32 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
   const rows = parseCSV(csvText);
   if (!rows || rows.length < 2) return [];
 
+  const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+  let trackingColIdx = header.findIndex(
+    (h) => h.includes('รหัสติดตาม') || h.includes('tracking') || (h.includes('รหัส') && !h.includes('พัสดุ'))
+  );
+  if (trackingColIdx === -1 && rows[0].length > 8) {
+    trackingColIdx = 8;
+  }
+
+  // 1. First pass: Collect all tracking codes that have already been returned in Google Sheet
+  const returnedTrackingMap = new Map<string, { returnDate?: string; returnTimestamp?: string }>();
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+    const actionRaw = (row[2] || '').trim();
+    const trackingRaw = trackingColIdx >= 0 && row[trackingColIdx] ? row[trackingColIdx].trim() : (row[8] || '').trim();
+    if (actionRaw.includes('คืน') && trackingRaw && trackingRaw !== '-') {
+      const norm = trackingRaw.replace(/[\s\-_]/g, '').toUpperCase();
+      if (norm) {
+        returnedTrackingMap.set(norm, {
+          returnDate: (row[1] || '').trim(),
+          returnTimestamp: (row[0] || '').trim(),
+        });
+      }
+    }
+  }
+
   const records: EquipmentRecord[] = [];
 
   for (let i = 1; i < rows.length; i++) {
@@ -3655,18 +3681,27 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
 
     const timestamp = row[0] || '';
     const rawDate = row[1] || '';
-    const actionRaw = row[2] || 'เบิกเสื้อกาวน์';
-    const requester = row[3] || 'ไม่ระบุชื่อ';
+    const actionRaw = (row[2] || '').trim() || 'เบิกเสื้อกาวน์';
+    const requester = (row[3] || '').trim();
+    if (!requester && !row[2] && !row[5] && !row[6] && !row[7]) continue; // Skip blank trailing rows
     const rawDept = row[4] || '';
     const department = normalizeDepartment(rawDept) || 'ฝ่ายผลิต / ทั่วไป';
 
     const qtyL = parseFloat(row[5] || '0') || 0;
     const qtyXL = parseFloat(row[6] || '0') || 0;
     const qty2XL = parseFloat(row[7] || '0') || 0;
+    const trackingRaw = trackingColIdx >= 0 && row[trackingColIdx] ? row[trackingColIdx].trim() : (row[8] || '').trim();
+    const trackingCode = trackingRaw && trackingRaw !== '-' ? trackingRaw : undefined;
 
     const isReturn = actionRaw.includes('คืน');
     const actionType = isReturn ? 'คืน' : 'เบิก';
-    const status = isReturn ? 'คืนแล้ว' : 'เบิกแล้ว';
+
+    // Check if this requisition record has already been returned via tracking code in Google Sheet
+    const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+    const hasBeenReturned = !isReturn && normTracking && returnedTrackingMap.has(normTracking);
+
+    // Status: If it's a return row OR its tracking code has a return record in Google Sheet, status is 'คืนแล้ว'
+    const status = (isReturn || hasBeenReturned) ? 'คืนแล้ว' : 'เบิกแล้ว';
 
     const gownSizes: { size: string; count: number }[] = [];
     const itemsList: EquipmentItemDetail[] = [];
@@ -3701,7 +3736,7 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
       subCategory: 'gown',
       timestamp,
       date,
-      requesterName: requester,
+      requesterName: requester || 'ไม่ระบุชื่อ',
       department,
       actionType,
       status,
@@ -3709,6 +3744,7 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
       itemsList,
       totalQuantity: totalQty,
       gownSizes,
+      trackingCode,
     });
   }
 

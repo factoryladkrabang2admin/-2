@@ -215,6 +215,7 @@ interface GownSubmissionRecord {
   sizeXL?: number | string;
   size2XL?: number | string;
   totalQuantity: number;
+  trackingCode?: string;
   syncedToGoogle: boolean;
   createdAt: number;
 }
@@ -240,6 +241,51 @@ function saveGownSubmission(record: GownSubmissionRecord) {
   } catch (err) {
     console.warn("Could not persist gown submission to disk:", err);
   }
+}
+
+function generateServerGownTrackingCode(rawDate?: string): string {
+  let yy = "26";
+  let mm = "09";
+  let dd = "26";
+
+  if (rawDate) {
+    if (rawDate.includes("-")) {
+      const p = rawDate.split("-");
+      yy = p[0].slice(-2);
+      mm = p[1].padStart(2, "0");
+      dd = p[2].padStart(2, "0");
+    } else if (rawDate.includes("/")) {
+      const p = rawDate.split("/");
+      dd = p[0].padStart(2, "0");
+      mm = p[1].padStart(2, "0");
+      let y = p[2];
+      if (parseInt(y, 10) > 2400) y = String(parseInt(y, 10) - 543);
+      yy = y.slice(-2);
+    }
+  } else {
+    const now = new Date();
+    yy = String(now.getFullYear()).slice(-2);
+    mm = String(now.getMonth() + 1).padStart(2, "0");
+    dd = String(now.getDate()).padStart(2, "0");
+  }
+
+  const dateTag = `${yy}${mm}${dd}`;
+  const prefix = `LKB2 - ${dateTag}`;
+  const targetTag = `LKB2${dateTag}`.toUpperCase();
+
+  let maxSeq = 0;
+  for (const sub of inMemoryGownSubmissions) {
+    if (sub.trackingCode) {
+      const norm = sub.trackingCode.replace(/[\s\-_]/g, "").toUpperCase();
+      if (norm.startsWith(targetTag)) {
+        const seq = parseInt(norm.slice(targetTag.length), 10);
+        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    }
+  }
+
+  const nextSeq = String(maxSeq + 1).padStart(2, "0");
+  return `${prefix}${nextSeq}`;
 }
 
 const KEYS_DATA_FILE = path.join(process.cwd(), "keys-submissions.json");
@@ -857,8 +903,7 @@ async function startServer() {
         }
       }
 
-      // If this is the Announcements sheet (gid=1228686844 or sheetId=1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU),
-      // enrich and ensure all saved announcements are present in the returned CSV
+      // Announcements sheet enrichment
       if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
         try {
           const rows = parseCsv(csvText);
@@ -1567,6 +1612,21 @@ async function startServer() {
       if (sizeXL) formParams.append("entry.1172983301", sizeXL);
       if (size2XL) formParams.append("entry.1185036298", size2XL);
 
+      // 6. รหัสติดตาม:
+      // - เบิกเสื้อกาวน์: สร้างรหัสใหม่อัตโนมัติ (หรือใช้รหัสที่ส่งมา)
+      // - ส่งคืนเสื้อกาวน์: บันทึกอิงตามรหัสติดตามที่ส่งมาลง Google Sheet
+      const isRequisition = actionType === "เบิกเสื้อกาวน์";
+      let trackingCode = "";
+      if (isRequisition) {
+        trackingCode = (payload.trackingCode || generateServerGownTrackingCode(dateFormatted)).trim();
+      } else {
+        trackingCode = (payload.trackingCode || "").trim();
+      }
+
+      if (trackingCode) {
+        formParams.append("entry.188299713", trackingCode);
+      }
+
       // Sentinels and hidden inputs
       formParams.append("entry.405389570_sentinel", "");
       formParams.append("entry.422774460_sentinel", "");
@@ -1627,6 +1687,7 @@ async function startServer() {
         sizeXL: sizeXL ? parseInt(sizeXL, 10) : undefined,
         size2XL: size2XL ? parseInt(size2XL, 10) : undefined,
         totalQuantity,
+        trackingCode: trackingCode || undefined,
         syncedToGoogle,
         createdAt: Date.now(),
       };
@@ -1637,7 +1698,11 @@ async function startServer() {
         success: true,
         googleSheetSynced: syncedToGoogle,
         message: syncedToGoogle
-          ? "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว"
+          ? (trackingCode
+              ? (isRequisition
+                  ? `ส่งข้อมูลเข้า Google Form และบันทึกรหัสติดตาม (${trackingCode}) ลงใน Google Sheet สำเร็จเรียบร้อยแล้ว`
+                  : `ส่งข้อมูลการคืนเสื้อกาวน์อิงตามรหัสติดตาม (${trackingCode}) ลงใน Google Sheet เรียบร้อยแล้ว`)
+              : "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว")
           : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
         record,
         sheetUrl: "https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902",

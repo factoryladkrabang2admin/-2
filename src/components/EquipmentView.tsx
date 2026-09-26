@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Download,
   RotateCw,
+  RotateCcw,
   Tag,
   Key,
   Shirt,
@@ -56,6 +57,7 @@ import { AdminUserAccount, isUserAdminOrSupervisor, canAccessRestrictedEquipment
 import { EquipmentDetailModal } from './EquipmentDetailModal';
 import { EquipmentAnalyticsModal } from './EquipmentAnalyticsModal';
 import { CreateEquipmentModal } from './CreateEquipmentModal';
+import { ReturnGownModal } from './ReturnGownModal';
 
 const SUB_CATEGORY_STORAGE_PREFIX = 'proworkflow_equipment_cache_';
 const TABLE_ITEMS_PER_PAGE = 20;
@@ -92,8 +94,12 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
-  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' on mobile and tablet < 1024px, 'table' on desktop)
+  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown, and on mobile/tablet < 1024px)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
+    const initialCategory = canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
+    if (initialCategory === 'gown') {
+      return 'grid';
+    }
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       return 'grid';
     }
@@ -178,6 +184,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   const [qrCopied, setQrCopied] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
+  // Gown Return Modal States (หัวข้อย่อยเสื้อกาวน์ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม)
+  const [returnGownRecord, setReturnGownRecord] = useState<EquipmentRecord | null>(null);
+  const [isReturnGownModalOpen, setIsReturnGownModalOpen] = useState<boolean>(false);
+  const [returnSuccessNotification, setReturnSuccessNotification] = useState<{ message: string; trackingCode?: string } | null>(null);
+
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
 
   // สิทธิ์การทำรายการสำหรับหมวดหมู่อุปกรณ์ปัจจุบัน (อุปกรณ์ทำความสะอาด, น้ำยาปรับผ้านุ่ม จำกัดเฉพาะ ผู้ดูแล, แอดมินเพจ และผู้ที่เข้าระบบได้เท่านั้น)
@@ -196,8 +207,10 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       return;
     }
     setIsLoading(true);
-    // 1. Try local storage cache first
-    if (!force) {
+
+    // 1. Try local storage cache first (ยกเว้น เสื้อกาวน์ ซึ่งต้องแสดงข้อมูลสดจาก Google Sheet เท่านั้น)
+    const isGown = sub === 'gown';
+    if (!force && !isGown) {
       try {
         const cached = localStorage.getItem(`${SUB_CATEGORY_STORAGE_PREFIX}${sub}`);
         if (cached) {
@@ -230,8 +243,52 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     }
   };
 
+  const handleOpenReturnGownModal = (record: EquipmentRecord) => {
+    setReturnGownRecord(record);
+    setIsReturnGownModalOpen(true);
+  };
+
+  const handleReturnGownSuccess = (returnedRecord: EquipmentRecord, trackingCode: string) => {
+    // 1. อัปเดตสถานะของรายการที่คืนเป็น 'คืนแล้ว' ใน state ทันที
+    setRecords((prev) =>
+      prev.map((r) => {
+        const isTarget = r.id === returnedRecord.id;
+        const normCode = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+        const normRCode = r.trackingCode ? r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+        const isTrackingMatch = normCode && normRCode && normCode === normRCode;
+        if (isTarget || isTrackingMatch) {
+          return {
+            ...r,
+            status: 'คืนแล้ว',
+          };
+        }
+        return r;
+      })
+    );
+
+    // 2. แสดง Notification สำเร็จ
+    setReturnSuccessNotification({
+      message: language === 'th'
+        ? `บันทึกการส่งคืนเสื้อกาวน์ ${trackingCode ? `(รหัส ${trackingCode})` : ''} ลงใน Google Sheet และเปลี่ยนสถานะเป็นคืนแล้วเรียบร้อย`
+        : `Gown return recorded to Google Sheet and status changed to Returned!`,
+      trackingCode,
+    });
+    setTimeout(() => {
+      setReturnSuccessNotification(null);
+    }, 6000);
+
+    // 3. โหลดข้อมูลสดจาก Google Sheet เพื่อซิงค์แถวที่บันทึกล่าสุด
+    setTimeout(() => {
+      loadData('gown', true);
+    }, 1200);
+  };
+
   useEffect(() => {
     setCurrentPage(1);
+    // หัวข้อย่อยเสื้อกาวน์ ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
+    if (activeSubCategory === 'gown') {
+      setViewMode('grid');
+    }
     loadData(activeSubCategory);
   }, [activeSubCategory]);
 
@@ -419,6 +476,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           ' ' +
           (r.department || '') +
           ' ' +
+          (r.trackingCode || '') +
+          ' ' +
           (r.keyNumbers || '') +
           ' ' +
           (r.ladderType || '') +
@@ -549,7 +608,10 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Export CSV (นำคอลัมน์ แผนก, สถานะ ออก และแยกรายการอุปกรณ์และจำนวนเป็นแถวๆ เพื่อง่ายต่อการค้นหา)
   const handleExportCsv = () => {
     if (filteredRecords.length === 0) return;
-    const header = ['ลำดับ', 'วันที่', 'ผู้เบิก/ยืม', 'การกระทำ', 'รายการอุปกรณ์', 'จำนวน', 'หมายเหตุ'];
+    const isGown = activeSubCategory === 'gown';
+    const header = isGown
+      ? ['ลำดับ', 'วันที่', 'รหัสติดตาม', 'ผู้เบิก/ยืม', 'การกระทำ', 'รายการอุปกรณ์', 'จำนวน', 'หมายเหตุ']
+      : ['ลำดับ', 'วันที่', 'ผู้เบิก/ยืม', 'การกระทำ', 'รายการอุปกรณ์', 'จำนวน', 'หมายเหตุ'];
     const csvRows = [header.join(',')];
     let rowSeq = 1;
 
@@ -561,15 +623,26 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
       itemsToExport.forEach((item) => {
         const noteText = (item.note || r.note || '').replace(/"/g, '""');
-        const row = [
-          rowSeq++,
-          `"${r.date || ''}"`,
-          `"${(r.requesterName || '').replace(/"/g, '""')}"`,
-          `"${(r.actionType || '').replace(/"/g, '""')}"`,
-          `"${(item.name || '').replace(/"/g, '""')}"`,
-          item.quantity || 1,
-          `"${noteText}"`
-        ];
+        const row = isGown
+          ? [
+              rowSeq++,
+              `"${r.date || ''}"`,
+              `"${(r.trackingCode || '').replace(/"/g, '""')}"`,
+              `"${(r.requesterName || '').replace(/"/g, '""')}"`,
+              `"${(r.actionType || '').replace(/"/g, '""')}"`,
+              `"${(item.name || '').replace(/"/g, '""')}"`,
+              item.quantity || 1,
+              `"${noteText}"`
+            ]
+          : [
+              rowSeq++,
+              `"${r.date || ''}"`,
+              `"${(r.requesterName || '').replace(/"/g, '""')}"`,
+              `"${(r.actionType || '').replace(/"/g, '""')}"`,
+              `"${(item.name || '').replace(/"/g, '""')}"`,
+              item.quantity || 1,
+              `"${noteText}"`
+            ];
         csvRows.push(row.join(','));
       });
     });
@@ -790,6 +863,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 type="button"
                 onClick={() => {
                   setActiveSubCategory(tab.id);
+                  if (tab.id === 'gown') {
+                    setViewMode('grid');
+                  }
                   if ((tab.id === 'cleaning' || tab.id === 'softener') && selectedActionType === 'คืน') {
                     setSelectedActionType('all');
                   }
@@ -805,7 +881,32 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               </button>
             );
           })}
+
+          {/* Indicator for Gown: Data strictly from Google Sheet */}
+          {activeSubCategory === 'gown' && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold text-xs shadow-2xs">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{language === 'th' ? 'แสดงข้อมูลจาก Google sheet เท่านั้น' : 'Google Sheet Data Only'}</span>
+            </div>
+          )}
         </div>
+
+        {/* Return Success Notification Banner */}
+        {returnSuccessNotification && (
+          <div className="relative z-10 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold text-xs flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{returnSuccessNotification.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReturnSuccessNotification(null)}
+              className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Integrated Metric KPI Cards Row */}
         <div className={`relative z-10 grid gap-3 sm:gap-4 pt-4 border-t border-rose-200/60 ${
@@ -1064,6 +1165,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                   <thead className="bg-gradient-to-r from-amber-50/80 via-orange-50/60 to-amber-50/80 text-orange-950 font-bold border-b border-orange-200/80">
                     <tr>
                       <th className="py-3.5 px-4">{language === 'th' ? 'วันที่' : 'Date'}</th>
+                      {activeSubCategory === 'gown' && (
+                        <th className="py-3.5 px-4 whitespace-nowrap">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</th>
+                      )}
                       <th className="py-3.5 px-4">{language === 'th' ? 'ผู้เบิก / ยืม' : 'Requester'}</th>
                       {!isConsumable && (
                         <th className="py-3.5 px-4">{language === 'th' ? 'แผนก' : 'Department'}</th>
@@ -1085,6 +1189,18 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                           <td className="py-3.5 px-4 font-semibold text-slate-800 whitespace-nowrap">
                             {r.date}
                           </td>
+                          {activeSubCategory === 'gown' && (
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              {r.trackingCode ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 font-mono font-bold text-xs shadow-2xs">
+                                  <Tag className="w-3 h-3 text-rose-600 shrink-0" />
+                                  {r.trackingCode}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 text-xs font-mono">-</span>
+                              )}
+                            </td>
+                          )}
                           <td className="py-3.5 px-4 font-bold text-slate-900">
                             {r.requesterName}
                           </td>
@@ -1109,14 +1225,32 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                             {r.totalQuantity || 1}
                           </td>
                           <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                              isReturn 
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                                : 'bg-amber-100 text-amber-900 border border-amber-200'
-                            }`}>
-                              {isReturn ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                              {r.actionType || r.status}
-                            </span>
+                            <div className="inline-flex items-center justify-center gap-2">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                isReturn || r.status === 'คืนแล้ว'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                                  : 'bg-amber-100 text-amber-900 border border-amber-200'
+                              }`}>
+                                {isReturn || r.status === 'คืนแล้ว' ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <Clock className="w-3 h-3 text-amber-600" />}
+                                {r.status || (isReturn ? 'คืนแล้ว' : 'เบิกแล้ว')}
+                              </span>
+
+                              {/* Gown Return Button (หัวข้อย่อยเสื้อกาวน์ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม) */}
+                              {activeSubCategory === 'gown' && !isReturn && r.status !== 'คืนแล้ว' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReturnGownModal(r);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                  title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1154,6 +1288,15 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                         {r.itemSummary}
                       </h3>
 
+                      {r.trackingCode && (
+                        <div className="mt-2">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 font-mono font-bold text-xs shadow-2xs">
+                            <Tag className="w-3 h-3 text-rose-600 shrink-0" />
+                            {r.trackingCode}
+                          </span>
+                        </div>
+                      )}
+
                       <div className="mt-2.5 space-y-1 text-xs text-slate-600">
                         <div className="flex items-center gap-1.5 text-slate-700 font-medium">
                           <User className="w-3.5 h-3.5 text-orange-600 shrink-0" />
@@ -1170,12 +1313,28 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                       <span className="font-semibold text-slate-500">
                         {language === 'th' ? 'จำนวน:' : 'Qty:'} <strong className="text-orange-600 font-black">{r.totalQuantity || 1}</strong>
                       </span>
-                      <button
-                        type="button"
-                        className="text-orange-700 font-bold text-xs hover:underline group-hover:text-orange-900"
-                      >
-                        {language === 'th' ? 'รายละเอียด →' : 'View →'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {activeSubCategory === 'gown' && !isReturn && r.status !== 'คืนแล้ว' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReturnGownModal(r);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="text-orange-700 font-bold text-xs hover:underline group-hover:text-orange-900"
+                        >
+                          {language === 'th' ? 'รายละเอียด →' : 'View →'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1217,9 +1376,33 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                           <span className="font-bold text-orange-600">{r.totalQuantity || 1} ชิ้น</span>
                         </div>
                         <p className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2">{r.itemSummary}</p>
+                        {r.trackingCode && (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-mono font-bold text-[11px] shadow-2xs">
+                              <Tag className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                              {r.trackingCode}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
                           <span className="font-medium">{r.requesterName}</span>
-                          <span className="text-slate-400">{r.department}</span>
+                          <div className="flex items-center gap-1.5">
+                            {activeSubCategory === 'gown' && r.status !== 'คืนแล้ว' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReturnGownModal(r);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-2xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                              </button>
+                            )}
+                            <span className="text-slate-400">{r.department}</span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1304,6 +1487,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         isOpen={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
         record={selectedRecord}
+        onReturnGown={handleOpenReturnGownModal}
       />
 
       {/* Analytics Modal */}
@@ -1590,6 +1774,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           requesterNameToDept={currentRequesterDeptMap}
         />
       )}
+
+      {/* 6. Modal ส่งคืนเสื้อกาวน์ อิงตามรหัสติดตาม บันทึกลง Google Sheet */}
+      <ReturnGownModal
+        isOpen={isReturnGownModalOpen}
+        onClose={() => {
+          setIsReturnGownModalOpen(false);
+          setReturnGownRecord(null);
+        }}
+        record={returnGownRecord}
+        onReturnSuccess={handleReturnGownSuccess}
+      />
     </div>
   );
 };

@@ -13,7 +13,9 @@ import {
   Tag, 
   FileText,
   Layers,
-  Shirt
+  Shirt,
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
 import { EquipmentRecord } from '../types';
@@ -23,12 +25,14 @@ interface EquipmentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   record: EquipmentRecord | null;
+  onReturnGown?: (record: EquipmentRecord) => void;
 }
 
 export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
   isOpen,
   onClose,
   record,
+  onReturnGown,
 }) => {
   const { language } = useLanguage();
 
@@ -163,6 +167,34 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           </div>
 
           {/* Subcategory Specific Details */}
+          {/* Tracking Code (เฉพาะเบิกเสื้อกาวน์) */}
+          {record.subCategory === 'gown' && record.trackingCode && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50/60 border border-rose-200/90 flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม (Google Sheet)' : 'Tracking Code'}</p>
+                  <p className="font-mono font-black text-rose-950 text-sm tracking-wide">{record.trackingCode}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (record.trackingCode) {
+                    navigator.clipboard.writeText(record.trackingCode);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy'}
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'คัดลอก' : 'Copy'}</span>
+              </button>
+            </div>
+          )}
+
           {/* 1. Gowns Size breakdown */}
           {record.subCategory === 'gown' && record.gownSizes && record.gownSizes.length > 0 && (
             <div className="space-y-2">
@@ -287,17 +319,32 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-500 font-medium truncate">
             {language === 'th' ? 'ระบบเบิกอุปกรณ์ ธุรการลาดกระบัง 2' : 'Ladkrabang 2 Equipment System'}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 cursor-pointer"
-          >
-            {language === 'th' ? 'ปิด' : 'Close'}
-          </button>
+          <div className="flex items-center gap-2">
+            {record.subCategory === 'gown' && record.actionType === 'เบิก' && record.status !== 'คืนแล้ว' && onReturnGown && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReturnGown(record);
+                  onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-102"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs shadow-xs transition-all cursor-pointer"
+            >
+              {language === 'th' ? 'ปิด' : 'Close'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

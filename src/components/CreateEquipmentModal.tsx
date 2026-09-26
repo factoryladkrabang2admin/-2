@@ -26,11 +26,13 @@ import {
   Search,
   Lock,
   Droplets,
-  MapPin
+  MapPin,
+  Tag
 } from 'lucide-react';
 import { Ladder } from './LadderIcon';
 import { Mop } from './MopIcon';
 import { useLanguage } from '../contexts/LanguageContext';
+import { generateGownTrackingCode } from '../utils/equipmentDateUtils';
 import {
   CLEANING_FORM_ITEMS,
   CLEANING_FORM_URL,
@@ -162,6 +164,7 @@ interface SubmittedGownSummary {
   sizeXL: number;
   size2XL: number;
   totalPieces: number;
+  trackingCode?: string;
   timestamp: string;
 }
 
@@ -315,6 +318,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [sizeL, setSizeL] = useState<string>('');
   const [sizeXL, setSizeXL] = useState<string>('');
   const [size2XL, setSize2XL] = useState<string>('');
+  const [gownTrackingCode, setGownTrackingCode] = useState<string>('');
+  const [trackingCodeCopied, setTrackingCodeCopied] = useState<boolean>(false);
 
   // Keys Form States
   const [keyActionType, setKeyActionType] = useState<'เบิก' | 'คืน'>('เบิก');
@@ -928,12 +933,16 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       const y = now.getFullYear();
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const d = String(now.getDate()).padStart(2, '0');
-      setDate(`${y}-${m}-${d}`);
+      const initialDate = `${y}-${m}-${d}`;
+      setDate(initialDate);
       setPersonName('');
       setDepartment('');
       setSizeL('');
       setSizeXL('');
       setSize2XL('');
+      setActionType('เบิกเสื้อกาวน์');
+      setGownTrackingCode(generateGownTrackingCode(initialDate));
+      setTrackingCodeCopied(false);
       setKeyActionType('เบิก');
       setKeyNumbers('');
       setKeyNote('');
@@ -982,6 +991,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setSizeL('');
     setSizeXL('');
     setSize2XL('');
+    setGownTrackingCode(generateGownTrackingCode(date));
+    setTrackingCodeCopied(false);
   };
 
   const handleStartNewKeyEntry = () => {
@@ -1499,6 +1510,11 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
     setIsSubmitting(true);
 
+    const isRequisition = actionType === 'เบิกเสื้อกาวน์';
+    const effectiveTrackingCode = isRequisition 
+      ? (gownTrackingCode.trim() || generateGownTrackingCode(date)) 
+      : (gownTrackingCode.trim() || undefined);
+
     try {
       const payload = {
         actionType,
@@ -1508,6 +1524,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         sizeL: numL > 0 ? numL : undefined,
         sizeXL: numXL > 0 ? numXL : undefined,
         size2XL: num2XL > 0 ? num2XL : undefined,
+        trackingCode: effectiveTrackingCode,
       };
 
       const res = await fetch('/api/equipment-gown-submit', {
@@ -1521,6 +1538,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       if (res.ok && data.success) {
         const trimmedName = personName.trim();
         const trimmedDept = department.trim();
+        const savedTrackingCode = data?.record?.trackingCode || effectiveTrackingCode;
 
         // 1. Mark success and store record summary
         setIsSubmittedSuccess(true);
@@ -1533,8 +1551,37 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           sizeXL: numXL,
           size2XL: num2XL,
           totalPieces: totalGownPieces,
+          trackingCode: savedTrackingCode,
           timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         });
+
+        // 2. Cache record locally for instant table update
+        try {
+          const cacheKey = 'proworkflow_equipment_cache_gown';
+          const cachedStr = localStorage.getItem(cacheKey);
+          const cachedRecords = cachedStr ? JSON.parse(cachedStr) : [];
+          const newGownItem = {
+            id: data?.record?.id || `gown-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            date: date.trim(),
+            requesterName: trimmedName,
+            department: trimmedDept,
+            subCategory: 'gown',
+            actionType: isRequisition ? 'เบิก' : 'คืน',
+            status: isRequisition ? 'เบิกแล้ว' : 'คืนแล้ว',
+            itemSummary: `เสื้อกาวน์ (${totalGownPieces} ตัว)`,
+            itemsList: [
+              ...(numL > 0 ? [{ name: 'เสื้อกาวน์ Size L', quantity: numL, size: 'L' }] : []),
+              ...(numXL > 0 ? [{ name: 'เสื้อกาวน์ Size XL', quantity: numXL, size: 'XL' }] : []),
+              ...(num2XL > 0 ? [{ name: 'เสื้อกาวน์ Size 2XL', quantity: num2XL, size: '2XL' }] : []),
+            ],
+            totalQuantity: totalGownPieces,
+            trackingCode: savedTrackingCode,
+          };
+          localStorage.setItem(cacheKey, JSON.stringify([newGownItem, ...cachedRecords]));
+        } catch {
+          // ignore
+        }
 
         // 2. Remember name in localStorage for instant future autocompletion
         if (!isInvalidGownName(trimmedName)) {
@@ -1834,6 +1881,33 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       </span>
                     </div>
                   </div>
+                  {submittedRecord.trackingCode && (
+                    <div className="py-2.5 flex items-center justify-between bg-rose-50/80 -mx-4 px-4 border-y border-rose-200">
+                      <span className="text-rose-950 font-bold flex items-center gap-1.5 text-xs">
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        {language === 'th' ? 'รหัสติดตาม (Google Sheet)' : 'Tracking Code'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-rose-800 text-sm bg-white px-2.5 py-1 rounded-lg border border-rose-300 shadow-2xs">
+                          {submittedRecord.trackingCode}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (submittedRecord.trackingCode) {
+                              navigator.clipboard.writeText(submittedRecord.trackingCode);
+                              setTrackingCodeCopied(true);
+                              setTimeout(() => setTrackingCodeCopied(false), 2000);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 transition-colors cursor-pointer"
+                          title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
+                        >
+                          {trackingCodeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="py-2 flex items-center justify-between text-xs text-slate-400">
                     <span>{language === 'th' ? 'เวลาบันทึก' : 'Recorded at'}</span>
                     <span>{submittedRecord.timestamp} น.</span>
@@ -1891,7 +1965,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setActionType('เบิกเสื้อกาวน์')}
+                      onClick={() => {
+                        setActionType('เบิกเสื้อกาวน์');
+                        if (!gownTrackingCode) {
+                          setGownTrackingCode(generateGownTrackingCode(date));
+                        }
+                      }}
                       className={`p-3 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         actionType === 'เบิกเสื้อกาวน์'
                           ? 'border-rose-600 bg-rose-50 text-rose-900 shadow-sm'
@@ -1927,7 +2006,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     <input
                       type="date"
                       value={date}
-                      onChange={(e) => setDate(e.target.value)}
+                      onChange={(e) => {
+                        const newD = e.target.value;
+                        setDate(newD);
+                        if (actionType === 'เบิกเสื้อกาวน์') {
+                          setGownTrackingCode(generateGownTrackingCode(newD));
+                        }
+                      }}
                       required
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
                     />
@@ -2214,6 +2299,82 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* 5. Gown Tracking Code Section (สร้างรหัสติดตาม และบันทึกรหัสติดตาม ลงใน Google sheet เฉพาะเบิกเสื้อกาวน์) */}
+                {actionType === 'เบิกเสื้อกาวน์' ? (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border border-rose-200/90 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        <span>{language === 'th' ? 'รหัสติดตาม (สร้างอัตโนมัติเฉพาะเบิกเสื้อกาวน์)' : 'Tracking Code (Gown Requisition)'}</span>
+                        <span className="text-rose-600">*</span>
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-rose-100/90 text-rose-800 font-bold text-2xs border border-rose-200">
+                        Google Sheet Auto-Sync
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={gownTrackingCode}
+                          onChange={(e) => setGownTrackingCode(e.target.value)}
+                          placeholder="LKB2 - 26092601"
+                          required={actionType === 'เบิกเสื้อกาวน์'}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-rose-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm font-mono font-bold bg-white text-rose-950 tracking-wider shadow-2xs"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(gownTrackingCode);
+                          setTrackingCodeCopied(true);
+                          setTimeout(() => setTrackingCodeCopied(false), 2000);
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
+                      >
+                        {trackingCodeCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                        <span className="hidden sm:inline">{trackingCodeCopied ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') : (language === 'th' ? 'คัดลอก' : 'Copy')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGownTrackingCode(generateGownTrackingCode(date))}
+                        className="px-3.5 py-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'สร้างรหัสใหม่' : 'Regenerate code'}
+                      >
+                        <RotateCw className="w-4 h-4" />
+                        <span className="hidden sm:inline">{language === 'th' ? 'รีเฟรช' : 'Refresh'}</span>
+                      </button>
+                    </div>
+
+                    <p className="text-2xs text-rose-800/90 leading-relaxed font-medium">
+                      {language === 'th'
+                        ? '💡 ระบบจะสร้างรหัสติดตามอัตโนมัติ และบันทึกลงใน Google Sheet ทันทีที่กดบันทึก (เฉพาะการเบิกเสื้อกาวน์เท่านั้น)'
+                        : '💡 Tracking code will be auto-generated and saved to Google Sheet upon gown requisition.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50/70 border border-amber-200/90 space-y-2">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-700" />
+                      <span>{language === 'th' ? 'รหัสติดตามที่ส่งคืน (อิงตามรหัสติดตามเดิม)' : 'Tracking Code to Return (Referencing Original Code)'}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={gownTrackingCode}
+                      onChange={(e) => setGownTrackingCode(e.target.value)}
+                      placeholder="เช่น LKB2 - 26092601 (ถ้ามี)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 text-xs sm:text-sm font-mono font-bold bg-white text-slate-900 tracking-wider shadow-2xs"
+                    />
+                    <p className="text-2xs text-amber-900/80 font-medium leading-relaxed">
+                      {language === 'th'
+                        ? '💡 หากระบุรหัสติดตาม ระบบจะบันทึกรหัสนี้ลงใน Google Sheet พร้อมการคืน และอัปเดตสถานะของรายการนั้นเป็น "คืนแล้ว"'
+                        : '💡 If a tracking code is specified, it will be saved to Google Sheet and set to Returned.'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Submit Button */}
                 <div className="pt-2 flex items-center justify-end">

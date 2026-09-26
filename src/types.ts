@@ -115,6 +115,7 @@ export interface EquipmentRecord {
   ladderInspection?: string; // การตรวจสอบ เช่น "ไม่พบจุดชำรุด"
   defectPhotoUrl?: string; // ลิงก์รูปถ่ายชำรุด
   gownSizes?: { size: string; count: number }[]; // ขนาดเสื้อกาวน์ L, XL, 2XL
+  trackingCode?: string; // รหัสติดตาม (เฉพาะเบิกเสื้อกาวน์)
   note?: string; // หมายเหตุ / อื่นๆ
 }
 
