@@ -4665,8 +4665,8 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
     const now = Date.now();
     const urls = [
       `/api/sheet-csv?sheetId=1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330&gid=1955620947&_t=${now}`,
-      `${PARCEL_SHEET_CSV_URL}&_t=${now}`,
       `${PARCEL_SHEET_GVIZ_CSV_URL}&_t=${now}`,
+      `${PARCEL_SHEET_CSV_URL}&_t=${now}`,
     ];
     const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v3');
     const parsedRecords = csv ? convertSheetRowsToParcelRecords(csv) : [];
@@ -4677,7 +4677,7 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
     return {
       success: true,
       records: consolidated,
-      rawRecords: merged,
+      rawRecords: parsedRecords.length > 0 ? parsedRecords : merged,
       rawRowsCount: parsedRecords.length,
       lastSyncedAt: new Date(),
     };

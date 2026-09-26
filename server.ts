@@ -662,7 +662,7 @@ async function startServer() {
       if (sheetName) {
         exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${nowTs}`;
       } else {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}&_t=${nowTs}`;
+        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${targetGid}&_t=${nowTs}`;
       }
 
       const isAnnouncementsSheet =

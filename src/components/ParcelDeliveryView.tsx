@@ -86,9 +86,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   // View Mode: Default to 'cards' view
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
 
-  // Search and quick filters
+  // Search and quick filters - Default to 'all_today' (วันปัจจุบัน)
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'ส่ง' | 'รับ' | 'today' | 'all_today' | 'ส่ง_today' | 'รับ_today'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'ส่ง' | 'รับ' | 'today' | 'all_today' | 'ส่ง_today' | 'รับ_today'>('all_today');
 
   // Modal states
   const [selectedRecord, setSelectedRecord] = useState<ParcelDeliveryRecord | null>(null);
@@ -395,34 +395,36 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return activeFiltersCount > 0 || quickFilter !== 'all' || searchQuery.trim().length > 0;
   }, [activeFiltersCount, quickFilter, searchQuery]);
 
-  // KPI Metrics Calculation (Consolidated lifecycle like Laundry: When an item is received, it reflects as received latest)
+  // KPI Metrics Calculation: Exactly and truthfully from Google Sheet raw data for the 3 specified boxes
+  // (เฉพาะกล่องรายการทั้งหมด, รายการส่ง, รายการรับ ให้แสดงข้อมูลจาก Google Sheet โดยแสดงข้อมูลตามจริง แต่รายละเอียดที่แสดงให้ตามเดิม)
   const metrics = useMemo(() => {
-    const activeList = consolidatedRecords.length > 0 ? consolidatedRecords : records;
+    const rawList = rawRecords.length > 0 ? rawRecords : records;
 
-    const sentRecords = activeList.filter(r => r.actionType === 'ส่ง');
-    const receivedRecords = activeList.filter(r => r.actionType === 'รับ');
+    const sheetSentRecords = rawList.filter(r => r.actionType === 'ส่ง');
+    const sheetReceivedRecords = rawList.filter(r => r.actionType === 'รับ');
 
-    const sentCount = sentRecords.length;
-    const receivedCount = receivedRecords.length;
-    const totalCount = activeList.length;
+    const sheetSentCount = sheetSentRecords.length;
+    const sheetReceivedCount = sheetReceivedRecords.length;
+    const sheetTotalCount = rawList.length;
 
-    // Today counts strictly for current day (วันปัจจุบัน)
-    const todaySentRecords = activeList.filter(r => r.actionType === 'ส่ง' && isParcelRecordToday(r));
-    const todayReceivedRecords = activeList.filter(r => r.actionType === 'รับ' && isParcelRecordToday(r));
-    const todayAllRecords = activeList.filter(r => isParcelRecordToday(r));
+    const sentPct = sheetTotalCount > 0 ? Math.round((sheetSentCount / sheetTotalCount) * 100) : 0;
+    const receivedPct = sheetTotalCount > 0 ? Math.round((sheetReceivedCount / sheetTotalCount) * 100) : 0;
 
-    const todaySentCount = todaySentRecords.length;
-    const todayReceivedCount = todayReceivedRecords.length;
-    const todayTotalCount = todayAllRecords.length;
+    // Today counts strictly from Google Sheet for current day (วันปัจจุบัน)
+    const todayRawSentRecords = rawList.filter(r => r.actionType === 'ส่ง' && isParcelRecordToday(r));
+    const todayRawReceivedRecords = rawList.filter(r => r.actionType === 'รับ' && isParcelRecordToday(r));
+    const todayAllRawRecords = rawList.filter(r => isParcelRecordToday(r));
+
+    const todaySentCount = todayRawSentRecords.length;
+    const todayReceivedCount = todayRawReceivedRecords.length;
+    const todayTotalCount = todayAllRawRecords.length;
 
     const todaySentPct = todayTotalCount > 0 ? Math.round((todaySentCount / todayTotalCount) * 100) : 0;
     const todayReceivedPct = todayTotalCount > 0 ? Math.round((todayReceivedCount / todayTotalCount) * 100) : 0;
 
-    const sentPct = totalCount > 0 ? Math.round((sentCount / totalCount) * 100) : 0;
-    const receivedPct = totalCount > 0 ? Math.round((receivedCount / totalCount) * 100) : 0;
-
-    // Latest active department & update details (prioritize today's recent activities)
-    const targetRecords = isFiltered ? filteredRecords : (todayAllRecords.length > 0 ? todayAllRecords : activeList);
+    // Latest active department & update details (from consolidated list / latest updates)
+    const activeList = consolidatedRecords.length > 0 ? consolidatedRecords : records;
+    const targetRecords = isFiltered ? filteredRecords : (todayAllRawRecords.length > 0 ? todayAllRawRecords : activeList);
     const latestRecord = targetRecords.length > 0 ? targetRecords[0] : (consolidatedRecords.length > 0 ? consolidatedRecords[0] : null);
     let latestDept = '-';
     let latestActivityText = isFiltered 
@@ -455,9 +457,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     return {
       isFiltered,
       total: isFiltered ? filteredRecords.length : todayTotalCount,
-      sheetTotalCount: totalCount,
-      sheetSentCount: sentCount,
-      sheetReceivedCount: receivedCount,
+      sheetTotalCount,
+      sheetSentCount,
+      sheetReceivedCount,
       todayTotalCount,
       todaySentCount,
       todayReceivedCount,
@@ -467,9 +469,9 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
       receivedPct,
       latestDept,
       latestActivityText,
-      allTimeTotal: totalCount,
-      allTimeSent: sentCount,
-      allTimeReceived: receivedCount,
+      allTimeTotal: sheetTotalCount,
+      allTimeSent: sheetSentCount,
+      allTimeReceived: sheetReceivedCount,
       rawRowsCount: rawRecords.length,
     };
   }, [consolidatedRecords, filteredRecords, isFiltered, language, rawRecords, records, quickFilter]);
@@ -849,140 +851,223 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           </div>
         </div>
 
+        {/* Toggle between All Records in Google Sheet vs Today's Records */}
+        <div className="flex flex-wrap items-center justify-between gap-2 relative z-10">
+          <div className="inline-flex items-center gap-1 p-1 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-xl border border-pink-200/80 dark:border-slate-800 text-xs font-bold shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                setQuickFilter('all');
+                setCurrentPageTable(1);
+                setCurrentPageCards(1);
+              }}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                quickFilter === 'all' || quickFilter === 'ส่ง' || quickFilter === 'รับ'
+                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>{language === 'th' ? `ข้อมูลทั้งหมด (${metrics.sheetTotalCount})` : `All Data (${metrics.sheetTotalCount})`}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuickFilter('all_today');
+                setCurrentPageTable(1);
+                setCurrentPageCards(1);
+              }}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today'
+                  ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{language === 'th' ? `วันปัจจุบัน (${metrics.todayTotalCount})` : `Today (${metrics.todayTotalCount})`}</span>
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 font-medium bg-white/60 dark:bg-slate-900/60 px-2.5 py-1 rounded-lg border border-pink-100 dark:border-slate-800">
+            <FileSpreadsheet className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+            <span>{language === 'th' ? `ข้อมูลจาก Google Sheet: ทั้งหมด ${metrics.sheetTotalCount} | วันนี้ (${todayThaiDisplayDate}) ${metrics.todayTotalCount} รายการ` : `Google Sheet: ${metrics.sheetTotalCount} total | ${metrics.todayTotalCount} today (${todayThaiDisplayDate})`}</span>
+          </span>
+        </div>
+
         {/* Metric Cards Row (4 Cards) - All 3 boxes are interactive and clickable */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative z-10">
-          {/* Card 1: Total Records (ข้อมูลจาก Google Sheet วันปัจจุบัน) */}
+          {/* Card 1: Total Records (ข้อมูลจาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick('all_today')}
+            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'all_today' : 'all')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
-              quickFilter === 'all_today' || quickFilter === 'today'
+              quickFilter === 'all' || quickFilter === 'all_today' || quickFilter === 'today'
                 ? 'bg-pink-100/90 dark:bg-pink-950/60 border-pink-500 shadow-md ring-2 ring-pink-500/50 scale-[1.01]'
                 : 'bg-white/80 dark:bg-slate-900/80 border-pink-200/80 dark:border-slate-800 shadow-xs hover:border-pink-300 hover:shadow-md hover:scale-[1.01]'
             }`}
-            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการทั้งหมดของวันปัจจุบัน (Google Sheet)' : 'Click to view today all records (Google Sheet)'}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการทั้งหมดตามโหมดที่เลือก' : 'Click to view all records in selected mode'}
           >
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                   <Boxes className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                  {language === 'th' ? 'รายการทั้งหมด' : 'Total Records'}
+                  {language === 'th' 
+                    ? (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'รายการทั้งหมด (วันนี้)' : 'รายการทั้งหมด')
+                    : (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'Total Records (Today)' : 'Total Records')}
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  quickFilter === 'all_today' || quickFilter === 'today'
+                  quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today'
                     ? 'text-white bg-pink-600 shadow-2xs'
                     : 'text-pink-700 dark:text-pink-300 bg-pink-100 dark:bg-pink-950/60 group-hover:bg-pink-200'
                 }`}>
-                  <Calendar className="w-2.5 h-2.5" />
-                  {language === 'th' ? 'วันปัจจุบัน' : 'Today'}
+                  {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? (
+                    <>
+                      <Calendar className="w-2.5 h-2.5" />
+                      {language === 'th' ? 'วันนี้' : 'Today'}
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-2.5 h-2.5" />
+                      {language === 'th' ? 'ทั้งหมด' : 'All'}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1.5 flex items-baseline gap-2">
-                <span>{metrics.todayTotalCount.toLocaleString()}</span>
+                <span>
+                  {(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' 
+                    ? metrics.todayTotalCount 
+                    : metrics.sheetTotalCount).toLocaleString()}
+                </span>
                 <span className="text-xs font-bold text-slate-400">
                   {language === 'th' ? 'รายการ' : 'items'}
                 </span>
               </div>
             </div>
             <div className="mt-2 pt-2 border-t border-pink-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
-                <FileSpreadsheet className="w-3 h-3 text-pink-500 shrink-0" />
-                <span>{language === 'th' ? `ข้อมูลวันปัจจุบัน (${todayThaiDisplayDate})` : `Today (${todayThaiDisplayDate})`}</span>
+              <span className="text-slate-500 dark:text-slate-400 truncate flex items-center gap-1 font-medium">
+                {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? (
+                  <span>{language === 'th' ? `สะสมใน Sheet ${metrics.sheetTotalCount} รายการ` : `Total in Sheet ${metrics.sheetTotalCount}`}</span>
+                ) : (
+                  <span>{language === 'th' ? `วันนี้ ${metrics.todayTotalCount} รายการ` : `Today ${metrics.todayTotalCount} items`}</span>
+                )}
               </span>
               <span className="font-bold text-pink-600 dark:text-pink-400 text-[10px] shrink-0 ml-1">
-                {quickFilter === 'all_today' || quickFilter === 'today' 
-                  ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
-                  : (language === 'th' ? `สะสม ${metrics.sheetTotalCount}` : `Total ${metrics.sheetTotalCount}`)}
+                {quickFilter === 'all' || quickFilter === 'all_today' || quickFilter === 'today'
+                  ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓')
+                  : (language === 'th' ? 'กดเพื่อดู' : 'View')}
               </span>
             </div>
           </button>
 
-          {/* Card 2: Sent (ข้อมูลส่ง จาก Google Sheet วันปัจจุบัน) */}
+          {/* Card 2: Sent (ข้อมูลส่ง จาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick('ส่ง_today')}
+            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'ส่ง_today' : 'ส่ง')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
-              quickFilter === 'ส่ง_today'
+              quickFilter === 'ส่ง' || quickFilter === 'ส่ง_today'
                 ? 'bg-rose-100/90 dark:bg-rose-950/60 border-rose-500 shadow-md ring-2 ring-rose-500/50 scale-[1.01]'
                 : 'bg-white/80 dark:bg-slate-900/80 border-rose-200/80 dark:border-slate-800 shadow-xs hover:border-rose-300 hover:shadow-md hover:scale-[1.01]'
             }`}
-            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการส่งของวันปัจจุบัน (Google Sheet)' : 'Click to view today outgoing records (Google Sheet)'}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการส่ง' : 'Click to view outgoing records'}
           >
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                   <Send className="w-3.5 h-3.5" />
-                  {language === 'th' ? 'รายการส่ง' : 'Outgoing'}
+                  {language === 'th' 
+                    ? (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'รายการส่ง (วันนี้)' : 'รายการส่ง')
+                    : (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'Outgoing (Today)' : 'Outgoing')}
                 </span>
                 <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  quickFilter === 'ส่ง_today'
+                  quickFilter === 'ส่ง' || quickFilter === 'ส่ง_today'
                     ? 'text-white bg-rose-600 shadow-2xs'
                     : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 group-hover:bg-rose-100'
                 }`}>
-                  {metrics.todaySentPct}%
+                  {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' 
+                    ? `${metrics.todaySentPct}%` 
+                    : `${metrics.sentPct}%`}
                 </span>
               </div>
               <div className="text-2xl sm:text-3xl font-black text-rose-700 dark:text-rose-300 mt-1.5 flex items-baseline gap-2">
-                <span>{metrics.todaySentCount.toLocaleString()}</span>
+                <span>
+                  {(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today'
+                    ? metrics.todaySentCount
+                    : metrics.sheetSentCount).toLocaleString()}
+                </span>
                 <span className="text-xs font-bold text-rose-500/80 dark:text-rose-400/80">
                   {language === 'th' ? 'รายการ' : 'items'}
                 </span>
               </div>
             </div>
             <div className="mt-2 pt-2 border-t border-rose-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
-              <span className="text-rose-500 dark:text-rose-400 truncate flex items-center gap-1">
-                <FileSpreadsheet className="w-3 h-3 text-rose-500 shrink-0" />
-                <span>{language === 'th' ? 'ส่งวันปัจจุบัน (Google Sheet)' : 'Sent Today (Google Sheet)'}</span>
+              <span className="text-slate-500 dark:text-slate-400 truncate font-medium">
+                {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? (
+                  <span>{language === 'th' ? `สะสมใน Sheet ${metrics.sheetSentCount} รายการ` : `Total in Sheet ${metrics.sheetSentCount}`}</span>
+                ) : (
+                  <span>{language === 'th' ? `วันนี้ ${metrics.todaySentCount} รายการ` : `Today ${metrics.todaySentCount} items`}</span>
+                )}
               </span>
               <span className="font-bold text-rose-600 dark:text-rose-400 text-[10px] shrink-0 ml-1">
-                {quickFilter === 'ส่ง_today' 
+                {quickFilter === 'ส่ง' || quickFilter === 'ส่ง_today'
                   ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
-                  : (language === 'th' ? `สะสม ${metrics.sheetSentCount}` : `Total ${metrics.sheetSentCount}`)}
+                  : (language === 'th' ? 'กดเพื่อดู' : 'View')}
               </span>
             </div>
           </button>
 
-          {/* Card 3: Received (ข้อมูลรับ จาก Google Sheet วันปัจจุบัน) */}
+          {/* Card 3: Received (ข้อมูลรับ จาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick('รับ_today')}
+            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'รับ_today' : 'รับ')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
-              quickFilter === 'รับ_today'
+              quickFilter === 'รับ' || quickFilter === 'รับ_today'
                 ? 'bg-emerald-100/90 dark:bg-emerald-950/60 border-emerald-500 shadow-md ring-2 ring-emerald-500/50 scale-[1.01]'
                 : 'bg-white/80 dark:bg-slate-900/80 border-emerald-200/80 dark:border-slate-800 shadow-xs hover:border-emerald-300 hover:shadow-md hover:scale-[1.01]'
             }`}
-            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการรับของวันปัจจุบัน (Google Sheet)' : 'Click to view today incoming records (Google Sheet)'}
+            title={language === 'th' ? 'คลิกที่กล่องเพื่อแสดงรายการรับ' : 'Click to view incoming records'}
           >
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                   <Inbox className="w-3.5 h-3.5" />
-                  {language === 'th' ? 'รายการรับ' : 'Incoming'}
+                  {language === 'th' 
+                    ? (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'รายการรับ (วันนี้)' : 'รายการรับ')
+                    : (quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'Incoming (Today)' : 'Incoming')}
                 </span>
                 <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  quickFilter === 'รับ_today'
+                  quickFilter === 'รับ' || quickFilter === 'รับ_today'
                     ? 'text-white bg-emerald-600 shadow-2xs'
                     : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 group-hover:bg-emerald-100'
                 }`}>
-                  {metrics.todayReceivedPct}%
+                  {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today'
+                    ? `${metrics.todayReceivedPct}%`
+                    : `${metrics.receivedPct}%`}
                 </span>
               </div>
               <div className="text-2xl sm:text-3xl font-black text-emerald-700 dark:text-emerald-300 mt-1.5 flex items-baseline gap-2">
-                <span>{metrics.todayReceivedCount.toLocaleString()}</span>
+                <span>
+                  {(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today'
+                    ? metrics.todayReceivedCount
+                    : metrics.sheetReceivedCount).toLocaleString()}
+                </span>
                 <span className="text-xs font-bold text-emerald-500/80 dark:text-emerald-400/80">
                   {language === 'th' ? 'รายการ' : 'items'}
                 </span>
               </div>
             </div>
+            {/* Clean bottom strip: Do not show 'ข้อมูลรับจาก Google Sheet' */}
             <div className="mt-2 pt-2 border-t border-emerald-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
-              <span className="text-emerald-500 dark:text-emerald-400 truncate flex items-center gap-1">
-                <FileSpreadsheet className="w-3 h-3 text-emerald-500 shrink-0" />
-                <span>{language === 'th' ? 'รับวันปัจจุบัน (Google Sheet)' : 'Received Today (Google Sheet)'}</span>
+              <span className="text-slate-500 dark:text-slate-400 truncate font-medium">
+                {quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? (
+                  <span>{language === 'th' ? `สะสมใน Sheet ${metrics.sheetReceivedCount} รายการ` : `Total in Sheet ${metrics.sheetReceivedCount}`}</span>
+                ) : (
+                  <span>{language === 'th' ? `วันนี้ ${metrics.todayReceivedCount} รายการ` : `Today ${metrics.todayReceivedCount} items`}</span>
+                )}
               </span>
               <span className="font-bold text-emerald-600 dark:text-emerald-400 text-[10px] shrink-0 ml-1">
-                {quickFilter === 'รับ_today' 
+                {quickFilter === 'รับ' || quickFilter === 'รับ_today'
                   ? (language === 'th' ? 'กำลังแสดง ✓' : 'Active ✓') 
-                  : (language === 'th' ? `สะสม ${metrics.sheetReceivedCount}` : `Total ${metrics.sheetReceivedCount}`)}
+                  : (language === 'th' ? 'กดเพื่อดู' : 'View')}
               </span>
             </div>
           </button>
@@ -1112,14 +1197,14 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
               <span className="px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 font-medium flex items-center gap-1">
                 {language === 'th' ? 'ด่วน:' : 'Quick:'}{' '}
                 {quickFilter === 'all_today' || quickFilter === 'today'
-                  ? (language === 'th' ? 'รายการทั้งหมดวันปัจจุบัน (Google Sheet)' : 'Today All (Google Sheet)')
+                  ? (language === 'th' ? 'รายการทั้งหมดวันปัจจุบัน' : 'Today All')
                   : quickFilter === 'ส่ง_today'
-                  ? (language === 'th' ? 'รายการส่งวันปัจจุบัน (Google Sheet)' : 'Today Outgoing (Google Sheet)')
+                  ? (language === 'th' ? 'รายการส่งวันปัจจุบัน' : 'Today Outgoing')
                   : quickFilter === 'รับ_today'
-                  ? (language === 'th' ? 'รายการรับวันปัจจุบัน (Google Sheet)' : 'Today Incoming (Google Sheet)')
+                  ? (language === 'th' ? 'รายการรับวันปัจจุบัน' : 'Today Incoming')
                   : quickFilter === 'ส่ง' 
-                  ? (language === 'th' ? 'รายการส่งสะสม (Google Sheet)' : 'All Outgoing (Google Sheet)') 
-                  : (language === 'th' ? 'รายการรับสะสม (Google Sheet)' : 'All Incoming (Google Sheet)')}
+                  ? (language === 'th' ? 'รายการส่ง' : 'All Outgoing') 
+                  : (language === 'th' ? 'รายการรับ' : 'All Incoming')}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setQuickFilter('all')} />
               </span>
             )}
