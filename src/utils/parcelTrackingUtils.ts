@@ -91,7 +91,7 @@ export function isParcelRecordToday(
     bkkY = parseInt(bkkParts[2], 10);
   } catch {}
 
-  const clean = String(target).trim().split(/[\s,]+/)[0];
+  const clean = String(target).trim().replace(/^["']+|["']+$/g, '').split(/[T\s,]+/)[0];
   const parts = clean.split(/[-/.]/);
   if (parts.length === 3) {
     let pd = parseInt(parts[0], 10);
@@ -314,6 +314,18 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
       }
       if (!recvRec.senderDepartment || recvRec.senderDepartment === '-') {
         recvRec.senderDepartment = sendRec.senderDepartment;
+      }
+      if (!recvRec.recipientName || recvRec.recipientName === '-') {
+        recvRec.recipientName = sendRec.recipientName;
+      }
+      if (!recvRec.recipientDepartment || recvRec.recipientDepartment === '-') {
+        recvRec.recipientDepartment = sendRec.recipientDepartment;
+      }
+      if (!recvRec.operatorName || recvRec.operatorName === '-') {
+        recvRec.operatorName = sendRec.operatorName;
+      }
+      if (!recvRec.operatorDepartment || recvRec.operatorDepartment === '-') {
+        recvRec.operatorDepartment = sendRec.operatorDepartment;
       }
       if (!recvRec.itemTitle || recvRec.itemTitle === 'ไม่ระบุชื่อเอกสาร/พัสดุ') {
         recvRec.itemTitle = sendRec.itemTitle;
