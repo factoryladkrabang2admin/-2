@@ -94,6 +94,13 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
+  // หัวข้อย่อยเสื้อกาวน์ ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
+  useEffect(() => {
+    if (activeSubCategory === 'gown') {
+      setViewMode('grid');
+    }
+  }, [activeSubCategory]);
+
   // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown, and on mobile/tablet < 1024px)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
     const initialCategory = canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
@@ -200,17 +207,19 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   }, [activeSubCategory, canAccessRestricted]);
 
   // Load Data for active subcategory
-  const loadData = async (sub: EquipmentSubCategory, force = false) => {
+  const loadData = async (sub: EquipmentSubCategory, force = false, isBackground = false) => {
     if (!canAccessRestricted && (sub === 'cleaning' || sub === 'softener')) {
       setRecords([]);
-      setIsLoading(false);
+      if (!isBackground) setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (!isBackground) {
+      setIsLoading(true);
+    }
 
-    // 1. Try local storage cache first (ยกเว้น เสื้อกาวน์ ซึ่งต้องแสดงข้อมูลสดจาก Google Sheet เท่านั้น)
+    // 1. Try local storage cache first (only on initial non-background, non-force, non-gown load)
     const isGown = sub === 'gown';
-    if (!force && !isGown) {
+    if (!force && !isGown && !isBackground) {
       try {
         const cached = localStorage.getItem(`${SUB_CATEGORY_STORAGE_PREFIX}${sub}`);
         if (cached) {
@@ -228,7 +237,26 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     try {
       const res = await fetchEquipmentRecordsBySubCategory(sub);
       if (res.success && res.records) {
-        setRecords(res.records);
+        setRecords((prev) => {
+          if (prev.length === res.records.length) {
+            const hasChanged = res.records.some((newRec, idx) => {
+              const oldRec = prev[idx];
+              return (
+                !oldRec ||
+                newRec.id !== oldRec.id ||
+                newRec.status !== oldRec.status ||
+                newRec.actionType !== oldRec.actionType ||
+                newRec.totalQuantity !== oldRec.totalQuantity ||
+                newRec.trackingCode !== oldRec.trackingCode ||
+                newRec.requesterName !== oldRec.requesterName
+              );
+            });
+            if (!hasChanged) {
+              return prev;
+            }
+          }
+          return res.records;
+        });
         setLastSyncedAt(res.lastSyncedAt);
         try {
           localStorage.setItem(`${SUB_CATEGORY_STORAGE_PREFIX}${sub}`, JSON.stringify(res.records));
@@ -239,7 +267,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     } catch {
       // error handled gracefully
     } finally {
-      setIsLoading(false);
+      if (!isBackground) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -289,8 +319,39 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     if (activeSubCategory === 'gown') {
       setViewMode('grid');
     }
-    loadData(activeSubCategory);
+    loadData(activeSubCategory, false, false);
   }, [activeSubCategory]);
+
+  // อัพเดทข้อมูลแบบ Realtime ทุก 1 วินาที ในทุกหัวข้อย่อยโดยไม่มีไอคอนหรือปุ่มแสดง
+  useEffect(() => {
+    let isMounted = true;
+    let isFetching = false;
+
+    const intervalId = setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      if (isFetching || !isMounted) {
+        return;
+      }
+
+      isFetching = true;
+      try {
+        await loadData(activeSubCategory, true, true);
+      } catch {
+        // silent
+      } finally {
+        if (isMounted) {
+          isFetching = false;
+        }
+      }
+    }, 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [activeSubCategory, canAccessRestricted]);
 
   // Unique departments for filter
   const departments = useMemo(() => {
@@ -881,14 +942,6 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               </button>
             );
           })}
-
-          {/* Indicator for Gown: Data strictly from Google Sheet */}
-          {activeSubCategory === 'gown' && (
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold text-xs shadow-2xs">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{language === 'th' ? 'แสดงข้อมูลจาก Google sheet เท่านั้น' : 'Google Sheet Data Only'}</span>
-            </div>
-          )}
         </div>
 
         {/* Return Success Notification Banner */}
@@ -1244,7 +1297,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                     handleOpenReturnGownModal(r);
                                   }}
                                   className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
-                                  title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                                  title={language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}
                                 >
                                   <RotateCcw className="w-3 h-3" />
                                   <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
@@ -1322,7 +1375,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                               handleOpenReturnGownModal(r);
                             }}
                             className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                            title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                            title={language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}
                           >
                             <RotateCcw className="w-3 h-3" />
                             <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
@@ -1395,7 +1448,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                   handleOpenReturnGownModal(r);
                                 }}
                                 className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-2xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95"
-                                title={language === 'th' ? 'ส่งคืนเสื้อกาวน์ (บันทึกลง Google Sheet)' : 'Return Gown (Save to Sheet)'}
+                                title={language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}
                               >
                                 <RotateCcw className="w-2.5 h-2.5" />
                                 <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>

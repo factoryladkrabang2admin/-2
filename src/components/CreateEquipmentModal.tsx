@@ -1701,8 +1701,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
               {isGown && (
                 <p className="text-xs text-rose-100/95 font-medium">
                   {language === 'th'
-                    ? 'บันทึกรายการเบิกหรือคืนเสื้อกาวน์ พร้อมซิงค์เข้า Google Sheet อัตโนมัติ'
-                    : 'Record requisition or return of navy gowns, auto-syncing with Google Sheet'}
+                    ? 'บันทึกรายการเบิกหรือคืนเสื้อกาวน์'
+                    : 'Record requisition or return of navy gowns'}
                 </p>
               )}
               {isKeys && (
@@ -1885,7 +1885,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                     <div className="py-2.5 flex items-center justify-between bg-rose-50/80 -mx-4 px-4 border-y border-rose-200">
                       <span className="text-rose-950 font-bold flex items-center gap-1.5 text-xs">
                         <Tag className="w-3.5 h-3.5 text-rose-600" />
-                        {language === 'th' ? 'รหัสติดตาม (Google Sheet)' : 'Tracking Code'}
+                        {language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-black text-rose-800 text-sm bg-white px-2.5 py-1 rounded-lg border border-rose-300 shadow-2xs">
@@ -2309,9 +2309,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                         <span>{language === 'th' ? 'รหัสติดตาม (สร้างอัตโนมัติเฉพาะเบิกเสื้อกาวน์)' : 'Tracking Code (Gown Requisition)'}</span>
                         <span className="text-rose-600">*</span>
                       </label>
-                      <span className="px-2 py-0.5 rounded-md bg-rose-100/90 text-rose-800 font-bold text-2xs border border-rose-200">
-                        Google Sheet Auto-Sync
-                      </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -2351,8 +2348,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
                     <p className="text-2xs text-rose-800/90 leading-relaxed font-medium">
                       {language === 'th'
-                        ? '💡 ระบบจะสร้างรหัสติดตามอัตโนมัติ และบันทึกลงใน Google Sheet ทันทีที่กดบันทึก (เฉพาะการเบิกเสื้อกาวน์เท่านั้น)'
-                        : '💡 Tracking code will be auto-generated and saved to Google Sheet upon gown requisition.'}
+                        ? '💡 ระบบจะสร้างรหัสติดตามอัตโนมัติ (เฉพาะการเบิกเสื้อกาวน์เท่านั้น)'
+                        : '💡 Tracking code will be auto-generated upon gown requisition.'}
                     </p>
                   </div>
                 ) : (
@@ -2368,11 +2365,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       placeholder="เช่น LKB2 - 26092601 (ถ้ามี)"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 text-xs sm:text-sm font-mono font-bold bg-white text-slate-900 tracking-wider shadow-2xs"
                     />
-                    <p className="text-2xs text-amber-900/80 font-medium leading-relaxed">
-                      {language === 'th'
-                        ? '💡 หากระบุรหัสติดตาม ระบบจะบันทึกรหัสนี้ลงใน Google Sheet พร้อมการคืน และอัปเดตสถานะของรายการนั้นเป็น "คืนแล้ว"'
-                        : '💡 If a tracking code is specified, it will be saved to Google Sheet and set to Returned.'}
-                    </p>
                   </div>
                 )}
 

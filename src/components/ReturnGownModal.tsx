@@ -134,7 +134,7 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
           onClose();
         }, 1200);
       } else {
-        setErrorMessage(data?.error || (language === 'th' ? 'เกิดข้อผิดพลาดในการบันทึกลง Google Sheet' : 'Failed to submit return to Google Sheet'));
+        setErrorMessage(data?.error || (language === 'th' ? 'เกิดข้อผิดพลาดในการบันทึกข้อมูล' : 'Failed to submit return'));
       }
     } catch (err: any) {
       setErrorMessage(err?.message || (language === 'th' ? 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' : 'Network error'));
@@ -159,9 +159,6 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
               <h2 className="text-base sm:text-lg font-black tracking-tight">
                 {language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}
               </h2>
-              <p className="text-xs text-amber-100 font-medium">
-                {language === 'th' ? 'บันทึกการส่งคืนอิงตามรหัสติดตามและอัปเดตสถานะเป็นคืนแล้ว' : 'Save return referencing tracking code'}
-              </p>
             </div>
           </div>
           <button
@@ -358,8 +355,8 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>
                 {language === 'th'
-                  ? `บันทึกการส่งคืนรหัส ${trackingCode || ''} ลงใน Google Sheet และเปลี่ยนสถานะเป็นคืนแล้วเรียบร้อย`
-                  : `Return recorded to Google Sheet and status changed to Returned!`}
+                  ? `บันทึกการส่งคืนรหัส ${trackingCode || ''} เรียบร้อย`
+                  : `Return recorded successfully!`}
               </span>
             </div>
           )}
@@ -382,7 +379,7 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{language === 'th' ? 'กำลังบันทึกลง Google Sheet...' : 'Submitting to Sheet...'}</span>
+                  <span>{language === 'th' ? 'กำลังบันทึกข้อมูล...' : 'Saving...'}</span>
                 </>
               ) : isSuccess ? (
                 <>

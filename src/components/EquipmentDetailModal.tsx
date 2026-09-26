@@ -175,7 +175,7 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
                   <Tag className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม (Google Sheet)' : 'Tracking Code'}</p>
+                  <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</p>
                   <p className="font-mono font-black text-rose-950 text-sm tracking-wide">{record.trackingCode}</p>
                 </div>
               </div>
