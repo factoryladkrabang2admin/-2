@@ -27,6 +27,7 @@ interface EquipmentDetailModalProps {
   record: EquipmentRecord | null;
   onReturnGown?: (record: EquipmentRecord) => void;
   onReturnKey?: (record: EquipmentRecord) => void;
+  onReturnLadder?: (record: EquipmentRecord) => void;
 }
 
 export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
@@ -35,6 +36,7 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
   record,
   onReturnGown,
   onReturnKey,
+  onReturnLadder,
 }) => {
   const { language } = useLanguage();
 
@@ -177,8 +179,8 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           </div>
 
           {/* Subcategory Specific Details */}
-          {/* Tracking Code (เสื้อกาวน์ & กุญแจ) */}
-          {(record.subCategory === 'gown' || record.subCategory === 'keys') && record.trackingCode && (
+          {/* Tracking Code (เสื้อกาวน์, กุญแจ & บันไดทรง A) */}
+          {(record.subCategory === 'gown' || record.subCategory === 'keys' || record.subCategory === 'ladder') && record.trackingCode && (
             <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50/60 border border-rose-200/90 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-white border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs shrink-0">
@@ -376,6 +378,19 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}</span>
+              </button>
+            )}
+            {record.subCategory === 'ladder' && !isReturn && record.status !== 'คืนแล้ว' && onReturnLadder && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReturnLadder(record);
+                  onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-102"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'ส่งคืนบันไดทรง A' : 'Return Ladder'}</span>
               </button>
             )}
             <button

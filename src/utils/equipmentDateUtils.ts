@@ -189,6 +189,7 @@ export function generateEquipmentTrackingCode(
       const cacheKeys = [
         'proworkflow_equipment_cache_gown',
         'proworkflow_equipment_cache_keys',
+        'proworkflow_equipment_cache_ladder',
         'proworkflow_equipment_records'
       ];
       for (const cacheKey of cacheKeys) {
@@ -222,3 +223,9 @@ export const generateKeyTrackingCode = (
   existingRecords: Array<{ trackingCode?: string; subCategory?: string; actionType?: string }> = [],
   offsetIndex: number = 0
 ) => generateEquipmentTrackingCode(dateOrTimestamp, existingRecords, offsetIndex, 'keys');
+
+export const generateLadderTrackingCode = (
+  dateOrTimestamp?: string | Date,
+  existingRecords: Array<{ trackingCode?: string; subCategory?: string; actionType?: string }> = [],
+  offsetIndex: number = 0
+) => generateEquipmentTrackingCode(dateOrTimestamp, existingRecords, offsetIndex, 'ladder');

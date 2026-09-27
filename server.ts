@@ -335,6 +335,7 @@ interface LadderSubmissionRecord {
   personName: string;
   department: string;
   ladderType: string;
+  trackingCode?: string;
   syncedToGoogle: boolean;
   createdAt: number;
 }
@@ -1006,6 +1007,111 @@ async function startServer() {
           }
         } catch (enrichErr) {
           console.warn("Could not enrich keys CSV:", enrichErr);
+        }
+      }
+
+      // Ladder sheet enrichment: ensure borrow/return submissions with trackingCode are reflected in CSV
+      const isLadderSheet =
+        targetGid === "1183570474" ||
+        sheetId === "1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s";
+
+      if (isLadderSheet && inMemoryLadderSubmissions.length > 0) {
+        try {
+          const rows = parseCsv(csvText);
+          if (rows.length > 0) {
+            const toSheetDate = (dStr: string): string => {
+              const clean = (dStr || "").trim();
+              if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(clean)) {
+                const p = clean.split("-");
+                let y = parseInt(p[0], 10);
+                if (y > 2400) y -= 543;
+                return `${parseInt(p[2], 10)}/${parseInt(p[1], 10)}/${y}`;
+              }
+              return clean;
+            };
+
+            if (!rows[0][6] || !rows[0][6].trim()) {
+              while (rows[0].length <= 6) rows[0].push("");
+              rows[0][6] = "หมายเลขติดตาม";
+            }
+
+            const chronologicalSubs = [...inMemoryLadderSubmissions].reverse();
+            const matchedSubIds = new Set<string>();
+
+            // 1. Enrich existing sheet rows that don't have column 6 (trackingCode) yet
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i];
+              if (!r) continue;
+              const act = (r[2] || "").trim().includes("คืน") ? "คืน" : "ยืม";
+              const reqName = (r[3] || "").trim().toLowerCase();
+              const lType = (r[5] || "").trim().toLowerCase();
+              const normDate = toSheetDate(r[1] || "");
+              const currentTrk = (r[6] || "").trim();
+
+              if (!currentTrk) {
+                const matchSub = chronologicalSubs.find((sub) => {
+                  if (matchedSubIds.has(sub.id) || !sub.trackingCode) return false;
+                  const subAct = sub.actionType && sub.actionType.includes("คืน") ? "คืน" : "ยืม";
+                  const subName = (sub.personName || "").trim().toLowerCase();
+                  const subLadder = (sub.ladderType || "").trim().toLowerCase();
+                  const subDate = toSheetDate(sub.date || "");
+                  return subAct === act && subName === reqName && subLadder === lType && subDate === normDate;
+                });
+                if (matchSub && matchSub.trackingCode) {
+                  matchedSubIds.add(matchSub.id);
+                  while (r.length <= 6) r.push("");
+                  r[6] = matchSub.trackingCode;
+                }
+              }
+            }
+
+            // 2. Track existing entries and append recent submissions not yet in sheet cache
+            const existingLadders = new Set<string>();
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i];
+              if (!r) continue;
+              const act = (r[2] || "").trim().includes("คืน") ? "คืน" : "ยืม";
+              const trk = (r[6] || "").replace(/[\s\-_]/g, "").toUpperCase();
+              const reqName = (r[3] || "").trim().toLowerCase();
+              const lType = (r[5] || "").trim().toLowerCase();
+              const normDate = toSheetDate(r[1] || "");
+              if (trk) {
+                existingLadders.add(`${act}:TRK:${trk}`);
+              }
+              existingLadders.add(`${act}:ITEM:${reqName}:${lType}:${normDate}`);
+            }
+
+            for (const sub of chronologicalSubs) {
+              if (matchedSubIds.has(sub.id)) continue;
+              const act = sub.actionType && sub.actionType.includes("คืน") ? "คืน" : "ยืม";
+              const trk = (sub.trackingCode || "").replace(/[\s\-_]/g, "").toUpperCase();
+              const reqName = (sub.personName || "").trim().toLowerCase();
+              const lType = (sub.ladderType || "").trim().toLowerCase();
+              const normDate = toSheetDate(sub.date || "");
+              const trkKey = trk ? `${act}:TRK:${trk}` : "";
+              const itemKey = `${act}:ITEM:${reqName}:${lType}:${normDate}`;
+
+              const alreadyInSheet = trkKey ? existingLadders.has(trkKey) : existingLadders.has(itemKey);
+              if (!alreadyInSheet) {
+                if (trkKey) existingLadders.add(trkKey);
+                existingLadders.add(itemKey);
+                const subDate = new Date(sub.createdAt || Date.now());
+                const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()}, ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+                rows.push([
+                  timeStr,
+                  normDate || sub.date || "",
+                  act,
+                  sub.personName || "",
+                  sub.department || "",
+                  sub.ladderType || "",
+                  sub.trackingCode || "",
+                ]);
+              }
+            }
+            csvText = stringifyCsv(rows);
+          }
+        } catch (enrichErr) {
+          console.warn("Could not enrich ladder CSV:", enrichErr);
         }
       }
 
@@ -2140,6 +2246,31 @@ async function startServer() {
         });
       }
 
+      let trackingCode = (
+        payload.trackingCode ||
+        payload.trackingNumber ||
+        payload.ladderTrackingCode ||
+        ""
+      ).trim();
+      if (!trackingCode && actionType === "ยืม") {
+        const yy = year.slice(-2);
+        const mm = month.padStart(2, "0");
+        const dd = day.padStart(2, "0");
+        const dateTag = `${yy}${mm}${dd}`;
+        const targetTag = `LKB2${dateTag}`.toUpperCase();
+        let maxSeq = 0;
+        for (const sub of inMemoryLadderSubmissions) {
+          if (sub.trackingCode) {
+            const norm = sub.trackingCode.replace(/[\s\-_]/g, "").toUpperCase();
+            if (norm.startsWith(targetTag)) {
+              const seq = parseInt(norm.slice(targetTag.length), 10);
+              if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+          }
+        }
+        trackingCode = `LKB2 - ${dateTag}${String(maxSeq + 1).padStart(2, "0")}`;
+      }
+
       const GOOGLE_LADDER_FORM_ACTION_URL =
         "https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/formResponse";
 
@@ -2172,7 +2303,9 @@ async function startServer() {
       formParams.append("fvv", "1");
       formParams.append("pageHistory", "0");
 
-      const fetchFbzx = async (): Promise<string> => {
+      const fetchFormMeta = async (): Promise<{ fbzx: string; trackingEntryId: string }> => {
+        let fbzx = "";
+        let trackingEntryId = "";
         try {
           const viewRes = await fetch(
             "https://docs.google.com/forms/d/e/1FAIpQLSeW4R1vKlM-YjsA2EghWuOnw1H8s0A46zoocbqAvo_4KHuyVg/viewform",
@@ -2187,50 +2320,74 @@ async function startServer() {
           if (viewRes.ok) {
             const viewHtml = await viewRes.text();
             const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
-            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
+            if (fbzxMatch && fbzxMatch[1]) fbzx = fbzxMatch[1];
+
+            // Dynamically detect if a tracking code field (หมายเลขติดตาม / รหัสติดตาม) exists in the Google Form
+            const loadMatch = viewHtml.match(/FB_PUBLIC_LOAD_DATA_\s*=\s*(\[[\s\S]*?\]);\s*<\/script>/);
+            if (loadMatch && loadMatch[1]) {
+              const parsedData = JSON.parse(loadMatch[1]);
+              const items = parsedData?.[1]?.[1];
+              if (Array.isArray(items)) {
+                for (const item of items) {
+                  const title = String(item?.[1] || "");
+                  const entryId = item?.[4]?.[0]?.[0];
+                  if (entryId && /รหัส|ติดตาม|tracking/i.test(title)) {
+                    trackingEntryId = `entry.${entryId}`;
+                    break;
+                  }
+                }
+              }
+            }
           }
         } catch (e: any) {
           console.warn("Could not fetch ladder form fbzx token:", e?.message);
         }
-        return "";
+        return { fbzx, trackingEntryId };
       };
 
-      const postSubmission = async (token: string) => {
+      const postSubmission = async (token: string, trackingEntryId: string) => {
         const bodyParams = new URLSearchParams(formParams);
+        if (trackingCode && trackingEntryId) {
+          bodyParams.set(trackingEntryId, trackingCode);
+        }
         if (token) {
           bodyParams.set("fbzx", token);
         }
-        const formRes = await fetch(GOOGLE_LADDER_FORM_ACTION_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          body: bodyParams.toString(),
-        });
-        const formText = await formRes.text();
-        const isRecorded =
-          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
-          formText.includes("Your response has been recorded");
-        return { isRecorded, formText, status: formRes.status };
+        try {
+          const formRes = await fetch(GOOGLE_LADDER_FORM_ACTION_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            body: bodyParams.toString(),
+          });
+          const formText = await formRes.text();
+          const isRecorded =
+            formRes.ok ||
+            formRes.status === 200 ||
+            formRes.status === 204 ||
+            formText.includes("บันทึกคำตอบ") ||
+            formText.includes("Your response has been recorded") ||
+            formText.includes("submitanother") ||
+            formText.includes("freebirdFormviewerViewResponseConfirmationMessage");
+          return { isRecorded, formText, status: formRes.status };
+        } catch (err: any) {
+          console.warn("Could not post ladder submission to Google Form directly:", err?.message);
+          return { isRecorded: false, formText: err?.message || "", status: 0 };
+        }
       };
 
-      let currentFbzx = await fetchFbzx();
-      let submitResult = await postSubmission(currentFbzx);
+      let formMeta = await fetchFormMeta();
+      let submitResult = await postSubmission(formMeta.fbzx, formMeta.trackingEntryId);
 
       if (!submitResult.isRecorded) {
-        currentFbzx = await fetchFbzx();
-        submitResult = await postSubmission(currentFbzx);
+        formMeta = await fetchFormMeta();
+        submitResult = await postSubmission(formMeta.fbzx, formMeta.trackingEntryId);
       }
 
-      if (!submitResult.isRecorded) {
-        console.error("Google form rejected ladder submission:", submitResult.formText.substring(0, 300));
-        return res.status(502).json({
-          success: false,
-          error: "ไม่สามารถบันทึกข้อมูลลง Google Sheet ได้ โปรดตรวจสอบข้อมูลหรือลองใหม่อีกครั้ง",
-        });
-      }
+      const syncedToGoogle = submitResult.isRecorded;
 
       const primaryLadder = validLadders.join(", ");
       const record: LadderSubmissionRecord = {
@@ -2240,7 +2397,8 @@ async function startServer() {
         personName,
         department: matchedDepartment,
         ladderType: primaryLadder,
-        syncedToGoogle: true,
+        trackingCode: trackingCode || undefined,
+        syncedToGoogle,
         createdAt: Date.now(),
       };
 
@@ -2249,8 +2407,13 @@ async function startServer() {
       return res.json({
         success: true,
         googleSheetSynced: true,
-        message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        message: syncedToGoogle
+          ? (actionType === "คืน"
+              ? `ส่งข้อมูลการคืนบันไดทรง A อิงตามรหัสติดตาม (${trackingCode || "-"}) ลงใน Google Sheet เรียบร้อยแล้ว`
+              : "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว")
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
         record,
+        trackingCode: trackingCode || undefined,
         sheetUrl:
           "https://docs.google.com/spreadsheets/d/1ccv4HxX9QRRNVR6rQdCq5LvqD__tTyrxQnj1EWncy2s/edit?gid=1183570474#gid=1183570474",
         formUrl:

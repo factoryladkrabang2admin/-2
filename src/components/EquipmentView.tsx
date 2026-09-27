@@ -59,6 +59,7 @@ import { EquipmentAnalyticsModal } from './EquipmentAnalyticsModal';
 import { CreateEquipmentModal } from './CreateEquipmentModal';
 import { ReturnGownModal } from './ReturnGownModal';
 import { ReturnKeyModal } from './ReturnKeyModal';
+import { ReturnLadderModal } from './ReturnLadderModal';
 
 const SUB_CATEGORY_STORAGE_PREFIX = 'proworkflow_equipment_cache_';
 const TABLE_ITEMS_PER_PAGE = 20;
@@ -95,17 +96,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
-  // หัวข้อย่อยเสื้อกาวน์ และ กุญแจ ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
+  // หัวข้อย่อยเสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
   useEffect(() => {
-    if (activeSubCategory === 'gown' || activeSubCategory === 'keys') {
+    if (activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
       setViewMode('grid');
     }
   }, [activeSubCategory]);
 
-  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown/keys, and on mobile/tablet < 1024px)
+  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown/keys/ladder, and on mobile/tablet < 1024px)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
     const initialCategory = canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
-    if (initialCategory === 'gown' || initialCategory === 'keys') {
+    if (initialCategory === 'gown' || initialCategory === 'keys' || initialCategory === 'ladder') {
       return 'grid';
     }
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -198,6 +199,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Key Return Modal States (หัวข้อย่อยกุญแจ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม)
   const [returnKeyRecord, setReturnKeyRecord] = useState<EquipmentRecord | null>(null);
   const [isReturnKeyModalOpen, setIsReturnKeyModalOpen] = useState<boolean>(false);
+  // Ladder Return Modal States (หัวข้อย่อยบันไดทรง A เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม)
+  const [returnLadderRecord, setReturnLadderRecord] = useState<EquipmentRecord | null>(null);
+  const [isReturnLadderModalOpen, setIsReturnLadderModalOpen] = useState<boolean>(false);
   const [returnSuccessNotification, setReturnSuccessNotification] = useState<{ message: string; trackingCode?: string } | null>(null);
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
@@ -221,8 +225,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       setIsLoading(true);
     }
 
-    // 1. Try local storage cache first (only on initial non-background, non-force, non-gown/keys load)
-    const isTrackedCategory = sub === 'gown' || sub === 'keys';
+    // 1. Try local storage cache first (only on initial non-background, non-force, non-gown/keys/ladder load)
+    const isTrackedCategory = sub === 'gown' || sub === 'keys' || sub === 'ladder';
     if (!force && !isTrackedCategory && !isBackground) {
       try {
         const cached = localStorage.getItem(`${SUB_CATEGORY_STORAGE_PREFIX}${sub}`);
@@ -391,10 +395,69 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     }, 1200);
   };
 
+  const handleOpenReturnLadderModal = (record: EquipmentRecord) => {
+    setReturnLadderRecord(record);
+    setIsReturnLadderModalOpen(true);
+  };
+
+  const handleReturnLadderSuccess = (returnedRecord: EquipmentRecord, trackingCode: string) => {
+    // 1. อัปเดตสถานะของรายการบันไดทรง A ที่คืนเป็น 'คืนแล้ว' และ actionType เป็น 'คืน' ใน state ทันที (แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม)
+    const normCode = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+    const now = new Date();
+    const returnDateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+
+    setRecords((prev) => {
+      let updated = false;
+      const nextRecords: EquipmentRecord[] = [];
+      for (const r of prev) {
+        const isTarget = r.id === returnedRecord.id;
+        const normRCode = r.trackingCode ? r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+        const isTrackingMatch = normCode && normRCode && normCode === normRCode;
+        if (isTarget || isTrackingMatch) {
+          if (!updated) {
+            updated = true;
+            nextRecords.push({
+              ...r,
+              actionType: 'คืน',
+              status: 'คืนแล้ว',
+              date: returnDateStr,
+              returnDate: returnDateStr,
+              returnerName: returnedRecord.requesterName || r.requesterName,
+              requesterName: returnedRecord.requesterName || r.requesterName,
+              department: returnedRecord.department || r.department,
+              ladderType: returnedRecord.ladderType || r.ladderType,
+              itemSummary: returnedRecord.itemSummary || r.itemSummary,
+            });
+          }
+          // ละเว้นกล่องซ้ำ เพื่อให้แสดงกล่องเดียวตามสถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม
+        } else {
+          nextRecords.push(r);
+        }
+      }
+      return nextRecords;
+    });
+
+    // 2. แสดง Notification สำเร็จ
+    setReturnSuccessNotification({
+      message: language === 'th'
+        ? `บันทึกการส่งคืนบันไดทรง A ${trackingCode ? `(รหัส ${trackingCode})` : ''} ลงใน Google Sheet และเปลี่ยนสถานะเป็นคืนแล้วเรียบร้อย`
+        : `Ladder return recorded to Google Sheet and status changed to Returned!`,
+      trackingCode,
+    });
+    setTimeout(() => {
+      setReturnSuccessNotification(null);
+    }, 6000);
+
+    // 3. โหลดข้อมูลสดจาก Google Sheet เพื่อซิงค์แถวที่บันทึกล่าสุด
+    setTimeout(() => {
+      loadData('ladder', true);
+    }, 1200);
+  };
+
   useEffect(() => {
     setCurrentPage(1);
-    // หัวข้อย่อยเสื้อกาวน์ และ กุญแจ ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
-    if (activeSubCategory === 'gown' || activeSubCategory === 'keys') {
+    // หัวข้อย่อยเสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
+    if (activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
       setViewMode('grid');
     }
     loadData(activeSubCategory, false, false);
@@ -604,9 +667,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   // Filtered Records
   const filteredRecords = useMemo(() => {
-    // หัวข้อย่อยเสื้อกาวน์: รวมกล่องตามรหัสติดตาม โดยแสดงเฉพาะกล่องข้อมูลสถานะล่าสุด
+    // หัวข้อย่อยเสื้อกาวน์, กุญแจ และบันไดทรง A: รวมกล่องตามรหัสติดตาม โดยแสดงเฉพาะกล่องข้อมูลสถานะล่าสุด
     let baseRecords = records;
-    if (activeSubCategory === 'gown') {
+    if (activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
       const trackingMap = new Map<string, EquipmentRecord>();
       const nonTrackingList: EquipmentRecord[] = [];
 
@@ -1034,7 +1097,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 type="button"
                 onClick={() => {
                   setActiveSubCategory(tab.id);
-                  if (tab.id === 'gown' || tab.id === 'keys') {
+                  if (tab.id === 'gown' || tab.id === 'keys' || tab.id === 'ladder') {
                     setViewMode('grid');
                   }
                   if ((tab.id === 'cleaning' || tab.id === 'softener') && selectedActionType === 'คืน') {
@@ -1073,7 +1136,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
         {/* Integrated Metric KPI Cards Row */}
         <div className={`relative z-10 grid gap-3 sm:gap-4 pt-4 border-t border-rose-200/60 ${
-          isConsumable || activeSubCategory === 'gown' || activeSubCategory === 'keys' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
+          isConsumable || activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
         }`}>
           {/* Card 1: ทั้งหมด */}
           <div 
@@ -1094,8 +1157,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <span className="text-[11px] text-rose-800/80">{language === 'th' ? 'บันทึกสะสมทั้งหมด' : 'All recorded logs'}</span>
           </div>
 
-          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนสำหรับหัวข้อย่อยเบิกใช้อย่างเดียว, เสื้อกาวน์ และกุญแจ) */}
-          {!isConsumable && activeSubCategory !== 'gown' && activeSubCategory !== 'keys' && (
+          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนสำหรับหัวข้อย่อยเบิกใช้อย่างเดียว, เสื้อกาวน์, กุญแจ และบันไดทรง A) */}
+          {!isConsumable && activeSubCategory !== 'gown' && activeSubCategory !== 'keys' && activeSubCategory !== 'ladder' && (
             <>
               {/* Card 2: รายการเบิก / ยืม */}
               <div 
@@ -1328,7 +1391,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                   <thead className="bg-gradient-to-r from-amber-50/80 via-orange-50/60 to-amber-50/80 text-orange-950 font-bold border-b border-orange-200/80">
                     <tr>
                       <th className="py-3.5 px-4">{language === 'th' ? 'วันที่' : 'Date'}</th>
-                      {(activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
+                      {(activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') && (
                         <th className="py-3.5 px-4 whitespace-nowrap">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</th>
                       )}
                       <th className="py-3.5 px-4">{language === 'th' ? 'ผู้เบิก / ยืม' : 'Requester'}</th>
@@ -1352,7 +1415,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                           <td className="py-3.5 px-4 font-semibold text-slate-800 whitespace-nowrap">
                             {r.date}
                           </td>
-                          {(activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
+                          {(activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') && (
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {r.trackingCode ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 font-mono font-bold text-xs shadow-2xs">
@@ -1424,6 +1487,22 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                   }}
                                   className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                   title={language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                                </button>
+                              )}
+
+                              {/* Ladder Return Button (หัวข้อย่อยบันไดทรง A เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม) */}
+                              {activeSubCategory === 'ladder' && !isReturn && r.status !== 'คืนแล้ว' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReturnLadderModal(r);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                  title={language === 'th' ? 'ส่งคืนบันไดทรง A' : 'Return Ladder'}
                                 >
                                   <RotateCcw className="w-3 h-3" />
                                   <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
@@ -1521,6 +1600,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                             <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
                           </button>
                         )}
+                        {activeSubCategory === 'ladder' && !isReturn && r.status !== 'คืนแล้ว' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReturnLadderModal(r);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={language === 'th' ? 'ส่งคืนบันไดทรง A' : 'Return Ladder'}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="text-orange-700 font-bold text-xs hover:underline group-hover:text-orange-900"
@@ -1603,6 +1696,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                 }}
                                 className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-2xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95"
                                 title={language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                              </button>
+                            )}
+                            {activeSubCategory === 'ladder' && r.status !== 'คืนแล้ว' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReturnLadderModal(r);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-2xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                title={language === 'th' ? 'ส่งคืนบันไดทรง A' : 'Return Ladder'}
                               >
                                 <RotateCcw className="w-2.5 h-2.5" />
                                 <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
@@ -1704,6 +1811,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         record={selectedRecord}
         onReturnGown={handleOpenReturnGownModal}
         onReturnKey={handleOpenReturnKeyModal}
+        onReturnLadder={handleOpenReturnLadderModal}
       />
 
       {/* Analytics Modal */}
@@ -2011,6 +2119,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         }}
         record={returnKeyRecord}
         onReturnSuccess={handleReturnKeySuccess}
+      />
+
+      {/* 8. Modal ส่งคืนบันไดทรง A อิงตามรหัสติดตาม บันทึกลง Google Sheet */}
+      <ReturnLadderModal
+        isOpen={isReturnLadderModalOpen}
+        onClose={() => {
+          setIsReturnLadderModalOpen(false);
+          setReturnLadderRecord(null);
+        }}
+        record={returnLadderRecord}
+        onReturnSuccess={handleReturnLadderSuccess}
       />
     </div>
   );

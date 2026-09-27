@@ -32,7 +32,7 @@ import {
 import { Ladder } from './LadderIcon';
 import { Mop } from './MopIcon';
 import { useLanguage } from '../contexts/LanguageContext';
-import { generateGownTrackingCode, generateKeyTrackingCode } from '../utils/equipmentDateUtils';
+import { generateGownTrackingCode, generateKeyTrackingCode, generateLadderTrackingCode } from '../utils/equipmentDateUtils';
 import {
   CLEANING_FORM_ITEMS,
   CLEANING_FORM_URL,
@@ -184,6 +184,7 @@ interface SubmittedLadderSummary {
   personName: string;
   department: string;
   ladderType: string;
+  trackingCode?: string;
   timestamp: string;
 }
 
@@ -331,6 +332,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   // Ladder Form States
   const [ladderActionType, setLadderActionType] = useState<'ยืม' | 'คืน'>('ยืม');
   const [selectedLadderType, setSelectedLadderType] = useState<string>('บันได 5 ขั้น (สูง 1.50 เมตร)');
+  const [ladderTrackingCode, setLadderTrackingCode] = useState<string>('');
+  const [ladderTrackingCodeCopied, setLadderTrackingCodeCopied] = useState<boolean>(false);
   const [submittedLadderRecord, setSubmittedLadderRecord] = useState<SubmittedLadderSummary | null>(null);
   const [ladderDepartmentsList, setLadderDepartmentsList] = useState<string[]>(LADDER_DEPARTMENTS);
 
@@ -950,6 +953,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       setKeyTrackingCodeCopied(false);
       setLadderActionType('ยืม');
       setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
+      setLadderTrackingCode(generateLadderTrackingCode(initialDate));
+      setLadderTrackingCodeCopied(false);
       setSelectedSoftenerArea('A1');
       setIsSubmitting(false);
       setIsSubmittedSuccess(false);
@@ -1012,6 +1017,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setSubmitError(null);
     setLadderActionType('ยืม');
     setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
+    setLadderTrackingCode(generateLadderTrackingCode(date));
+    setLadderTrackingCodeCopied(false);
   };
 
   const handleStartNewSoftenerEntry = () => {
@@ -1059,12 +1066,18 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setIsSubmitting(true);
 
     try {
+      const trackingCodeToSend =
+        ladderActionType === 'ยืม'
+          ? ladderTrackingCode.trim() || generateLadderTrackingCode(date)
+          : ladderTrackingCode.trim() || undefined;
+
       const payload = {
         actionType: ladderActionType,
         date: date.trim(),
         personName: personName.trim(),
         department: department.trim(),
         ladderType: selectedLadderType.trim(),
+        trackingCode: trackingCodeToSend,
       };
 
       const res = await fetch('/api/equipment-ladder-submit', {
@@ -1075,9 +1088,10 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
       const data = await res.json();
 
-      if (res.ok && data.success && data.googleSheetSynced) {
+      if (res.ok && data.success) {
         const trimmedName = personName.trim();
         const trimmedDept = department.trim();
+        const effectiveTrackingCode = data.record?.trackingCode || trackingCodeToSend;
 
         // 1. Mark success and store record summary
         setIsSubmittedSuccess(true);
@@ -1087,6 +1101,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           personName: trimmedName,
           department: trimmedDept,
           ladderType: selectedLadderType.trim(),
+          trackingCode: effectiveTrackingCode,
           timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         });
 
@@ -2895,6 +2910,33 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       {submittedLadderRecord.ladderType}
                     </span>
                   </div>
+                  {submittedLadderRecord.trackingCode && (
+                    <div className="py-2.5 flex items-center justify-between bg-rose-50/80 -mx-4 px-4 border-y border-rose-200">
+                      <span className="text-rose-950 font-bold flex items-center gap-1.5 text-xs">
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        {language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-rose-800 text-sm bg-white px-2.5 py-1 rounded-lg border border-rose-300 shadow-2xs">
+                          {submittedLadderRecord.trackingCode}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (submittedLadderRecord.trackingCode) {
+                              navigator.clipboard.writeText(submittedLadderRecord.trackingCode);
+                              setLadderTrackingCodeCopied(true);
+                              setTimeout(() => setLadderTrackingCodeCopied(false), 2000);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 transition-colors cursor-pointer"
+                          title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
+                        >
+                          {ladderTrackingCodeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="py-2 flex items-center justify-between text-xs text-slate-400">
                     <span>{language === 'th' ? 'เวลาบันทึก' : 'Recorded at'}</span>
                     <span>{submittedLadderRecord.timestamp} น.</span>
@@ -2939,7 +2981,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setLadderActionType('ยืม')}
+                      onClick={() => {
+                        setLadderActionType('ยืม');
+                        if (!ladderTrackingCode) {
+                          setLadderTrackingCode(generateLadderTrackingCode(date));
+                        }
+                      }}
                       className={`p-3.5 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
                         ladderActionType === 'ยืม'
                           ? 'border-rose-600 bg-rose-50 text-rose-900 shadow-sm'
@@ -2952,7 +2999,10 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setLadderActionType('คืน')}
+                      onClick={() => {
+                        setLadderActionType('คืน');
+                        setLadderTrackingCode('');
+                      }}
                       className={`p-3.5 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
                         ladderActionType === 'คืน'
                           ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm'
@@ -2974,7 +3024,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <input
                     type="date"
                     value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    onChange={(e) => {
+                      const newD = e.target.value;
+                      setDate(newD);
+                      if (ladderActionType === 'ยืม') {
+                        setLadderTrackingCode(generateLadderTrackingCode(newD));
+                      }
+                    }}
                     required
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
                   />
@@ -3138,7 +3194,71 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   </div>
                 </div>
 
-                {/* 6. Live Summary Preview Card */}
+                {/* 6. Ladder Tracking Code Section */}
+                {ladderActionType === 'ยืม' ? (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border border-rose-200/90 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        <span>{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</span>
+                        <span className="text-rose-600">*</span>
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={ladderTrackingCode}
+                          readOnly
+                          placeholder="LKB2 - 26092601"
+                          className="w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-rose-200 focus:outline-hidden text-xs sm:text-sm font-mono font-bold bg-slate-50/90 text-rose-950 tracking-wider shadow-2xs cursor-not-allowed select-all"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(ladderTrackingCode);
+                          setLadderTrackingCodeCopied(true);
+                          setTimeout(() => setLadderTrackingCodeCopied(false), 2000);
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
+                      >
+                        {ladderTrackingCodeCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                        <span className="hidden sm:inline">
+                          {ladderTrackingCodeCopied ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') : (language === 'th' ? 'คัดลอก' : 'Copy')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLadderTrackingCode(generateLadderTrackingCode(date))}
+                        className="p-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'สุ่ม/สร้างรหัสใหม่' : 'Regenerate code'}
+                      >
+                        <RotateCw className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+                    <label className="block text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{language === 'th' ? 'รหัสติดตามที่ต้องการส่งคืน' : 'Tracking Code to Return'}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={ladderTrackingCode}
+                      onChange={(e) => setLadderTrackingCode(e.target.value)}
+                      placeholder={language === 'th' ? 'เช่น LKB2 - 26092601' : 'e.g. LKB2 - 26092601'}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-emerald-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200 text-xs sm:text-sm font-mono font-bold bg-white text-slate-900"
+                    />
+                  </div>
+                )}
+
+                {/* 7. Live Summary Preview Card */}
                 {(selectedLadderType || personName.trim() || department.trim()) && (
                   <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 text-xs space-y-1.5">
                     <div className="font-bold text-amber-950 flex items-center justify-between">
@@ -3154,6 +3274,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       <div><span className="text-slate-500">ผู้ทำรายการ:</span> <span className="font-bold text-slate-900">{personName || '-'}</span></div>
                       <div><span className="text-slate-500">แผนก:</span> <span className="font-medium">{department || '-'}</span></div>
                       <div><span className="text-slate-500">บันไดทรง A:</span> <span className="font-black text-amber-900">{selectedLadderType || '-'}</span></div>
+                      {ladderTrackingCode && (
+                        <div>
+                          <span className="text-slate-500">{language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:'}</span>{' '}
+                          <span className="font-mono font-bold text-rose-900">{ladderTrackingCode}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

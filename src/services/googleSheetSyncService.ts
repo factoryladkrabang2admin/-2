@@ -4023,62 +4023,225 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
 
 /**
  * 4. Convert Ladder (บันไดทรง A) CSV Rows to EquipmentRecord[]
+ * คอนโซลิเดตข้อมูลตามรหัสติดตาม (tracking code):
+ * เมื่อเบิกอุปกรณ์จะมีรหัสติดตาม และเมื่อส่งคืนให้กล่องนั้นเปลี่ยนเป็นคืน
+ * โดยให้แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม
  */
 export function convertLadderCsvToRecords(csvText: string): EquipmentRecord[] {
   const rows = parseCSV(csvText);
   if (!rows || rows.length < 2) return [];
 
-  const records: EquipmentRecord[] = [];
+  const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+  let trackingColIdx = header.findIndex(
+    (h) => h.includes('รหัสติดตาม') || h.includes('หมายเลขติดตาม') || h.includes('tracking') || (h.includes('รหัส') && !h.includes('พัสดุ'))
+  );
+  if (trackingColIdx === -1 && rows[0].length > 6) {
+    trackingColIdx = 6;
+  }
+
+  const ladderByTracking = new Map<string, EquipmentRecord>();
+  const recordsWithoutTracking: EquipmentRecord[] = [];
+
+  const buildDeterministicLadderTrackingCode = (dateStr: string, rowIdx: number): string => {
+    let yy = '26';
+    let mm = '01';
+    let dd = '01';
+    const clean = (dateStr || '').trim();
+    if (clean.includes('/')) {
+      const p = clean.split('/');
+      if (p.length >= 3) {
+        dd = p[0].padStart(2, '0');
+        mm = p[1].padStart(2, '0');
+        let yNum = parseInt(p[2], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+      }
+    } else if (clean.includes('-')) {
+      const p = clean.split('-');
+      if (p.length >= 3) {
+        let yNum = parseInt(p[0], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+        mm = p[1].padStart(2, '0');
+        dd = p[2].padStart(2, '0');
+      }
+    }
+    return `LKB2 - ${yy}${mm}${dd}${String(rowIdx).padStart(2, '0')}`;
+  };
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.every((c) => !c || !c.trim())) continue;
 
-    const timestamp = row[0] || '';
-    const rawDate = row[1] || '';
-    const actionRaw = row[2] || 'ยืม';
-    const requester = row[3] || 'ไม่ระบุชื่อ';
-    const rawDept = row[4] || '';
+    const timestamp = (row[0] || '').trim();
+    const rawDate = (row[1] || '').trim();
+    const actionRaw = (row[2] || 'ยืม').trim();
+    const requester = (row[3] || '').trim() || 'ไม่ระบุชื่อ';
+    const rawDept = (row[4] || '').trim();
     const department = normalizeDepartment(rawDept) || 'ฝ่ายซ่อมบำรุง / ทั่วไป';
-    const ladderType = row[5] || 'บันไดทรง A';
-    const ladderInspection = row[6] || 'ไม่พบจุดชำรุด';
-    const defectPhotoUrl = row[7] || '';
+    const ladderType = (row[5] || '').trim() || 'บันไดทรง A';
+
+    // Check if column 6 is a tracking code (e.g. LKB2 - ...) or inspection note
+    const col6Raw = (row[6] || '').trim();
+    const isCol6Tracking =
+      col6Raw &&
+      (col6Raw.toUpperCase().includes('LKB') ||
+        (trackingColIdx === 6 && !col6Raw.includes('ชำรุด')));
+
+    const rawTracking =
+      trackingColIdx >= 0 && trackingColIdx !== 6 && row[trackingColIdx]
+        ? row[trackingColIdx].trim()
+        : isCol6Tracking
+        ? col6Raw
+        : '';
+
+    const ladderInspection = !isCol6Tracking && col6Raw ? col6Raw : 'ไม่พบจุดชำรุด';
+    const defectPhotoUrl = (row[7] || '').trim();
+
+    if (!(row[3] || '').trim() && !(row[5] || '').trim() && !rawTracking) continue;
 
     const isReturn = actionRaw.includes('คืน');
-    const actionType = isReturn ? 'คืน' : 'ยืม';
-    const status = isReturn ? 'คืนแล้ว' : 'อยู่ระหว่างใช้งาน';
+    const actionType = isReturn ? 'คืน' : 'เบิก';
+    const status = isReturn ? 'คืนแล้ว' : 'เบิกแล้ว';
+
+    const date = rawDate || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
+
+    // เมื่อเบิกอุปกรณ์จะมีรหัสติดตามเสมอ และเมื่อส่งคืนหากแถวเดิมไม่มีรหัสติดตามให้จับคู่กับรายการเบิกบันไดเดียวกันที่ยังค้างอยู่
+    let trackingCode: string | undefined =
+      rawTracking && rawTracking !== '-' ? rawTracking : undefined;
+
+    if (!trackingCode) {
+      if (!isReturn) {
+        trackingCode = buildDeterministicLadderTrackingCode(date, i);
+      } else {
+        const normLadder = ladderType.replace(/\s+/g, '').toLowerCase();
+        const normReq = requester.replace(/\s+/g, '').toLowerCase();
+        let matchedTrack: string | undefined;
+
+        for (const [, rec] of ladderByTracking.entries()) {
+          if (rec.actionType !== 'คืน') {
+            const recLadder = (rec.ladderType || '').replace(/\s+/g, '').toLowerCase();
+            const recReq = (rec.requesterName || '').replace(/\s+/g, '').toLowerCase();
+            if (normLadder && recLadder === normLadder && recReq === normReq) {
+              matchedTrack = rec.trackingCode;
+            }
+          }
+        }
+        if (!matchedTrack && normLadder) {
+          for (const [, rec] of ladderByTracking.entries()) {
+            if (rec.actionType !== 'คืน') {
+              const recLadder = (rec.ladderType || '').replace(/\s+/g, '').toLowerCase();
+              if (recLadder === normLadder) {
+                matchedTrack = rec.trackingCode;
+              }
+            }
+          }
+        }
+        trackingCode = matchedTrack;
+      }
+    }
 
     const itemsList: EquipmentItemDetail[] = [
       {
         name: ladderType,
         quantity: 1,
-        note: ladderInspection,
+        note: trackingCode ? `รหัสติดตาม: ${trackingCode}` : ladderInspection,
       },
     ];
 
-    const date = rawDate.trim() || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
     const itemSummary = `${ladderType} (${ladderInspection || 'พร้อมใช้งาน'})`;
+    const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
 
-    records.push({
-      id: `eq-ladder-${i}-${date.replace(/\//g, '')}`,
-      seq: i,
-      subCategory: 'ladder',
-      timestamp,
-      date,
-      requesterName: requester,
-      department,
-      actionType,
-      status,
-      itemSummary,
-      itemsList,
-      totalQuantity: 1,
-      ladderType,
-      ladderInspection,
-      defectPhotoUrl,
-    });
+    if (!normTracking) {
+      recordsWithoutTracking.push({
+        id: `eq-ladder-${i}-${date.replace(/\//g, '')}`,
+        seq: i,
+        subCategory: 'ladder',
+        timestamp,
+        date,
+        requesterName: requester,
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: 1,
+        ladderType,
+        ladderInspection,
+        defectPhotoUrl,
+      });
+      continue;
+    }
+
+    // คอนโซลิเดตข้อมูลตามรหัสติดตาม (แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม)
+    if (!ladderByTracking.has(normTracking)) {
+      ladderByTracking.set(normTracking, {
+        id: `eq-ladder-track-${normTracking}`,
+        seq: i,
+        subCategory: 'ladder',
+        timestamp,
+        date,
+        requesterName: requester,
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: 1,
+        ladderType,
+        ladderInspection,
+        defectPhotoUrl,
+        trackingCode,
+        borrowDate: !isReturn ? date : undefined,
+        borrowerName: !isReturn ? requester : undefined,
+        returnDate: isReturn ? date : undefined,
+        returnerName: isReturn ? requester : undefined,
+      });
+    } else {
+      const existing = ladderByTracking.get(normTracking)!;
+      if (isReturn) {
+        // เมื่อส่งคืนให้กล่องนั้นเปลี่ยนเป็นคืน โดยให้แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม
+        existing.actionType = 'คืน';
+        existing.status = 'คืนแล้ว';
+        existing.date = date || existing.date;
+        existing.timestamp = timestamp || existing.timestamp;
+        existing.returnDate = date;
+        existing.returnerName = requester || existing.returnerName;
+        if (requester) existing.requesterName = requester;
+        if (department) existing.department = department;
+        if (ladderType) {
+          existing.ladderType = ladderType;
+          existing.itemSummary = itemSummary;
+          existing.itemsList = itemsList;
+        }
+        existing.seq = Math.max(existing.seq, i);
+      } else {
+        if (existing.actionType !== 'คืน') {
+          existing.date = date || existing.date;
+          existing.timestamp = timestamp || existing.timestamp;
+          existing.requesterName = requester || existing.requesterName;
+          existing.department = department || existing.department;
+          if (ladderType) {
+            existing.ladderType = ladderType;
+            existing.itemSummary = itemSummary;
+            existing.itemsList = itemsList;
+          }
+          existing.seq = Math.max(existing.seq, i);
+        } else {
+          existing.borrowDate = existing.borrowDate || date;
+          existing.borrowerName = existing.borrowerName || requester;
+          if (!existing.ladderType && ladderType) {
+            existing.ladderType = ladderType;
+            existing.itemSummary = itemSummary;
+            existing.itemsList = itemsList;
+          }
+        }
+      }
+    }
   }
 
-  return records.reverse();
+  const allRecords = [...recordsWithoutTracking, ...Array.from(ladderByTracking.values())];
+  return allRecords.sort((a, b) => b.seq - a.seq);
 }
 
 /**
