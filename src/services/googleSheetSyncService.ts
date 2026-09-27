@@ -3817,20 +3817,21 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
   const rows = parseCSV(csvText);
   if (!rows || rows.length < 2) return [];
 
-  const records: EquipmentRecord[] = [];
+  const keysByTracking = new Map<string, EquipmentRecord>();
+  const recordsWithoutTracking: EquipmentRecord[] = [];
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.every((c) => !c || !c.trim())) continue;
 
-    const timestamp = row[0] || '';
-    const rawDate = row[1] || '';
-    const requester = row[2] || 'ไม่ระบุชื่อ';
-    const rawDept = row[3] || '';
+    const timestamp = (row[0] || '').trim();
+    const rawDate = (row[1] || '').trim();
+    const requester = (row[2] || '').trim() || 'ไม่ระบุชื่อ';
+    const rawDept = (row[3] || '').trim();
     const department = normalizeDepartment(rawDept) || 'แผนกทั่วไป';
-    const actionRaw = row[4] || 'เบิก';
-    const keyNumbers = row[5] || '';
-    const note = row[6] || '';
+    const actionRaw = (row[4] || '').trim() || 'เบิก';
+    const keyNumbers = (row[5] || '').trim();
+    const trackingCodeRaw = (row[6] || '').trim();
 
     const isReturn = actionRaw.includes('คืน');
     const actionType = isReturn ? 'คืน' : 'เบิก';
@@ -3841,32 +3842,88 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
       {
         name: keyNumbers ? `กุญแจหมายเลข #${keyNumbers}` : 'กุญแจห้อง/ตู้',
         quantity: keysCount,
-        note,
+        note: trackingCodeRaw ? `รหัสติดตาม: ${trackingCodeRaw}` : undefined,
       },
     ];
 
     const date = rawDate.trim() || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
     const itemSummary = keyNumbers ? `กุญแจห้อง/อาคาร หมายเลข #${keyNumbers}` : 'กุญแจ';
+    const normTracking = trackingCodeRaw ? trackingCodeRaw.replace(/[\s\-_]/g, '').toUpperCase() : '';
 
-    records.push({
-      id: `eq-key-${i}-${date.replace(/\//g, '')}`,
-      seq: i,
-      subCategory: 'keys',
-      timestamp,
-      date,
-      requesterName: requester,
-      department,
-      actionType,
-      status,
-      itemSummary,
-      itemsList,
-      totalQuantity: keysCount,
-      keyNumbers,
-      note,
-    });
+    if (!normTracking) {
+      recordsWithoutTracking.push({
+        id: `eq-key-${i}-${date.replace(/\//g, '')}`,
+        seq: i,
+        subCategory: 'keys',
+        timestamp,
+        date,
+        requesterName: requester,
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: keysCount,
+        keyNumbers,
+        note: trackingCodeRaw,
+      });
+      continue;
+    }
+
+    if (!keysByTracking.has(normTracking)) {
+      keysByTracking.set(normTracking, {
+        id: `eq-key-track-${normTracking}`,
+        seq: i,
+        subCategory: 'keys',
+        timestamp,
+        date,
+        requesterName: requester,
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: keysCount,
+        keyNumbers,
+        trackingCode: trackingCodeRaw,
+        note: trackingCodeRaw,
+        borrowDate: !isReturn ? date : undefined,
+        borrowerName: !isReturn ? requester : undefined,
+        returnDate: isReturn ? date : undefined,
+        returnerName: isReturn ? requester : undefined,
+      });
+    } else {
+      const existing = keysByTracking.get(normTracking)!;
+      if (isReturn) {
+        existing.actionType = 'คืน';
+        existing.status = 'คืนแล้ว';
+        existing.date = date || existing.date;
+        existing.timestamp = timestamp || existing.timestamp;
+        existing.returnDate = date;
+        existing.returnerName = requester || existing.returnerName;
+        if (requester) existing.requesterName = requester;
+        if (department) existing.department = department;
+        if (keyNumbers) existing.keyNumbers = keyNumbers;
+        existing.seq = Math.max(existing.seq, i);
+      } else {
+        if (existing.actionType !== 'คืน') {
+          existing.date = date || existing.date;
+          existing.timestamp = timestamp || existing.timestamp;
+          existing.requesterName = requester || existing.requesterName;
+          existing.department = department || existing.department;
+          if (keyNumbers) existing.keyNumbers = keyNumbers;
+          existing.seq = Math.max(existing.seq, i);
+        } else {
+          existing.borrowDate = existing.borrowDate || date;
+          existing.borrowerName = existing.borrowerName || requester;
+          if (!existing.keyNumbers && keyNumbers) existing.keyNumbers = keyNumbers;
+        }
+      }
+    }
   }
 
-  return records.reverse();
+  const allRecords = [...recordsWithoutTracking, ...Array.from(keysByTracking.values())];
+  return allRecords.sort((a, b) => b.seq - a.seq);
 }
 
 /**

@@ -175,8 +175,8 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           </div>
 
           {/* Subcategory Specific Details */}
-          {/* Tracking Code (เฉพาะเบิกเสื้อกาวน์) */}
-          {record.subCategory === 'gown' && record.trackingCode && (
+          {/* Tracking Code (เสื้อกาวน์ & กุญแจ) */}
+          {(record.subCategory === 'gown' || record.subCategory === 'keys') && record.trackingCode && (
             <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50/60 border border-rose-200/90 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-white border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs shrink-0">

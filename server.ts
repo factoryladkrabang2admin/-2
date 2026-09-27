@@ -297,6 +297,7 @@ interface KeySubmissionRecord {
   personName: string;
   department: string;
   keyNumbers: string;
+  trackingCode?: string;
   note?: string;
   syncedToGoogle: boolean;
   createdAt: number;
@@ -1811,6 +1812,13 @@ async function startServer() {
       }
 
       const note = (payload.note || payload.remarks || "").trim();
+      let trackingCode = (payload.trackingCode || payload.trackingNumber || payload.keyTrackingCode || "").trim();
+      if (!trackingCode && actionType === "เบิก") {
+        const yy = year.slice(-2);
+        const mm = month.padStart(2, "0");
+        const dd = day.padStart(2, "0");
+        trackingCode = `LKB2 - ${yy}${mm}${dd}01`;
+      }
 
       const GOOGLE_KEYS_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/formResponse";
 
@@ -1834,8 +1842,10 @@ async function startServer() {
       // 5. หมายเลขกุญแจ
       formParams.append("entry.551601096", keyNumbers);
 
-      // 6. หมายเหตุ
-      if (note) {
+      // 6. หมายเลขติดตาม (entry.1058815699 ใน Google Form / Google Sheet)
+      if (trackingCode) {
+        formParams.append("entry.1058815699", trackingCode);
+      } else if (note) {
         formParams.append("entry.1058815699", note);
       }
 
@@ -1908,6 +1918,7 @@ async function startServer() {
         personName,
         department: matchedDepartment,
         keyNumbers,
+        trackingCode: trackingCode || undefined,
         note: note || undefined,
         syncedToGoogle: true,
         createdAt: Date.now(),
@@ -1920,6 +1931,7 @@ async function startServer() {
         googleSheetSynced: true,
         message: "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
         record,
+        trackingCode: trackingCode || undefined,
         sheetUrl: "https://docs.google.com/spreadsheets/d/1hBOaTsILrvA5UtTyL1iULW7SzGkW0-tPO3QmOUiR8mY/edit?gid=546384221#gid=546384221",
         formUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeHCJ7dco8nkjZY5FbzFobIWNfDHCLh2JzEvCORYhTU7Lwhvw/viewform?usp=pp_url",
       });

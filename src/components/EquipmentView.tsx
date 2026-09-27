@@ -1265,7 +1265,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                   <thead className="bg-gradient-to-r from-amber-50/80 via-orange-50/60 to-amber-50/80 text-orange-950 font-bold border-b border-orange-200/80">
                     <tr>
                       <th className="py-3.5 px-4">{language === 'th' ? 'วันที่' : 'Date'}</th>
-                      {activeSubCategory === 'gown' && (
+                      {(activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
                         <th className="py-3.5 px-4 whitespace-nowrap">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</th>
                       )}
                       <th className="py-3.5 px-4">{language === 'th' ? 'ผู้เบิก / ยืม' : 'Requester'}</th>
@@ -1289,7 +1289,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                           <td className="py-3.5 px-4 font-semibold text-slate-800 whitespace-nowrap">
                             {r.date}
                           </td>
-                          {activeSubCategory === 'gown' && (
+                          {(activeSubCategory === 'gown' || activeSubCategory === 'keys') && (
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {r.trackingCode ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 font-mono font-bold text-xs shadow-2xs">

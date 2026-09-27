@@ -133,13 +133,14 @@ export function extractGownDateTag(input?: string | Date): { yy: string; mm: str
 }
 
 /**
- * Generates tracking code for Gown Requisition (เฉพาะเบิกเสื้อกาวน์)
+ * Generates tracking code for Equipment Requisitions (เสื้อกาวน์, กุญแจ)
  * Format: "LKB2 - YYMMDDXX" (e.g. "LKB2 - 26092601", "LKB2 - 26092602")
  */
-export function generateGownTrackingCode(
+export function generateEquipmentTrackingCode(
   dateOrTimestamp?: string | Date,
   existingRecords: Array<{ trackingCode?: string; subCategory?: string; actionType?: string }> = [],
-  offsetIndex: number = 0
+  offsetIndex: number = 0,
+  targetSubCategory?: string
 ): string {
   const { dateTag } = extractGownDateTag(dateOrTimestamp);
   const prefix = `LKB2 - ${dateTag}`;
@@ -150,7 +151,7 @@ export function generateGownTrackingCode(
 
   const inspectRecord = (rec: { trackingCode?: string; subCategory?: string; actionType?: string }) => {
     if (!rec || !rec.trackingCode) return;
-    if (rec.subCategory && rec.subCategory !== 'gown') return;
+    if (targetSubCategory && rec.subCategory && rec.subCategory !== targetSubCategory) return;
 
     const normalized = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
     if (normalized.startsWith(targetTag)) {
@@ -185,13 +186,19 @@ export function generateGownTrackingCode(
   // 2. Also check local storage cached records
   try {
     if (typeof window !== 'undefined') {
-      const cacheKey = 'proworkflow_equipment_cache_gown';
-      const cachedStr = localStorage.getItem(cacheKey);
-      if (cachedStr) {
-        const cached = JSON.parse(cachedStr);
-        if (Array.isArray(cached)) {
-          for (const rec of cached) {
-            inspectRecord(rec);
+      const cacheKeys = [
+        'proworkflow_equipment_cache_gown',
+        'proworkflow_equipment_cache_keys',
+        'proworkflow_equipment_records'
+      ];
+      for (const cacheKey of cacheKeys) {
+        const cachedStr = localStorage.getItem(cacheKey);
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr);
+          if (Array.isArray(cached)) {
+            for (const rec of cached) {
+              inspectRecord(rec);
+            }
           }
         }
       }
@@ -203,3 +210,15 @@ export function generateGownTrackingCode(
   const nextSeq = String(maxSeq + 1 + offsetIndex).padStart(2, '0');
   return `${prefix}${nextSeq}`;
 }
+
+export const generateGownTrackingCode = (
+  dateOrTimestamp?: string | Date,
+  existingRecords: Array<{ trackingCode?: string; subCategory?: string; actionType?: string }> = [],
+  offsetIndex: number = 0
+) => generateEquipmentTrackingCode(dateOrTimestamp, existingRecords, offsetIndex, 'gown');
+
+export const generateKeyTrackingCode = (
+  dateOrTimestamp?: string | Date,
+  existingRecords: Array<{ trackingCode?: string; subCategory?: string; actionType?: string }> = [],
+  offsetIndex: number = 0
+) => generateEquipmentTrackingCode(dateOrTimestamp, existingRecords, offsetIndex, 'keys');

@@ -32,7 +32,7 @@ import {
 import { Ladder } from './LadderIcon';
 import { Mop } from './MopIcon';
 import { useLanguage } from '../contexts/LanguageContext';
-import { generateGownTrackingCode } from '../utils/equipmentDateUtils';
+import { generateGownTrackingCode, generateKeyTrackingCode } from '../utils/equipmentDateUtils';
 import {
   CLEANING_FORM_ITEMS,
   CLEANING_FORM_URL,
@@ -174,6 +174,7 @@ interface SubmittedKeySummary {
   personName: string;
   department: string;
   keyNumbers: string;
+  trackingCode?: string;
   note?: string;
   timestamp: string;
 }
@@ -324,6 +325,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   // Keys Form States
   const [keyActionType, setKeyActionType] = useState<'เบิก' | 'คืน'>('เบิก');
   const [keyNumbers, setKeyNumbers] = useState<string>('');
+  const [keyTrackingCode, setKeyTrackingCode] = useState<string>('');
+  const [keyTrackingCodeCopied, setKeyTrackingCodeCopied] = useState<boolean>(false);
   const [keyNote, setKeyNote] = useState<string>('');
   const [submittedKeyRecord, setSubmittedKeyRecord] = useState<SubmittedKeySummary | null>(null);
 
@@ -945,6 +948,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       setTrackingCodeCopied(false);
       setKeyActionType('เบิก');
       setKeyNumbers('');
+      setKeyTrackingCode(generateKeyTrackingCode(initialDate));
+      setKeyTrackingCodeCopied(false);
       setKeyNote('');
       setLadderActionType('ยืม');
       setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
@@ -1001,6 +1006,8 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setSubmitError(null);
     setKeyNumbers('');
     setKeyNote('');
+    setKeyTrackingCode(generateKeyTrackingCode(date));
+    setKeyTrackingCodeCopied(false);
   };
 
   const handleStartNewLadderEntry = () => {
@@ -1409,12 +1416,17 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setIsSubmitting(true);
 
     try {
+      const trackingCodeToSend = keyActionType === 'เบิก'
+        ? (keyTrackingCode.trim() || generateKeyTrackingCode(date))
+        : (keyTrackingCode.trim() || undefined);
+
       const payload = {
         actionType: keyActionType,
         date: date.trim(),
         personName: personName.trim(),
         department: department.trim(),
         keyNumbers: keyNumbers.trim(),
+        trackingCode: trackingCodeToSend,
         note: keyNote.trim() || undefined,
       };
 
@@ -1429,6 +1441,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       if (res.ok && data.success && data.googleSheetSynced) {
         const trimmedName = personName.trim();
         const trimmedDept = department.trim();
+        const effectiveTrackingCode = data.record?.trackingCode || trackingCodeToSend;
 
         // 1. Mark success and store record summary
         setIsSubmittedSuccess(true);
@@ -1438,6 +1451,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           personName: trimmedName,
           department: trimmedDept,
           keyNumbers: keyNumbers.trim(),
+          trackingCode: effectiveTrackingCode,
           note: keyNote.trim() || undefined,
           timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         });
@@ -2455,6 +2469,33 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       {submittedKeyRecord.keyNumbers}
                     </span>
                   </div>
+                  {submittedKeyRecord.trackingCode && (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50/60 border border-rose-200/90 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-rose-600 shrink-0" />
+                        <div>
+                          <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</p>
+                          <p className="font-mono font-black text-rose-950 text-xs sm:text-sm tracking-wide">
+                            {submittedKeyRecord.trackingCode}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (submittedKeyRecord.trackingCode) {
+                            navigator.clipboard.writeText(submittedKeyRecord.trackingCode);
+                            setKeyTrackingCodeCopied(true);
+                            setTimeout(() => setKeyTrackingCodeCopied(false), 2000);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        {keyTrackingCodeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{keyTrackingCodeCopied ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') : (language === 'th' ? 'คัดลอก' : 'Copy')}</span>
+                      </button>
+                    </div>
+                  )}
                   {submittedKeyRecord.note && (
                     <div className="py-2.5 flex items-center justify-between">
                       <span className="text-slate-500 font-medium">{language === 'th' ? 'หมายเหตุ' : 'Notes'}</span>
@@ -2505,7 +2546,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setKeyActionType('เบิก')}
+                      onClick={() => {
+                        setKeyActionType('เบิก');
+                        if (!keyTrackingCode) {
+                          setKeyTrackingCode(generateKeyTrackingCode(date));
+                        }
+                      }}
                       className={`p-3.5 rounded-xl border-2 font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
                         keyActionType === 'เบิก'
                           ? 'border-rose-600 bg-rose-50 text-rose-900 shadow-sm'
@@ -2540,7 +2586,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   <input
                     type="date"
                     value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    onChange={(e) => {
+                      const newD = e.target.value;
+                      setDate(newD);
+                      if (keyActionType === 'เบิก') {
+                        setKeyTrackingCode(generateKeyTrackingCode(newD));
+                      }
+                    }}
                     required
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
                   />
@@ -2674,7 +2726,72 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   />
                 </div>
 
-                {/* 6. หมายเหตุ */}
+                {/* 6. Keys Tracking Code Section (สร้างรหัสติดตาม และบันทึกรหัสติดตาม ลงใน Google sheet เฉพาะเบิกกุญแจ) */}
+                {keyActionType === 'เบิก' ? (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border border-rose-200/90 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-rose-600" />
+                        <span>{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</span>
+                        <span className="text-rose-600">*</span>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={keyTrackingCode}
+                          readOnly
+                          placeholder="LKB2 - 26092701"
+                          required={keyActionType === 'เบิก'}
+                          className="w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-rose-200 focus:outline-hidden text-xs sm:text-sm font-mono font-bold bg-slate-50/90 text-rose-950 tracking-wider shadow-2xs cursor-not-allowed select-all"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(keyTrackingCode);
+                          setKeyTrackingCodeCopied(true);
+                          setTimeout(() => setKeyTrackingCodeCopied(false), 2000);
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy tracking code'}
+                      >
+                        {keyTrackingCodeCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                        <span className="hidden sm:inline">{keyTrackingCodeCopied ? (language === 'th' ? 'คัดลอกแล้ว' : 'Copied') : (language === 'th' ? 'คัดลอก' : 'Copy')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKeyTrackingCode(generateKeyTrackingCode(date))}
+                        className="px-3.5 py-2.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                        title={language === 'th' ? 'สร้างรหัสใหม่' : 'Regenerate code'}
+                      >
+                        <RotateCw className="w-4 h-4" />
+                        <span className="hidden sm:inline">{language === 'th' ? 'รีเฟรช' : 'Refresh'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50/70 border border-amber-200/90 space-y-2">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-700" />
+                      <span>{language === 'th' ? 'รหัสติดตามที่ส่งคืน (อิงตามรหัสติดตามเดิม)' : 'Tracking Code to Return (Referencing Original Code)'}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={keyTrackingCode}
+                      onChange={(e) => setKeyTrackingCode(e.target.value)}
+                      placeholder="เช่น LKB2 - 26092701 (ถ้ามี)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 text-xs sm:text-sm font-mono font-bold bg-white text-slate-900 tracking-wider shadow-2xs"
+                    />
+                  </div>
+                )}
+
+                {/* 7. หมายเหตุ */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-slate-500" />
@@ -2689,7 +2806,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   />
                 </div>
 
-                {/* 7. Live Summary Preview Card */}
+                {/* 8. Live Summary Preview Card */}
                 {(keyNumbers.trim() || personName.trim() || department.trim()) && (
                   <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 text-xs space-y-1.5">
                     <div className="font-bold text-amber-950 flex items-center justify-between">
@@ -2705,6 +2822,12 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       <div><span className="text-slate-500">ผู้ทำรายการ:</span> <span className="font-bold text-slate-900">{personName || '-'}</span></div>
                       <div><span className="text-slate-500">แผนก:</span> <span className="font-medium">{department || '-'}</span></div>
                       <div><span className="text-slate-500">หมายเลขกุญแจ:</span> <span className="font-black text-amber-900">{keyNumbers || '-'}</span></div>
+                      {keyTrackingCode.trim() && (
+                        <div>
+                          <span className="text-slate-500">{language === 'th' ? 'รหัสติดตาม:' : 'Tracking Code:'}</span>{' '}
+                          <span className="font-mono font-bold text-rose-900">{keyTrackingCode}</span>
+                        </div>
+                      )}
                       {keyNote.trim() && <div><span className="text-slate-500">หมายเหตุ:</span> <span className="font-medium">{keyNote}</span></div>}
                     </div>
                   </div>
