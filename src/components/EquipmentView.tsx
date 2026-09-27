@@ -1012,8 +1012,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
               </a>
             )}
 
-            {/* Export CSV - Restricted to Admin & Supervisor */}
-            {canAccessGoogleSheet && (
+            {/* Export CSV - แสดงเฉพาะหัวข้อย่อย อุปกรณ์ทำความสะอาด (ซ่อนสำหรับ น้ำยาปรับผ้านุ่ม, เสื้อกาวน์, กุญแจ, บันไดทรง A) */}
+            {activeSubCategory === 'cleaning' && canAccessGoogleSheet && (
               <button
                 type="button"
                 onClick={handleExportCsv}
