@@ -3642,6 +3642,9 @@ export function convertSoftenerCsvToRecords(csvText: string): EquipmentRecord[] 
 
 /**
  * 2. Convert Gown (เสื้อกาวน์) CSV Rows to EquipmentRecord[]
+ * คอนโซลิเดตข้อมูลตามรหัสติดตาม (tracking code):
+ * เมื่อเบิกอุปกรณ์จะมีรหัสติดตาม และเมื่อส่งคืนให้กล่องนั้นเปลี่ยนเป็นคืน
+ * โดยแสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม (ไม่แสดงการ์ดซ้ำซ้อน)
  */
 export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
   const rows = parseCSV(csvText);
@@ -3655,36 +3658,20 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
     trackingColIdx = 8;
   }
 
-  // 1. First pass: Collect all tracking codes that have already been returned in Google Sheet
-  const returnedTrackingMap = new Map<string, { returnDate?: string; returnTimestamp?: string }>();
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || row.length === 0) continue;
-    const actionRaw = (row[2] || '').trim();
-    const trackingRaw = trackingColIdx >= 0 && row[trackingColIdx] ? row[trackingColIdx].trim() : (row[8] || '').trim();
-    if (actionRaw.includes('คืน') && trackingRaw && trackingRaw !== '-') {
-      const norm = trackingRaw.replace(/[\s\-_]/g, '').toUpperCase();
-      if (norm) {
-        returnedTrackingMap.set(norm, {
-          returnDate: (row[1] || '').trim(),
-          returnTimestamp: (row[0] || '').trim(),
-        });
-      }
-    }
-  }
-
-  const records: EquipmentRecord[] = [];
+  // Map to hold consolidated records keyed by normalized tracking code
+  const gownByTracking = new Map<string, EquipmentRecord>();
+  const recordsWithoutTracking: EquipmentRecord[] = [];
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.every((c) => !c || !c.trim())) continue;
 
-    const timestamp = row[0] || '';
-    const rawDate = row[1] || '';
+    const timestamp = (row[0] || '').trim();
+    const rawDate = (row[1] || '').trim();
     const actionRaw = (row[2] || '').trim() || 'เบิกเสื้อกาวน์';
     const requester = (row[3] || '').trim();
     if (!requester && !row[2] && !row[5] && !row[6] && !row[7]) continue; // Skip blank trailing rows
-    const rawDept = row[4] || '';
+    const rawDept = (row[4] || '').trim();
     const department = normalizeDepartment(rawDept) || 'ฝ่ายผลิต / ทั่วไป';
 
     const qtyL = parseFloat(row[5] || '0') || 0;
@@ -3695,13 +3682,7 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
 
     const isReturn = actionRaw.includes('คืน');
     const actionType = isReturn ? 'คืน' : 'เบิก';
-
-    // Check if this requisition record has already been returned via tracking code in Google Sheet
-    const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
-    const hasBeenReturned = !isReturn && normTracking && returnedTrackingMap.has(normTracking);
-
-    // Status: If it's a return row OR its tracking code has a return record in Google Sheet, status is 'คืนแล้ว'
-    const status = (isReturn || hasBeenReturned) ? 'คืนแล้ว' : 'เบิกแล้ว';
+    const status = isReturn ? 'คืนแล้ว' : 'เบิกแล้ว';
 
     const gownSizes: { size: string; count: number }[] = [];
     const itemsList: EquipmentItemDetail[] = [];
@@ -3729,26 +3710,104 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
       : `เสื้อกาวน์ (${totalQty} ตัว)`;
 
     const date = rawDate.trim() || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
+    const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
 
-    records.push({
-      id: `eq-gown-${i}-${date.replace(/\//g, '')}`,
-      seq: i,
-      subCategory: 'gown',
-      timestamp,
-      date,
-      requesterName: requester || 'ไม่ระบุชื่อ',
-      department,
-      actionType,
-      status,
-      itemSummary,
-      itemsList,
-      totalQuantity: totalQty,
-      gownSizes,
-      trackingCode,
-    });
+    if (!normTracking) {
+      // Historical record without tracking code
+      recordsWithoutTracking.push({
+        id: `eq-gown-${i}-${date.replace(/\//g, '')}`,
+        seq: i,
+        subCategory: 'gown',
+        timestamp,
+        date,
+        requesterName: requester || 'ไม่ระบุชื่อ',
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: totalQty,
+        gownSizes,
+      });
+      continue;
+    }
+
+    // Record WITH tracking code: consolidate into 1 box showing the latest status info
+    if (!gownByTracking.has(normTracking)) {
+      gownByTracking.set(normTracking, {
+        id: `eq-gown-track-${normTracking}`,
+        seq: i,
+        subCategory: 'gown',
+        timestamp,
+        date,
+        requesterName: requester || 'ไม่ระบุชื่อ',
+        department,
+        actionType,
+        status,
+        itemSummary,
+        itemsList,
+        totalQuantity: totalQty,
+        gownSizes,
+        trackingCode,
+        borrowDate: !isReturn ? date : undefined,
+        borrowerName: !isReturn ? requester : undefined,
+        returnDate: isReturn ? date : undefined,
+        returnerName: isReturn ? requester : undefined,
+      });
+    } else {
+      const existing = gownByTracking.get(normTracking)!;
+
+      if (isReturn) {
+        // Return row: update box to 'คืน' and status 'คืนแล้ว', displaying latest status information
+        existing.actionType = 'คืน';
+        existing.status = 'คืนแล้ว';
+        existing.date = date || existing.date; // Latest date
+        existing.timestamp = timestamp || existing.timestamp; // Latest timestamp
+        existing.returnDate = date;
+        existing.returnerName = requester || existing.returnerName;
+        if (requester) {
+          existing.requesterName = requester;
+        }
+        if (department) {
+          existing.department = department;
+        }
+        // If return row has size counts specified, update; otherwise preserve original borrow sizes
+        if (qtyL > 0 || qtyXL > 0 || qty2XL > 0) {
+          existing.gownSizes = gownSizes;
+          existing.itemsList = itemsList;
+          existing.totalQuantity = totalQty;
+          existing.itemSummary = itemSummary;
+        }
+        existing.seq = Math.max(existing.seq, i);
+      } else {
+        // Additional requisition row
+        if (existing.actionType !== 'คืน') {
+          existing.date = date || existing.date;
+          existing.timestamp = timestamp || existing.timestamp;
+          existing.requesterName = requester || existing.requesterName;
+          existing.department = department || existing.department;
+          existing.gownSizes = gownSizes;
+          existing.itemsList = itemsList;
+          existing.totalQuantity = totalQty;
+          existing.itemSummary = itemSummary;
+          existing.seq = Math.max(existing.seq, i);
+        } else {
+          // If already marked returned, capture borrow metadata if missing
+          existing.borrowDate = existing.borrowDate || date;
+          existing.borrowerName = existing.borrowerName || requester;
+          if ((!existing.gownSizes || existing.gownSizes.length === 0) && gownSizes.length > 0) {
+            existing.gownSizes = gownSizes;
+            existing.itemsList = itemsList;
+            existing.totalQuantity = totalQty;
+            existing.itemSummary = itemSummary;
+          }
+        }
+      }
+    }
   }
 
-  return records.reverse();
+  const allRecords = [...recordsWithoutTracking, ...Array.from(gownByTracking.values())];
+  return allRecords.sort((a, b) => b.seq - a.seq);
 }
 
 /**

@@ -117,6 +117,11 @@ export interface EquipmentRecord {
   gownSizes?: { size: string; count: number }[]; // ขนาดเสื้อกาวน์ L, XL, 2XL
   trackingCode?: string; // รหัสติดตาม (เฉพาะเบิกเสื้อกาวน์)
   note?: string; // หมายเหตุ / อื่นๆ
+  returnDate?: string; // วันที่ส่งคืน
+  returnTimestamp?: string; // เวลาที่ส่งคืน
+  borrowDate?: string; // วันที่เบิกเดิม
+  borrowerName?: string; // ชื่อผู้เบิกเดิม
+  returnerName?: string; // ชื่อผู้ส่งคืน
 }
 
 export type AnnouncementStatus = 'active' | 'upcoming' | 'expired';

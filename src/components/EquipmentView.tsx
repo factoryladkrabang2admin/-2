@@ -279,22 +279,37 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   };
 
   const handleReturnGownSuccess = (returnedRecord: EquipmentRecord, trackingCode: string) => {
-    // 1. อัปเดตสถานะของรายการที่คืนเป็น 'คืนแล้ว' ใน state ทันที
-    setRecords((prev) =>
-      prev.map((r) => {
+    // 1. อัปเดตสถานะของรายการที่คืนเป็น 'คืนแล้ว' และ actionType เป็น 'คืน' ใน state ทันที
+    const normCode = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+    const now = new Date();
+    const returnDateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+
+    setRecords((prev) => {
+      let updated = false;
+      const nextRecords: EquipmentRecord[] = [];
+      for (const r of prev) {
         const isTarget = r.id === returnedRecord.id;
-        const normCode = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
         const normRCode = r.trackingCode ? r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
         const isTrackingMatch = normCode && normRCode && normCode === normRCode;
         if (isTarget || isTrackingMatch) {
-          return {
-            ...r,
-            status: 'คืนแล้ว',
-          };
+          if (!updated) {
+            updated = true;
+            nextRecords.push({
+              ...r,
+              actionType: 'คืน',
+              status: 'คืนแล้ว',
+              date: returnDateStr,
+              returnDate: returnDateStr,
+              returnerName: returnedRecord.requesterName || r.requesterName,
+            });
+          }
+          // ละเว้นกล่องซ้ำ เพื่อให้แสดงกล่องเดียวตามสถานะล่าสุด
+        } else {
+          nextRecords.push(r);
         }
-        return r;
-      })
-    );
+      }
+      return nextRecords;
+    });
 
     // 2. แสดง Notification สำเร็จ
     setReturnSuccessNotification({
@@ -526,7 +541,39 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   // Filtered Records
   const filteredRecords = useMemo(() => {
-    return records.filter((r) => {
+    // หัวข้อย่อยเสื้อกาวน์: รวมกล่องตามรหัสติดตาม โดยแสดงเฉพาะกล่องข้อมูลสถานะล่าสุด
+    let baseRecords = records;
+    if (activeSubCategory === 'gown') {
+      const trackingMap = new Map<string, EquipmentRecord>();
+      const nonTrackingList: EquipmentRecord[] = [];
+
+      for (const r of records) {
+        if (!r.trackingCode) {
+          nonTrackingList.push(r);
+        } else {
+          const norm = r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
+          if (!trackingMap.has(norm)) {
+            trackingMap.set(norm, r);
+          } else {
+            const current = trackingMap.get(norm)!;
+            const isRReturn = r.actionType === 'คืน' || r.status.includes('คืน');
+            const isCurReturn = current.actionType === 'คืน' || current.status.includes('คืน');
+
+            // หากรายการใหม่เป็นคืน และรายการเดิมไม่ใช่ ให้ใช้รายการคืนที่เป็นสถานะล่าสุด
+            if (isRReturn && !isCurReturn) {
+              trackingMap.set(norm, r);
+            } else if (isRReturn === isCurReturn && (r.seq || 0) > (current.seq || 0)) {
+              trackingMap.set(norm, r);
+            }
+          }
+        }
+      }
+      baseRecords = [...nonTrackingList, ...Array.from(trackingMap.values())].sort(
+        (a, b) => (b.seq || 0) - (a.seq || 0)
+      );
+    }
+
+    return baseRecords.filter((r) => {
       // 1. Text Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -963,7 +1010,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
         {/* Integrated Metric KPI Cards Row */}
         <div className={`relative z-10 grid gap-3 sm:gap-4 pt-4 border-t border-rose-200/60 ${
-          isConsumable ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
+          isConsumable || activeSubCategory === 'gown' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
         }`}>
           {/* Card 1: ทั้งหมด */}
           <div 
@@ -984,8 +1031,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <span className="text-[11px] text-rose-800/80">{language === 'th' ? 'บันทึกสะสมทั้งหมด' : 'All recorded logs'}</span>
           </div>
 
-          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนเฉพาะหัวข้อย่อยที่มีลักษณะเบิกใช้อย่างเดียว) */}
-          {!isConsumable && (
+          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนสำหรับหัวข้อย่อยเบิกใช้อย่างเดียว และเสื้อกาวน์) */}
+          {!isConsumable && activeSubCategory !== 'gown' && (
             <>
               {/* Card 2: รายการเบิก / ยืม */}
               <div 

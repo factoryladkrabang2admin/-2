@@ -128,8 +128,12 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
                 <Calendar className="w-4 h-4 text-orange-600" />
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-slate-500">{language === 'th' ? 'วันที่บันทึก' : 'Date'}</p>
-                <p className="font-bold text-slate-800">{record.date || '-'}</p>
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {isReturn
+                    ? (language === 'th' ? 'วันที่ส่งคืน (ล่าสุด)' : 'Latest Return Date')
+                    : (language === 'th' ? 'วันที่บันทึก' : 'Date')}
+                </p>
+                <p className="font-bold text-slate-800">{record.returnDate || record.date || '-'}</p>
               </div>
             </div>
 
@@ -138,8 +142,12 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
                 <User className="w-4 h-4 text-orange-600" />
               </div>
               <div>
-                <p className="text-[11px] font-semibold text-slate-500">{language === 'th' ? 'ผู้เบิก / ผู้ยืม' : 'Requester / Borrower'}</p>
-                <p className="font-bold text-slate-800">{record.requesterName || '-'}</p>
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {isReturn
+                    ? (language === 'th' ? 'ผู้ส่งคืน' : 'Returner')
+                    : (language === 'th' ? 'ผู้เบิก / ผู้ยืม' : 'Requester / Borrower')}
+                </p>
+                <p className="font-bold text-slate-800">{record.returnerName || record.requesterName || '-'}</p>
               </div>
             </div>
 
@@ -171,12 +179,30 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           {record.subCategory === 'gown' && record.trackingCode && (
             <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-rose-50/60 border border-rose-200/90 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs">
+                <div className="w-8 h-8 rounded-xl bg-white border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs shrink-0">
                   <Tag className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-semibold text-rose-900/80">{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</p>
+                    <span className={`px-2 py-0.5 rounded-full text-2xs font-bold ${
+                      isReturn
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-amber-100 text-amber-900 border border-amber-200'
+                    }`}>
+                      {isReturn
+                        ? (language === 'th' ? 'สถานะ: คืนแล้ว' : 'Status: Returned')
+                        : (language === 'th' ? 'สถานะ: เบิกแล้ว' : 'Status: Borrowed')}
+                    </span>
+                  </div>
                   <p className="font-mono font-black text-rose-950 text-sm tracking-wide">{record.trackingCode}</p>
+                  {isReturn && record.borrowDate && (
+                    <p className="text-2xs text-slate-500 mt-0.5">
+                      {language === 'th'
+                        ? `เบิกเมื่อ: ${record.borrowDate} • ส่งคืน: ${record.returnDate || record.date}`
+                        : `Borrowed: ${record.borrowDate} • Returned: ${record.returnDate || record.date}`}
+                    </p>
+                  )}
                 </div>
               </div>
               <button
@@ -186,7 +212,7 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
                     navigator.clipboard.writeText(record.trackingCode);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
                 title={language === 'th' ? 'คัดลอกรหัสติดตาม' : 'Copy'}
               >
                 <Copy className="w-3.5 h-3.5" />

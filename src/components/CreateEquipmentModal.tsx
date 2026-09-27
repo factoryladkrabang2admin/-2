@@ -2300,13 +2300,13 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   </div>
                 </div>
 
-                {/* 5. Gown Tracking Code Section (สร้างรหัสติดตาม และบันทึกรหัสติดตาม ลงใน Google sheet เฉพาะเบิกเสื้อกาวน์) */}
+                {/* 5. Gown Tracking Code Section (บันทึกรหัสติดตาม ลงใน Google sheet เฉพาะเบิกเสื้อกาวน์) */}
                 {actionType === 'เบิกเสื้อกาวน์' ? (
                   <div className="p-4 rounded-xl bg-gradient-to-r from-rose-50 via-red-50 to-amber-50 border border-rose-200/90 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                         <Tag className="w-3.5 h-3.5 text-rose-600" />
-                        <span>{language === 'th' ? 'รหัสติดตาม (สร้างอัตโนมัติเฉพาะเบิกเสื้อกาวน์)' : 'Tracking Code (Gown Requisition)'}</span>
+                        <span>{language === 'th' ? 'รหัสติดตาม' : 'Tracking Code'}</span>
                         <span className="text-rose-600">*</span>
                       </label>
                     </div>
@@ -2316,11 +2316,14 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                         <input
                           type="text"
                           value={gownTrackingCode}
-                          onChange={(e) => setGownTrackingCode(e.target.value)}
+                          readOnly
                           placeholder="LKB2 - 26092601"
                           required={actionType === 'เบิกเสื้อกาวน์'}
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-rose-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm font-mono font-bold bg-white text-rose-950 tracking-wider shadow-2xs"
+                          className="w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-rose-200 focus:outline-hidden text-xs sm:text-sm font-mono font-bold bg-slate-50/90 text-rose-950 tracking-wider shadow-2xs cursor-not-allowed select-all"
                         />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -2345,12 +2348,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                         <span className="hidden sm:inline">{language === 'th' ? 'รีเฟรช' : 'Refresh'}</span>
                       </button>
                     </div>
-
-                    <p className="text-2xs text-rose-800/90 leading-relaxed font-medium">
-                      {language === 'th'
-                        ? '💡 ระบบจะสร้างรหัสติดตามอัตโนมัติ (เฉพาะการเบิกเสื้อกาวน์เท่านั้น)'
-                        : '💡 Tracking code will be auto-generated upon gown requisition.'}
-                    </p>
                   </div>
                 ) : (
                   <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50/70 border border-amber-200/90 space-y-2">
