@@ -96,17 +96,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
-  // หัวข้อย่อยเสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
+  // หัวข้อย่อยอุปกรณ์ทำความสะอาด, เสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
   useEffect(() => {
-    if (activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
+    if (activeSubCategory === 'cleaning' || activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
       setViewMode('grid');
     }
   }, [activeSubCategory]);
 
-  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown/keys/ladder, and on mobile/tablet < 1024px)
+  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for cleaning/gown/keys/ladder, and on mobile/tablet < 1024px)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
     const initialCategory = canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
-    if (initialCategory === 'gown' || initialCategory === 'keys' || initialCategory === 'ladder') {
+    if (initialCategory === 'cleaning' || initialCategory === 'gown' || initialCategory === 'keys' || initialCategory === 'ladder') {
       return 'grid';
     }
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -456,8 +456,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-    // หัวข้อย่อยเสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
-    if (activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
+    // หัวข้อย่อยอุปกรณ์ทำความสะอาด, เสื้อกาวน์, กุญแจ และบันไดทรง A ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
+    if (activeSubCategory === 'cleaning' || activeSubCategory === 'gown' || activeSubCategory === 'keys' || activeSubCategory === 'ladder') {
       setViewMode('grid');
     }
     loadData(activeSubCategory, false, false);
@@ -1097,7 +1097,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 type="button"
                 onClick={() => {
                   setActiveSubCategory(tab.id);
-                  if (tab.id === 'gown' || tab.id === 'keys' || tab.id === 'ladder') {
+                  if (tab.id === 'cleaning' || tab.id === 'gown' || tab.id === 'keys' || tab.id === 'ladder') {
                     setViewMode('grid');
                   }
                   if ((tab.id === 'cleaning' || tab.id === 'softener') && selectedActionType === 'คืน') {
