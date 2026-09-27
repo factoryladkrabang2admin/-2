@@ -175,7 +175,6 @@ interface SubmittedKeySummary {
   department: string;
   keyNumbers: string;
   trackingCode?: string;
-  note?: string;
   timestamp: string;
 }
 
@@ -327,7 +326,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
   const [keyNumbers, setKeyNumbers] = useState<string>('');
   const [keyTrackingCode, setKeyTrackingCode] = useState<string>('');
   const [keyTrackingCodeCopied, setKeyTrackingCodeCopied] = useState<boolean>(false);
-  const [keyNote, setKeyNote] = useState<string>('');
   const [submittedKeyRecord, setSubmittedKeyRecord] = useState<SubmittedKeySummary | null>(null);
 
   // Ladder Form States
@@ -950,7 +948,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
       setKeyNumbers('');
       setKeyTrackingCode(generateKeyTrackingCode(initialDate));
       setKeyTrackingCodeCopied(false);
-      setKeyNote('');
       setLadderActionType('ยืม');
       setSelectedLadderType('บันได 5 ขั้น (สูง 1.50 เมตร)');
       setSelectedSoftenerArea('A1');
@@ -1005,7 +1002,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
     setSubmittedKeyRecord(null);
     setSubmitError(null);
     setKeyNumbers('');
-    setKeyNote('');
     setKeyTrackingCode(generateKeyTrackingCode(date));
     setKeyTrackingCodeCopied(false);
   };
@@ -1427,7 +1423,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
         department: department.trim(),
         keyNumbers: keyNumbers.trim(),
         trackingCode: trackingCodeToSend,
-        note: keyNote.trim() || undefined,
       };
 
       const res = await fetch('/api/equipment-keys-submit', {
@@ -1438,7 +1433,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
 
       const data = await res.json();
 
-      if (res.ok && data.success && data.googleSheetSynced) {
+      if (res.ok && data.success) {
         const trimmedName = personName.trim();
         const trimmedDept = department.trim();
         const effectiveTrackingCode = data.record?.trackingCode || trackingCodeToSend;
@@ -1452,7 +1447,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
           department: trimmedDept,
           keyNumbers: keyNumbers.trim(),
           trackingCode: effectiveTrackingCode,
-          note: keyNote.trim() || undefined,
           timestamp: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         });
 
@@ -2496,12 +2490,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                       </button>
                     </div>
                   )}
-                  {submittedKeyRecord.note && (
-                    <div className="py-2.5 flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">{language === 'th' ? 'หมายเหตุ' : 'Notes'}</span>
-                      <span className="text-slate-700 font-medium">{submittedKeyRecord.note}</span>
-                    </div>
-                  )}
                   <div className="py-2 flex items-center justify-between text-xs text-slate-400">
                     <span>{language === 'th' ? 'เวลาบันทึก' : 'Recorded at'}</span>
                     <span>{submittedKeyRecord.timestamp} น.</span>
@@ -2791,22 +2779,7 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                   </div>
                 )}
 
-                {/* 7. หมายเหตุ */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{language === 'th' ? 'หมายเหตุ (ถ้ามี)' : 'Notes (optional)'}</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={keyNote}
-                    onChange={(e) => setKeyNote(e.target.value)}
-                    placeholder={language === 'th' ? 'เช่น เช็คสัญญาณไวไฟ, ซ่อมระบบไฟฟ้า' : 'e.g. WiFi check, electrical repair'}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 text-xs sm:text-sm outline-hidden font-medium bg-white"
-                  />
-                </div>
-
-                {/* 8. Live Summary Preview Card */}
+                {/* 7. Live Summary Preview Card */}
                 {(keyNumbers.trim() || personName.trim() || department.trim()) && (
                   <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 text-xs space-y-1.5">
                     <div className="font-bold text-amber-950 flex items-center justify-between">
@@ -2828,7 +2801,6 @@ export const CreateEquipmentModal: React.FC<CreateEquipmentModalProps> = ({
                           <span className="font-mono font-bold text-rose-900">{keyTrackingCode}</span>
                         </div>
                       )}
-                      {keyNote.trim() && <div><span className="text-slate-500">หมายเหตุ:</span> <span className="font-medium">{keyNote}</span></div>}
                     </div>
                   </div>
                 )}

@@ -58,6 +58,7 @@ import { EquipmentDetailModal } from './EquipmentDetailModal';
 import { EquipmentAnalyticsModal } from './EquipmentAnalyticsModal';
 import { CreateEquipmentModal } from './CreateEquipmentModal';
 import { ReturnGownModal } from './ReturnGownModal';
+import { ReturnKeyModal } from './ReturnKeyModal';
 
 const SUB_CATEGORY_STORAGE_PREFIX = 'proworkflow_equipment_cache_';
 const TABLE_ITEMS_PER_PAGE = 20;
@@ -94,17 +95,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Check if current category is a consumable item (เบิกอย่างเดียว ไม่มีคืน)
   const isConsumable = activeSubCategory === 'cleaning' || activeSubCategory === 'softener';
 
-  // หัวข้อย่อยเสื้อกาวน์ ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
+  // หัวข้อย่อยเสื้อกาวน์ และ กุญแจ ตั้งค่ามุมมองการ์ดเป็นค่าเริ่มต้น
   useEffect(() => {
-    if (activeSubCategory === 'gown') {
+    if (activeSubCategory === 'gown' || activeSubCategory === 'keys') {
       setViewMode('grid');
     }
   }, [activeSubCategory]);
 
-  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown, and on mobile/tablet < 1024px)
+  // View mode: 'table' | 'grid' | 'board' (Default to 'grid' for gown/keys, and on mobile/tablet < 1024px)
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'board'>(() => {
     const initialCategory = canAccessRestrictedEquipment(currentUser, isAuthenticated) ? 'cleaning' : 'gown';
-    if (initialCategory === 'gown') {
+    if (initialCategory === 'gown' || initialCategory === 'keys') {
       return 'grid';
     }
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -194,6 +195,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   // Gown Return Modal States (หัวข้อย่อยเสื้อกาวน์ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม)
   const [returnGownRecord, setReturnGownRecord] = useState<EquipmentRecord | null>(null);
   const [isReturnGownModalOpen, setIsReturnGownModalOpen] = useState<boolean>(false);
+  // Key Return Modal States (หัวข้อย่อยกุญแจ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม)
+  const [returnKeyRecord, setReturnKeyRecord] = useState<EquipmentRecord | null>(null);
+  const [isReturnKeyModalOpen, setIsReturnKeyModalOpen] = useState<boolean>(false);
   const [returnSuccessNotification, setReturnSuccessNotification] = useState<{ message: string; trackingCode?: string } | null>(null);
 
   const canAccessGoogleSheet = isUserAdminOrSupervisor(currentUser, isAuthenticated);
@@ -217,9 +221,9 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
       setIsLoading(true);
     }
 
-    // 1. Try local storage cache first (only on initial non-background, non-force, non-gown load)
-    const isGown = sub === 'gown';
-    if (!force && !isGown && !isBackground) {
+    // 1. Try local storage cache first (only on initial non-background, non-force, non-gown/keys load)
+    const isTrackedCategory = sub === 'gown' || sub === 'keys';
+    if (!force && !isTrackedCategory && !isBackground) {
       try {
         const cached = localStorage.getItem(`${SUB_CATEGORY_STORAGE_PREFIX}${sub}`);
         if (cached) {
@@ -328,10 +332,69 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     }, 1200);
   };
 
+  const handleOpenReturnKeyModal = (record: EquipmentRecord) => {
+    setReturnKeyRecord(record);
+    setIsReturnKeyModalOpen(true);
+  };
+
+  const handleReturnKeySuccess = (returnedRecord: EquipmentRecord, trackingCode: string) => {
+    // 1. อัปเดตสถานะของรายการกุญแจที่คืนเป็น 'คืนแล้ว' และ actionType เป็น 'คืน' ใน state ทันที (แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม)
+    const normCode = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+    const now = new Date();
+    const returnDateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+
+    setRecords((prev) => {
+      let updated = false;
+      const nextRecords: EquipmentRecord[] = [];
+      for (const r of prev) {
+        const isTarget = r.id === returnedRecord.id;
+        const normRCode = r.trackingCode ? r.trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
+        const isTrackingMatch = normCode && normRCode && normCode === normRCode;
+        if (isTarget || isTrackingMatch) {
+          if (!updated) {
+            updated = true;
+            nextRecords.push({
+              ...r,
+              actionType: 'คืน',
+              status: 'คืนแล้ว',
+              date: returnDateStr,
+              returnDate: returnDateStr,
+              returnerName: returnedRecord.requesterName || r.requesterName,
+              requesterName: returnedRecord.requesterName || r.requesterName,
+              department: returnedRecord.department || r.department,
+              keyNumbers: returnedRecord.keyNumbers || r.keyNumbers,
+              itemSummary: returnedRecord.itemSummary || r.itemSummary,
+            });
+          }
+          // ละเว้นกล่องซ้ำ เพื่อให้แสดงกล่องเดียวตามสถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม
+        } else {
+          nextRecords.push(r);
+        }
+      }
+      return nextRecords;
+    });
+
+    // 2. แสดง Notification สำเร็จ
+    setReturnSuccessNotification({
+      message: language === 'th'
+        ? `บันทึกการส่งคืนกุญแจ ${trackingCode ? `(รหัส ${trackingCode})` : ''} ลงใน Google Sheet และเปลี่ยนสถานะเป็นคืนแล้วเรียบร้อย`
+        : `Key return recorded to Google Sheet and status changed to Returned!`,
+      trackingCode,
+    });
+    setTimeout(() => {
+      setReturnSuccessNotification(null);
+    }, 6000);
+
+    // 3. โหลดข้อมูลสดจาก Google Sheet เพื่อซิงค์แถวที่บันทึกล่าสุด
+    setTimeout(() => {
+      loadData('keys', true);
+    }, 1200);
+  };
+
   useEffect(() => {
     setCurrentPage(1);
-    // หัวข้อย่อยเสื้อกาวน์ ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
-    if (activeSubCategory === 'gown') {
+    // หัวข้อย่อยเสื้อกาวน์ และ กุญแจ ตั้งค่ามุมมองการ์ด (grid) เป็นค่าเริ่มต้น
+    if (activeSubCategory === 'gown' || activeSubCategory === 'keys') {
       setViewMode('grid');
     }
     loadData(activeSubCategory, false, false);
@@ -971,7 +1034,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                 type="button"
                 onClick={() => {
                   setActiveSubCategory(tab.id);
-                  if (tab.id === 'gown') {
+                  if (tab.id === 'gown' || tab.id === 'keys') {
                     setViewMode('grid');
                   }
                   if ((tab.id === 'cleaning' || tab.id === 'softener') && selectedActionType === 'คืน') {
@@ -1010,7 +1073,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
         {/* Integrated Metric KPI Cards Row */}
         <div className={`relative z-10 grid gap-3 sm:gap-4 pt-4 border-t border-rose-200/60 ${
-          isConsumable || activeSubCategory === 'gown' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
+          isConsumable || activeSubCategory === 'gown' || activeSubCategory === 'keys' ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
         }`}>
           {/* Card 1: ทั้งหมด */}
           <div 
@@ -1031,8 +1094,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <span className="text-[11px] text-rose-800/80">{language === 'th' ? 'บันทึกสะสมทั้งหมด' : 'All recorded logs'}</span>
           </div>
 
-          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนสำหรับหัวข้อย่อยเบิกใช้อย่างเดียว และเสื้อกาวน์) */}
-          {!isConsumable && activeSubCategory !== 'gown' && (
+          {/* Cards 2 & 3: เบิก / ยืม and คืนแล้ว (ซ่อนสำหรับหัวข้อย่อยเบิกใช้อย่างเดียว, เสื้อกาวน์ และกุญแจ) */}
+          {!isConsumable && activeSubCategory !== 'gown' && activeSubCategory !== 'keys' && (
             <>
               {/* Card 2: รายการเบิก / ยืม */}
               <div 
@@ -1311,11 +1374,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                               </span>
                             </td>
                           )}
-                          <td className="py-3.5 px-4 max-w-xs truncate">
+                           <td className="py-3.5 px-4 max-w-xs truncate">
                             <span className="font-semibold text-slate-800 group-hover:text-orange-700 transition-colors">
                               {r.itemSummary}
                             </span>
-                            {r.note && (
+                            {r.note && r.subCategory !== 'keys' && (
                               <p className="text-[11px] text-slate-400 truncate mt-0.5">
                                 หมายเหตุ: {r.note}
                               </p>
@@ -1345,6 +1408,22 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                   }}
                                   className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                   title={language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                                </button>
+                              )}
+
+                              {/* Keys Return Button (หัวข้อย่อยกุญแจ เพิ่มปุ่ม ส่งคืน และบันทึกลงใน Google sheet อิงตามรหัสติดตาม) */}
+                              {activeSubCategory === 'keys' && !isReturn && r.status !== 'คืนแล้ว' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReturnKeyModal(r);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                  title={language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}
                                 >
                                   <RotateCcw className="w-3 h-3" />
                                   <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
@@ -1428,6 +1507,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                             <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
                           </button>
                         )}
+                        {activeSubCategory === 'keys' && !isReturn && r.status !== 'คืนแล้ว' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReturnKeyModal(r);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-2xs flex items-center gap-1 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="text-orange-700 font-bold text-xs hover:underline group-hover:text-orange-900"
@@ -1501,6 +1594,20 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                                 <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
                               </button>
                             )}
+                            {activeSubCategory === 'keys' && r.status !== 'คืนแล้ว' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReturnKeyModal(r);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-2xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                title={language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>{language === 'th' ? 'ส่งคืน' : 'Return'}</span>
+                              </button>
+                            )}
                             <span className="text-slate-400">{r.department}</span>
                           </div>
                         </div>
@@ -1535,6 +1642,14 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                             <span className="font-bold text-emerald-600">{r.totalQuantity || 1} ชิ้น</span>
                           </div>
                           <p className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2">{r.itemSummary}</p>
+                          {r.trackingCode && (
+                            <div>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold text-[11px] shadow-2xs">
+                                <Tag className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                {r.trackingCode}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
                             <span className="font-medium">{r.requesterName}</span>
                             <span className="text-slate-400">{r.department}</span>
@@ -1588,6 +1703,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         onClose={() => setSelectedRecord(null)}
         record={selectedRecord}
         onReturnGown={handleOpenReturnGownModal}
+        onReturnKey={handleOpenReturnKeyModal}
       />
 
       {/* Analytics Modal */}
@@ -1884,6 +2000,17 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
         }}
         record={returnGownRecord}
         onReturnSuccess={handleReturnGownSuccess}
+      />
+
+      {/* 7. Modal ส่งคืนกุญแจ อิงตามรหัสติดตาม บันทึกลง Google Sheet */}
+      <ReturnKeyModal
+        isOpen={isReturnKeyModalOpen}
+        onClose={() => {
+          setIsReturnKeyModalOpen(false);
+          setReturnKeyRecord(null);
+        }}
+        record={returnKeyRecord}
+        onReturnSuccess={handleReturnKeySuccess}
       />
     </div>
   );

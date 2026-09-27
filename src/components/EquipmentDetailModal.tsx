@@ -26,6 +26,7 @@ interface EquipmentDetailModalProps {
   onClose: () => void;
   record: EquipmentRecord | null;
   onReturnGown?: (record: EquipmentRecord) => void;
+  onReturnKey?: (record: EquipmentRecord) => void;
 }
 
 export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
@@ -33,6 +34,7 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
   onClose,
   record,
   onReturnGown,
+  onReturnKey,
 }) => {
   const { language } = useLanguage();
 
@@ -329,7 +331,7 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           )}
 
           {/* Additional Notes */}
-          {record.note && (
+          {record.note && record.subCategory !== 'keys' && (
             <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/80 text-xs">
               <span className="font-bold text-amber-950 block mb-0.5">{language === 'th' ? 'หมายเหตุเพิ่มเติม:' : 'Note:'}</span>
               <p className="text-amber-900">{record.note}</p>
@@ -361,6 +363,19 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{language === 'th' ? 'ส่งคืนเสื้อกาวน์' : 'Return Gown'}</span>
+              </button>
+            )}
+            {record.subCategory === 'keys' && record.actionType === 'เบิก' && record.status !== 'คืนแล้ว' && onReturnKey && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReturnKey(record);
+                  onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-102"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{language === 'th' ? 'ส่งคืนกุญแจ' : 'Return Key'}</span>
               </button>
             )}
             <button

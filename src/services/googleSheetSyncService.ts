@@ -3812,13 +3812,52 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
 
 /**
  * 3. Convert Keys (กุญแจ) CSV Rows to EquipmentRecord[]
+ * คอนโซลิเดตข้อมูลตามรหัสติดตาม (tracking code):
+ * เมื่อเบิกอุปกรณ์จะมีรหัสติดตาม และเมื่อส่งคืนให้กล่องนั้นเปลี่ยนเป็นคืน
+ * โดยแสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม (ไม่แสดงการ์ดซ้ำซ้อน)
  */
 export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
   const rows = parseCSV(csvText);
   if (!rows || rows.length < 2) return [];
 
+  const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+  let trackingColIdx = header.findIndex(
+    (h) => h.includes('รหัสติดตาม') || h.includes('หมายเลขติดตาม') || h.includes('tracking') || (h.includes('รหัส') && !h.includes('พัสดุ'))
+  );
+  if (trackingColIdx === -1 && rows[0].length > 6) {
+    trackingColIdx = 6;
+  }
+
   const keysByTracking = new Map<string, EquipmentRecord>();
   const recordsWithoutTracking: EquipmentRecord[] = [];
+
+  // Helper to build deterministic tracking code for borrow rows that didn't have one stored in sheet
+  const buildDeterministicKeyTrackingCode = (dateStr: string, rowIdx: number): string => {
+    let yy = '26';
+    let mm = '01';
+    let dd = '01';
+    const clean = (dateStr || '').trim();
+    if (clean.includes('/')) {
+      const p = clean.split('/');
+      if (p.length >= 3) {
+        dd = p[0].padStart(2, '0');
+        mm = p[1].padStart(2, '0');
+        let yNum = parseInt(p[2], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+      }
+    } else if (clean.includes('-')) {
+      const p = clean.split('-');
+      if (p.length >= 3) {
+        let yNum = parseInt(p[0], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+        mm = p[1].padStart(2, '0');
+        dd = p[2].padStart(2, '0');
+      }
+    }
+    return `LKB2 - ${yy}${mm}${dd}${String(rowIdx).padStart(2, '0')}`;
+  };
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
@@ -3831,24 +3870,64 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
     const department = normalizeDepartment(rawDept) || 'แผนกทั่วไป';
     const actionRaw = (row[4] || '').trim() || 'เบิก';
     const keyNumbers = (row[5] || '').trim();
-    const trackingCodeRaw = (row[6] || '').trim();
+    const rawCol6 = trackingColIdx >= 0 && row[trackingColIdx] ? row[trackingColIdx].trim() : (row[6] || '').trim();
+
+    if (! (row[2] || '').trim() && !keyNumbers && !rawCol6) continue;
 
     const isReturn = actionRaw.includes('คืน');
     const actionType = isReturn ? 'คืน' : 'เบิก';
     const status = isReturn ? 'คืนแล้ว' : 'เบิกแล้ว';
+
+    const date = rawDate.trim() || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
+
+    // เมื่อเบิกอุปกรณ์จะมีรหัสติดตามเสมอ (หากแถวเดิมในชีตยังไม่มี ให้สร้างรหัสติดตามอ้างอิงตามวันที่และลำดับแถว)
+    // และหากเป็นแถวคืนที่ไม่มีรหัสติดตามในชีตเดิม ให้จับคู่กับรายการเบิกหมายเลขกุญแจเดียวกันที่ยังไม่ได้คืน
+    let trackingCode: string | undefined =
+      rawCol6 && rawCol6 !== '-' ? rawCol6 : undefined;
+
+    if (!trackingCode) {
+      if (!isReturn) {
+        trackingCode = buildDeterministicKeyTrackingCode(date, i);
+      } else {
+        // ค้นหารายการเบิกที่ยังค้างอยู่ (actionType !== 'คืน') สำหรับกุญแจหมายเลขเดียวกันและผู้เบิกเดียวกัน (หรือกุญแจหมายเลขเดียวกัน)
+        const normKeyNums = keyNumbers.replace(/\s+/g, '').toLowerCase();
+        const normReq = requester.replace(/\s+/g, '').toLowerCase();
+        let matchedTrack: string | undefined;
+
+        for (const [, rec] of keysByTracking.entries()) {
+          if (rec.actionType !== 'คืน') {
+            const recKeys = (rec.keyNumbers || '').replace(/\s+/g, '').toLowerCase();
+            const recReq = (rec.requesterName || '').replace(/\s+/g, '').toLowerCase();
+            if (normKeyNums && recKeys === normKeyNums && recReq === normReq) {
+              matchedTrack = rec.trackingCode;
+            }
+          }
+        }
+        if (!matchedTrack && normKeyNums) {
+          for (const [, rec] of keysByTracking.entries()) {
+            if (rec.actionType !== 'คืน') {
+              const recKeys = (rec.keyNumbers || '').replace(/\s+/g, '').toLowerCase();
+              if (recKeys === normKeyNums) {
+                matchedTrack = rec.trackingCode;
+              }
+            }
+          }
+        }
+        trackingCode = matchedTrack;
+      }
+    }
 
     const keysCount = keyNumbers ? keyNumbers.split(/[,+\/\s]+/).filter(Boolean).length : 1;
     const itemsList: EquipmentItemDetail[] = [
       {
         name: keyNumbers ? `กุญแจหมายเลข #${keyNumbers}` : 'กุญแจห้อง/ตู้',
         quantity: keysCount,
-        note: trackingCodeRaw ? `รหัสติดตาม: ${trackingCodeRaw}` : undefined,
+        note: trackingCode ? `รหัสติดตาม: ${trackingCode}` : undefined,
       },
     ];
 
-    const date = rawDate.trim() || timestamp.split(',')[0].trim() || 'ไม่ระบุวันที่';
     const itemSummary = keyNumbers ? `กุญแจห้อง/อาคาร หมายเลข #${keyNumbers}` : 'กุญแจ';
-    const normTracking = trackingCodeRaw ? trackingCodeRaw.replace(/[\s\-_]/g, '').toUpperCase() : '';
+    const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
 
     if (!normTracking) {
       recordsWithoutTracking.push({
@@ -3865,11 +3944,11 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
         itemsList,
         totalQuantity: keysCount,
         keyNumbers,
-        note: trackingCodeRaw,
       });
       continue;
     }
 
+    // คอนโซลิเดตข้อมูลตามรหัสติดตาม (แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม)
     if (!keysByTracking.has(normTracking)) {
       keysByTracking.set(normTracking, {
         id: `eq-key-track-${normTracking}`,
@@ -3885,8 +3964,7 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
         itemsList,
         totalQuantity: keysCount,
         keyNumbers,
-        trackingCode: trackingCodeRaw,
-        note: trackingCodeRaw,
+        trackingCode,
         borrowDate: !isReturn ? date : undefined,
         borrowerName: !isReturn ? requester : undefined,
         returnDate: isReturn ? date : undefined,
@@ -3895,6 +3973,7 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
     } else {
       const existing = keysByTracking.get(normTracking)!;
       if (isReturn) {
+        // เมื่อส่งคืนให้กล่องนั้นเปลี่ยนเป็นคืน โดยให้แสดงแค่สถานะข้อมูลล่าสุด อ้างอิงตามรหัสติดตาม
         existing.actionType = 'คืน';
         existing.status = 'คืนแล้ว';
         existing.date = date || existing.date;
@@ -3903,7 +3982,12 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
         existing.returnerName = requester || existing.returnerName;
         if (requester) existing.requesterName = requester;
         if (department) existing.department = department;
-        if (keyNumbers) existing.keyNumbers = keyNumbers;
+        if (keyNumbers) {
+          existing.keyNumbers = keyNumbers;
+          existing.itemSummary = itemSummary;
+          existing.itemsList = itemsList;
+          existing.totalQuantity = keysCount;
+        }
         existing.seq = Math.max(existing.seq, i);
       } else {
         if (existing.actionType !== 'คืน') {
@@ -3911,12 +3995,23 @@ export function convertKeysCsvToRecords(csvText: string): EquipmentRecord[] {
           existing.timestamp = timestamp || existing.timestamp;
           existing.requesterName = requester || existing.requesterName;
           existing.department = department || existing.department;
-          if (keyNumbers) existing.keyNumbers = keyNumbers;
+          if (keyNumbers) {
+            existing.keyNumbers = keyNumbers;
+            existing.itemSummary = itemSummary;
+            existing.itemsList = itemsList;
+            existing.totalQuantity = keysCount;
+          }
           existing.seq = Math.max(existing.seq, i);
         } else {
+          // หากสถานะเป็นคืนแล้ว ให้เก็บข้อมูลวันที่เบิกเดิมไว้เป็นประวัติอ้างอิงภายในรายละเอียด
           existing.borrowDate = existing.borrowDate || date;
           existing.borrowerName = existing.borrowerName || requester;
-          if (!existing.keyNumbers && keyNumbers) existing.keyNumbers = keyNumbers;
+          if (!existing.keyNumbers && keyNumbers) {
+            existing.keyNumbers = keyNumbers;
+            existing.itemSummary = itemSummary;
+            existing.itemsList = itemsList;
+            existing.totalQuantity = keysCount;
+          }
         }
       }
     }
