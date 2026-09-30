@@ -2994,7 +2994,19 @@ async function startServer() {
       const endDate = formatToSheetDate(rawEndDate) || "";
 
       // Try Google Apps Script Webhook or Google Form Submission if accessible
-      const webhookUrl = (payload.webhookUrl || serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      let webhookUrl = (payload.webhookUrl || serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      if (!webhookUrl && fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
+        try {
+          const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+            webhookUrl = parsed.webhookUrl.trim();
+            serverAnnouncementWebhookUrl = webhookUrl;
+          }
+        } catch (wReadErr) {
+          console.warn("Could not read webhook from disk:", wReadErr);
+        }
+      }
       let syncedToGoogle = false;
       let driveUploaded = false;
       let resolvedImageUrl = imageUrl;
@@ -3052,7 +3064,16 @@ async function startServer() {
                 resData = null;
               }
 
-              if (resData && (resData.success === true || resData.status === "ok" || resData.driveUploaded || resData.imageUrl || resData.driveUrl)) {
+              const isTextSuccess =
+                text.includes('"success":true') ||
+                text.includes('"status":"ok"') ||
+                text.includes('success') ||
+                text.includes('บันทึก');
+
+              if (
+                (resData && (resData.success === true || resData.status === "ok" || resData.driveUploaded || resData.imageUrl || resData.driveUrl)) ||
+                isTextSuccess
+              ) {
                 syncedToGoogle = true;
                 if (webhookUrl && serverAnnouncementWebhookUrl !== webhookUrl) {
                   serverAnnouncementWebhookUrl = webhookUrl;
@@ -3062,21 +3083,21 @@ async function startServer() {
                     console.warn("Could not auto-persist working webhook:", wErr);
                   }
                 }
-                const driveLink = resData.imageUrl || resData.driveUrl || resData.fileUrl || resData.url;
+                const driveLink = resData?.imageUrl || resData?.driveUrl || resData?.fileUrl || resData?.url;
                 if (driveLink && typeof driveLink === "string" && (driveLink.includes("drive.google.com") || driveLink.includes("docs.google.com") || driveLink.startsWith("http"))) {
                   resolvedImageUrl = driveLink;
                   driveUploaded = true;
-                } else if (resData.fileId || resData.driveFileId) {
+                } else if (resData?.fileId || resData?.driveFileId) {
                   const id = resData.fileId || resData.driveFileId;
                   resolvedImageUrl = `https://drive.google.com/file/d/${id}/view?usp=sharing`;
                   driveUploaded = true;
-                } else if (resData.driveUploaded) {
+                } else if (resData?.driveUploaded) {
                   driveUploaded = true;
                 }
               } else if (!resData) {
-                console.warn("Webhook returned non-JSON content (likely HTML or redirect):", text.slice(0, 150));
+                console.warn("Webhook returned non-JSON content:", text.slice(0, 150));
                 webhookErrorDetails = "Webhook ส่งข้อมูลตอบกลับไม่ใช่ JSON (อาจเป็นหน้าเว็บหรือสิทธิ์การเข้าถึง)";
-              } else if (resData.error) {
+              } else if (resData?.error) {
                 webhookErrorDetails = String(resData.error);
               }
             } catch (parseErr: any) {

@@ -573,6 +573,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       if (result.success && result.announcement) {
         setIsSaveSuccess(true);
         setSubmitError(null);
+        setCreatedItem(result.announcement);
 
         // Remember department for autocomplete memory
         try {
@@ -594,11 +595,18 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           onAnnouncementCreated(result.announcement);
         }
 
-        // Delay closing so the user clearly sees the button change to "บันทึกเรียบร้อย"
-        setTimeout(() => {
-          handleResetForm();
-          onClose();
-        }, 1500);
+        // Auto-copy the formatted Google Form row to clipboard so the user can immediately paste it!
+        if (result.googleFormRowTsv) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(result.googleFormRowTsv);
+              setIsRowCopied(true);
+              setTimeout(() => setIsRowCopied(false), 3000);
+            }
+          } catch {
+            // ignore
+          }
+        }
       } else {
         setSubmitError(result.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
         setIsSaveSuccess(false);
@@ -738,15 +746,29 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
         ].join('\t');
     }
 
-    navigator.clipboard.writeText(rowText);
-    setIsRowCopied(true);
-    setTimeout(() => setIsRowCopied(false), 3000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(rowText);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = rowText;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setIsRowCopied(true);
+      setTimeout(() => setIsRowCopied(false), 3000);
+    } catch {
+      setIsRowCopied(false);
+    }
   };
 
   // 1-Click: Copy row and open Google Sheet in new tab to paste
   const handleOpenSheetAndPaste = (formatOverride?: 'google_form' | 'standard') => {
     handleCopySheetRow(formatOverride);
-    window.open(ANNOUNCEMENTS_SHEET_URL, '_blank', 'noopener,noreferrer');
   };
 
   // Copy Summary text
@@ -865,6 +887,53 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           </div>
         </div>
 
+        {/* Visible Tab Navigation Bar */}
+        <div className="flex items-center gap-2 px-4 sm:px-6 py-2.5 bg-slate-100 border-b border-slate-200 text-xs font-bold overflow-x-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('in-app')}
+            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              activeTab === 'in-app'
+                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>แบบฟอร์มเพิ่มข่าว</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('webhook-setup')}
+            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              activeTab === 'webhook-setup'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ตั้งค่าซิงก์ Google Sheet (Webhook)</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isWebhookConnected ? 'bg-emerald-500' : 'bg-amber-400'
+              }`}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('external-links')}
+            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              activeTab === 'external-links'
+                ? 'bg-white text-purple-800 shadow-xs border border-slate-200 font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-purple-600" />
+            <span>เปิด Google Sheet</span>
+          </button>
+        </div>
+
         {/* Modal Body Content */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
           {/* Main Announcement Form & Result Screen */}
@@ -961,14 +1030,16 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                             ระบบจะคัดลอกแถวข้อมูลลงคลิปบอร์ดและเปิดหน้า Google Sheet ให้ทันที
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSheetAndPaste('google_form')}
+                        <a
+                          href={ANNOUNCEMENTS_SHEET_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => handleCopySheetRow('google_form')}
                           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
                         >
                           <Copy className="w-4 h-4" />
                           <span>คัดลอก & เปิด Sheet</span>
-                        </button>
+                        </a>
                       </div>
                     </div>
                   )}
@@ -1280,15 +1351,30 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                       </button>
 
                       {/* Button 2: Open Google Sheet & Auto-Copy to Paste */}
-                      <button
-                        type="button"
+                      <a
+                        href={ANNOUNCEMENTS_SHEET_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         id="btn-open-sheet-to-paste"
-                        onClick={() => handleOpenSheetAndPaste()}
+                        onClick={() => handleCopySheetRow()}
                         className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer text-center"
                       >
                         <ExternalLink className="w-4 h-4" />
                         <span>เปิด Sheet เพื่อวาง (Ctrl+V)</span>
-                      </button>
+                      </a>
+                    </div>
+
+                    {/* Step-by-Step Instructions Card */}
+                    <div className="bg-emerald-100/70 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 space-y-1">
+                      <strong className="block font-bold flex items-center gap-1.5 text-emerald-900">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>วิธีนำข้อมูลไปวางลง Google Sheet ให้ตรงช่อง 100%:</span>
+                      </strong>
+                      <ol className="list-decimal list-inside text-[11px] text-emerald-800 space-y-1 leading-relaxed">
+                        <li>คลิกปุ่มสีเขียว <strong>&quot;เปิด Sheet เพื่อวาง (Ctrl+V)&quot;</strong> ด้านบน (ระบบคัดลอกแถวข้อมูล 7 คอลัมน์ให้อัตโนมัติ)</li>
+                        <li>ในหน้าต่าง Google Sheet ให้เลื่อนลงไปที่แถวว่างแถวสุดท้าย แล้ว<strong>คลิกที่เซลล์ในคอลัมน์ A</strong></li>
+                        <li>กดแป้น <strong>Ctrl + V</strong> (หรือ Command + V บน Mac) ข้อมูลจะลงช่องครบทั้ง 7 คอลัมน์ทันที</li>
+                      </ol>
                     </div>
 
                     <p className="text-[11px] text-emerald-800/90 leading-relaxed font-sans">
@@ -1750,6 +1836,51 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                       <span>บันทึกข้อมูลข่าวประชาสัมพันธ์เรียบร้อยแล้ว</span>
                     </div>
                   )}
+
+                  {/* Google Sheet Sync Status Banner */}
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs flex items-start gap-3 transition-all ${
+                      isWebhookConnected
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                        : 'bg-blue-50/80 border-blue-200 text-blue-950'
+                    }`}
+                  >
+                    {isWebhookConnected ? (
+                      <>
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-0.5">
+                          <strong className="font-black text-emerald-900 block">
+                            พร้อมซิงก์ข้อมูลเข้า Google Sheet และ Google Drive อัตโนมัติ
+                          </strong>
+                          <span className="text-[11px] text-emerald-700 leading-relaxed block">
+                            ระบบเชื่อมต่อ Webhook เรียบร้อยแล้ว เมื่อกด &quot;บันทึกข้อมูล&quot; ระบบจะส่งแถวข้อมูลเข้า Google Sheet และอัปโหลดรูปภาพเข้า Google Drive ให้อัตโนมัติทันที
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <FileSpreadsheet className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <strong className="font-black text-blue-950">
+                              การบันทึกข้อมูลลง Google Sheet
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('webhook-setup')}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 cursor-pointer transition-all"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <span>ตั้งค่าซิงก์อัตโนมัติ (Webhook)</span>
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-blue-800 leading-relaxed">
+                            เมื่อกด &quot;บันทึกข้อมูล&quot; ระบบจะบันทึกข่าวลงระบบทันที พร้อมเปิดหน้าต่างและมีปุ่ม <strong>&quot;เปิด Sheet เพื่อวาง (Ctrl+V)&quot;</strong> ให้ท่านนำแถวข้อมูลไปวางลง Google Sheet ได้ในคลิกเดียว (คอลัมน์ตรงตามแบบฟอร์ม 100%)
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* Form Action Buttons */}
                   <div className="flex items-center justify-end gap-3 pt-2">
