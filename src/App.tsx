@@ -993,8 +993,7 @@ export default function App() {
                 searchQuery={searchQuery}
                 currentUser={currentUser}
                 isAuthenticated={isAuthenticated}
-                onAnnouncementCreated={(newAnn) => {
-                  setAnnouncements((prev) => [newAnn, ...prev]);
+                onAnnouncementCreated={() => {
                   syncGoogleSheetAnnouncements();
                 }}
                 onAnnouncementDeleted={(deletedItem) => {

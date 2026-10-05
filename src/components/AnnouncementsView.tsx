@@ -24,7 +24,6 @@ import {
   Plus,
   FileText,
   Sparkles,
-  ExternalLink,
   Trash2,
   AlertTriangle
 } from 'lucide-react';
@@ -39,7 +38,6 @@ import {
   sortAnnouncementsLatestFirst, 
   getLocalAnnouncements,
   getAnnouncementsWebhookUrl,
-  ANNOUNCEMENTS_SHEET_URL,
   deleteAnnouncementRecord
 } from '../services/googleSheetSyncService';
 
@@ -127,7 +125,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   const [activeModalAnnouncement, setActiveModalAnnouncement] = useState<AnnouncementItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [localCreatedList, setLocalCreatedList] = useState<AnnouncementItem[]>([]);
   const [itemToDelete, setItemToDelete] = useState<AnnouncementItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   
@@ -149,10 +146,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   }, [currentUser, isAuthenticated]);
 
   const handleAnnouncementCreated = (newItem: AnnouncementItem) => {
-    setLocalCreatedList((prev) => [newItem, ...prev]);
     setToastMessage(`เพิ่มข่าวประชาสัมพันธ์ "${newItem.title}" เรียบร้อยแล้ว`);
     if (onAnnouncementCreated) {
       onAnnouncementCreated(newItem);
+    }
+    if (onRefreshAnnouncements) {
+      onRefreshAnnouncements();
     }
   };
 
@@ -182,20 +181,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
     setCurrentPage(1);
   }, [activeSearch, selectedDepartment, selectedStatus, viewMode]);
 
-  // Merge announcements with live pin status and sort latest first
+  // Map announcements strictly from Google Sheet with live pin status and sort latest first
   const processedAnnouncements = useMemo(() => {
-    // Combine locally created items with incoming announcements, deduplicating by title
-    const combined = [...localCreatedList];
-    const existingTitles = new Set(combined.map((c) => (c.title || '').trim().toLowerCase()));
-    for (const raw of rawAnnouncements) {
-      const normTitle = (raw.title || '').trim().toLowerCase();
-      if (!existingTitles.has(normTitle)) {
-        combined.push(raw);
-        existingTitles.add(normTitle);
-      }
-    }
-
-    const list = combined.map((item) => {
+    const list = rawAnnouncements.map((item) => {
       const pinInfo = realtimeHub.getAnnouncementPinInfo(item);
       return {
         ...item,
@@ -206,7 +194,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
     });
 
     return sortAnnouncementsLatestFirst(list);
-  }, [rawAnnouncements, localCreatedList, pinRevision]);
+  }, [rawAnnouncements, pinRevision]);
 
   // Extract unique departments
   const departments = useMemo(() => {
@@ -301,9 +289,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
     setIsDeleting(true);
     try {
       await deleteAnnouncementRecord(itemToDelete);
-      setLocalCreatedList((prev) =>
-        prev.filter((a) => a.id !== itemToDelete.id && a.title !== itemToDelete.title)
-      );
       setToastMessage(
         language === 'th'
           ? `ลบข่าวประชาสัมพันธ์ "${itemToDelete.title}" เรียบร้อยแล้ว`
@@ -416,21 +401,9 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Add Announcement & Google Sheet Links */}
+          {/* Action Buttons: Admin Controls */}
           {isAdmin && (
             <div className="flex items-center gap-2 self-start sm:self-center">
-              {/* Direct Open Google Sheet Link */}
-              <a
-                href={ANNOUNCEMENTS_SHEET_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="p-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
-                title={language === 'th' ? 'เปิดดู Google Sheet ข่าวประชาสัมพันธ์' : 'Open Announcements Google Sheet'}
-                aria-label={language === 'th' ? 'เปิด Google Sheet' : 'Open Google Sheet'}
-              >
-                <ExternalLink className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              </a>
-
               {/* Add Announcement Button (Icon only) */}
               <button
                 type="button"

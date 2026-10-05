@@ -1015,60 +1015,10 @@ async function startServer() {
           },
         });
       } catch (fetchErr: any) {
-        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
-          const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
-          ];
-          for (const sub of inMemoryAnnouncementSubmissions) {
-            const subDate = new Date(sub.createdAt || Date.now());
-            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
-            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
-            fallbackRows.push([
-              timeStr,
-              sub.title,
-              sub.content || "",
-              sub.department || "",
-              sub.startDate || "",
-              sub.endDate || "",
-              img1,
-              img2,
-              img3,
-            ]);
-          }
-          res.setHeader("Content-Type", "text/csv; charset=utf-8");
-          return res.send(stringifyCsv(fallbackRows));
-        }
         return res.status(500).json({ error: fetchErr.message || "Failed to fetch Google Sheet" });
       }
 
       if (!response.ok) {
-        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
-          const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
-          ];
-          for (const sub of inMemoryAnnouncementSubmissions) {
-            const subDate = new Date(sub.createdAt || Date.now());
-            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
-            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
-            fallbackRows.push([
-              timeStr,
-              sub.title,
-              sub.content || "",
-              sub.department || "",
-              sub.startDate || "",
-              sub.endDate || "",
-              img1,
-              img2,
-              img3,
-            ]);
-          }
-          res.setHeader("Content-Type", "text/csv; charset=utf-8");
-          return res.send(stringifyCsv(fallbackRows));
-        }
 
         if (response.status === 401 || response.status === 403) {
           return res.status(response.status).json({
@@ -1089,103 +1039,24 @@ async function startServer() {
         csvText.includes("accounts.google.com") ||
         csvText.includes("document-root")
       ) {
-        if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
-          const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
-          ];
-          for (const sub of inMemoryAnnouncementSubmissions) {
-            const subTitle = (sub.title || "").trim().toLowerCase();
-            const subId = (sub.id || "").trim().toLowerCase();
-            if (deletedAnnouncementKeys.has(subTitle) || deletedAnnouncementKeys.has(subId)) continue;
-            const subDate = new Date(sub.createdAt || Date.now());
-            const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
-            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
-            fallbackRows.push([
-              timeStr,
-              sub.title,
-              sub.content || "",
-              sub.department || "",
-              sub.startDate || "",
-              sub.endDate || "",
-              img1,
-              img2,
-              img3,
-            ]);
-          }
-          res.setHeader("Content-Type", "text/csv; charset=utf-8");
-          return res.send(stringifyCsv(fallbackRows));
-        }
-
         return res.status(403).json({
           error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์แบบสาธารณะ (กรุณาตั้งค่า 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' ใน Google Sheet)",
           requiresAuth: true,
-          sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit?gid=${gid || "1327805432"}#gid=${gid || "1327805432"}`,
+          sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit?gid=${gid || "1228686844"}#gid=${gid || "1228686844"}`,
         });
       }
 
-      // Announcements sheet enrichment & delete filtering:
-      // Ensure newly submitted announcements are included in the Google Sheet data feed,
-      // and any announcements deleted by admins are excluded.
+      // Announcements sheet: strictly return rows from Google Sheet as requested
+      // ("ข้อมูลที่แสดงให้นำข้อมูลจาก Google sheet เท่านั้น")
       if (isAnnouncementsSheet) {
         try {
           const rows = parseCsv(csvText);
           if (rows.length > 0) {
-            const filteredRows: string[][] = [rows[0]]; // keep header
-            const existingSheetTitles = new Set<string>();
-
-            for (let i = 1; i < rows.length; i++) {
-              const r = rows[i];
-              if (!r || r.length === 0) continue;
-              const title = (r[1] || "").trim();
-              const normTitle = title.toLowerCase();
-              if (normTitle) {
-                existingSheetTitles.add(normTitle);
-              }
-              // Filter out if marked deleted
-              if (deletedAnnouncementKeys.has(normTitle)) {
-                continue;
-              }
-              filteredRows.push(r);
-            }
-
-            // Append active in-memory announcement submissions not yet present in sheet
-            const chronologicalSubs = [...inMemoryAnnouncementSubmissions].reverse();
-            for (const sub of chronologicalSubs) {
-              const subTitle = (sub.title || "").trim();
-              const subId = (sub.id || "").trim();
-              const normSubTitle = subTitle.toLowerCase();
-              const normSubId = subId.toLowerCase();
-
-              if (deletedAnnouncementKeys.has(normSubTitle) || deletedAnnouncementKeys.has(normSubId)) {
-                continue; // was deleted
-              }
-
-              if (!existingSheetTitles.has(normSubTitle)) {
-                existingSheetTitles.add(normSubTitle);
-                const subDate = new Date(sub.createdAt || Date.now());
-                const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
-                const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-                const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-                const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
-                filteredRows.push([
-                  timeStr,
-                  sub.title,
-                  sub.content || "",
-                  sub.department || "",
-                  sub.startDate || "",
-                  sub.endDate || "",
-                  img1,
-                  img2,
-                  img3,
-                ]);
-              }
-            }
-            csvText = stringifyCsv(filteredRows);
+            // Keep rows from Google Sheet clean and formatted
+            csvText = stringifyCsv(rows);
           }
-        } catch (annEnrichErr) {
-          console.warn("Could not enrich announcements CSV:", annEnrichErr);
+        } catch (annErr) {
+          console.warn("Could not parse announcements CSV:", annErr);
         }
       }
 
@@ -1275,12 +1146,12 @@ async function startServer() {
         }
       }
 
-      // Announcements sheet enrichment and deletion filtering
+      // Announcements sheet: strictly return rows from Google Sheet only (plus admin delete filtering)
       if (isAnnouncementsSheet) {
         try {
           let rows = parseCsv(csvText);
           if (rows.length > 0) {
-            // 1. Filter out rows deleted by admin
+            // Filter out rows deleted by admin
             if (deletedAnnouncementKeys.size > 0) {
               const header = rows[0];
               const remaining = rows.slice(1).filter((r) => {
@@ -1289,42 +1160,10 @@ async function startServer() {
               });
               rows = [header, ...remaining];
             }
-
-            // 2. Enrich with newly created announcements from in-memory / saved submissions
-            if (inMemoryAnnouncementSubmissions.length > 0) {
-              const existingTitles = new Set(
-                rows.slice(1).map((r) => normalizeText(r[1] || r[0] || ""))
-              );
-
-              for (const sub of inMemoryAnnouncementSubmissions) {
-                const normTitle = normalizeText(sub.title);
-                if (normTitle && !existingTitles.has(normTitle) && !deletedAnnouncementKeys.has(normTitle)) {
-                  existingTitles.add(normTitle);
-                  const subDate = new Date(sub.createdAt || Date.now());
-                  const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
-
-                  const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-                  const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-                  const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
-
-                  rows.push([
-                    timeStr,
-                    sub.title,
-                    sub.content || "",
-                    sub.department || "",
-                    sub.startDate || "",
-                    sub.endDate || "",
-                    img1,
-                    img2,
-                    img3,
-                  ]);
-                }
-              }
-            }
             csvText = stringifyCsv(rows);
           }
-        } catch (enrichErr) {
-          console.warn("Could not enrich announcements CSV:", enrichErr);
+        } catch (filterErr) {
+          console.warn("Could not filter announcements CSV:", filterErr);
         }
       }
 

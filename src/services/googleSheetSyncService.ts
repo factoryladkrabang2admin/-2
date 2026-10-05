@@ -3252,6 +3252,8 @@ function cleanAnnouncementTitle(rawTitle?: string, content?: string): string {
   let title = (rawTitle || '').replace(/^["'\s]+|["'\s]+$/g, '').trim();
   // Remove unbalanced internal double quotes like Farmhouse Activity Points""
   title = title.replace(/""/g, '"');
+  // Clean stray quotes inside titles like ค่านิยมองค์กร" (Core Values)
+  title = title.replace(/"+/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
   if (!title && content) {
     // If title was empty in sheet, extract the first sentence or subject from content
@@ -3666,23 +3668,10 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
     }
 
     const rawSheetAnnouncements = csvText ? convertSheetRowsToAnnouncements(csvText) : [];
-    const localAnnouncements = getLocalAnnouncements();
 
-    // Filter out any announcements deleted by administrators
-    const deletedKeys = getDeletedAnnouncementKeys();
-    const isNotDeleted = (a: AnnouncementItem) => {
-      const aId = (a.id || '').trim().toLowerCase();
-      const aTitle = (a.title || '').trim().toLowerCase();
-      return !deletedKeys.includes(aId) && !deletedKeys.includes(aTitle);
-    };
-
-    const activeSheetAnnouncements = rawSheetAnnouncements.filter(isNotDeleted);
-    const activeLocalAnnouncements = localAnnouncements.filter(isNotDeleted);
-
-    // Merge: ensure local announcements created by user are always preserved and displayed at the top
-    const sheetTitles = new Set(activeSheetAnnouncements.map((a) => a.title.trim().toLowerCase()));
-    const unmergedLocal = activeLocalAnnouncements.filter((a) => !sheetTitles.has(a.title.trim().toLowerCase()));
-    const announcements = [...unmergedLocal, ...activeSheetAnnouncements];
+    // Strictly display ONLY announcements originating from the Google Sheet per user instruction:
+    // "ข้อมูลที่แสดงให้นำข้อมูลจาก Google sheet เท่านั้น"
+    const announcements = rawSheetAnnouncements;
 
     return {
       success: true,
