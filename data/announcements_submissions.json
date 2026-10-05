@@ -1,1 +1,23 @@
-[]
+[
+  {
+    "id": "ann-sub-1791180887766-ewmxf",
+    "title": "ค่านิยมองค์กร",
+    "content": "ค่านิยมองค์กร\" (Core  Values) ประจำเดือนตุลาคม 2569",
+    "department": "ฝ่ายทรัพยากรบุคคล",
+    "startDate": "5/10/2026",
+    "endDate": "31/10/2026",
+    "imageUrl": "/uploads/announcements/ann_1791180887764_1_ci1t2j.jpg",
+    "imageUrl2": "/uploads/announcements/ann_1791180887765_2_67ymxf.jpg",
+    "imageUrls": [
+      "/uploads/announcements/ann_1791180887764_1_ci1t2j.jpg",
+      "/uploads/announcements/ann_1791180887765_2_67ymxf.jpg"
+    ],
+    "rawImageUrls": [
+      "/uploads/announcements/ann_1791180887764_1_ci1t2j.jpg",
+      "/uploads/announcements/ann_1791180887765_2_67ymxf.jpg"
+    ],
+    "operatorName": "reizosischen",
+    "createdAt": 1791180887766,
+    "syncedToGoogle": false
+  }
+]

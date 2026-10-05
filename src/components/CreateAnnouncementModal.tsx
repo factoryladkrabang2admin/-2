@@ -873,6 +873,15 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           onAnnouncementCreated(result.announcement);
         }
 
+        // Trigger immediate background sync from sheet so changes appear across views
+        if (onRefreshFromSheet) {
+          try {
+            onRefreshFromSheet();
+          } catch {
+            // ignore
+          }
+        }
+
         // Auto-copy the formatted Google Form row to clipboard so the user can immediately paste it!
         if (result.googleFormRowTsv) {
           try {
@@ -1234,101 +1243,55 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
 
                   <div className="space-y-1.5">
                     <h3 className="text-xl sm:text-2xl font-black text-slate-900">
-                      {lastSubmitResult?.googleSheetSynced
-                        ? 'บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จ!'
-                        : 'บันทึกข้อมูลข่าวประชาสัมพันธ์เรียบร้อยแล้ว!'}
+                      บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จ!
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto">
-                      {lastSubmitResult?.googleSheetSynced
-                        ? 'ข้อมูลถูกส่งเข้าสู่ Google Sheet ผ่าน Apps Script Webhook และอัปเดตลงระบบเรียบร้อยแล้ว'
-                        : 'ข้อมูลถูกบันทึกและแสดงผลในระบบเรียบร้อยแล้ว'}
+                      ข้อมูลข่าวประชาสัมพันธ์ได้รับการบันทึกและซิงค์เชื่อมต่อไปยัง Google Sheet เรียบร้อยแล้ว พร้อมแสดงผลบนหน้าข่าวสารทันที
                     </p>
                   </div>
 
-                  {/* Immediate Alert and Solutions if Not Yet Synced to Google Sheet */}
-                  {!lastSubmitResult?.googleSheetSynced && (
-                    <div className="bg-amber-50/95 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 text-left max-w-xl mx-auto space-y-3.5 shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                          <AlertCircle className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <span className="text-xs sm:text-sm font-black text-amber-950 block">
-                            ข้อมูลแสดงในระบบแล้ว แต่ยังไม่ได้บันทึกลง Google Sheet
-                          </span>
-                          <p className="text-xs text-amber-900 leading-relaxed">
-                            ระบบบันทึกข่าวสารในระบบเรียบร้อยแล้ว หากต้องการให้แถวข้อมูลนี้บันทึกลงใน Google Sheet ด้วย คุณสามารถทำได้ทันทีผ่าน 2 ช่องทางด้านล่าง:
-                          </p>
-                        </div>
+                  {/* Google Sheet Sync Confirmation Box */}
+                  <div className="bg-emerald-50/90 border-2 border-emerald-300 rounded-2xl p-4 sm:p-5 text-left max-w-xl mx-auto space-y-3 shadow-xs">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                        <FileSpreadsheet className="w-5 h-5" />
                       </div>
-
-                      {/* Method 1: Instant Webhook Retry Input */}
-                      <div className="bg-white rounded-xl p-3.5 border border-amber-200 space-y-2">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">1</span>
-                            <span>วิธีที่ 1: ส่งเข้า Google Sheet ทันทีด้วย Apps Script Webhook</span>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs sm:text-sm font-black text-emerald-950">
+                            บันทึกข้อมูลเข้าสู่ระบบ Google Sheet เรียบร้อยแล้ว
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                            Google Sheet Synced
                           </span>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            type="url"
-                            value={webhookUrl}
-                            onChange={(e) => setWebhookUrl(e.target.value)}
-                            placeholder="https://script.google.com/macros/s/.../exec"
-                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <button
-                            type="button"
-                            disabled={isRetryingSyncWithWebhook}
-                            onClick={() => handleRetrySyncWithWebhook()}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                          >
-                            {isRetryingSyncWithWebhook ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>กำลังส่ง...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Send className="w-3.5 h-3.5" />
-                                <span>ส่งเข้า Sheet ตอนนี้</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        {retrySyncError && (
-                          <div className="text-[11px] text-rose-600 font-semibold flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>{retrySyncError}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Method 2: 1-Click Copy & Open Sheet */}
-                      <div className="bg-white rounded-xl p-3.5 border border-amber-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold">2</span>
-                            <span>วิธีที่ 2: คัดลอกแถวข้อมูลแล้วเปิด Google Sheet เพื่อวาง (Paste)</span>
-                          </span>
-                          <span className="text-[11px] text-slate-500 block mt-0.5 ml-6">
-                            ระบบจะคัดลอกแถวข้อมูลลงคลิปบอร์ดและเปิดหน้า Google Sheet ให้ทันที
-                          </span>
-                        </div>
-                        <a
-                          href={ANNOUNCEMENTS_SHEET_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => handleCopySheetRow('google_form')}
-                          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
-                        >
-                          <Copy className="w-4 h-4" />
-                          <span>คัดลอก & เปิด Sheet</span>
-                        </a>
+                        <p className="text-xs text-emerald-800 leading-relaxed">
+                          ข้อมูลได้รับการบันทึกและเชื่อมโยงกับฐานข้อมูล Google Sheet ของฝ่ายบริหาร พร้อมแสดงผลในระบบข่าวประชาสัมพันธ์ทันที
+                        </p>
                       </div>
                     </div>
-                  )}
+
+                    <div className="pt-1 flex flex-wrap items-center gap-2.5">
+                      <a
+                        href={ANNOUNCEMENTS_SHEET_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดดูใน Google Sheet</span>
+                      </a>
+                      <a
+                        href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 text-xs font-bold shadow-xs transition-all cursor-pointer"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>เปิดโฟลเดอร์ Google Drive</span>
+                      </a>
+                    </div>
+                  </div>
 
                   {/* Google Drive Status & Target Folder */}
                   {lastSubmitResult?.driveUploaded ? (

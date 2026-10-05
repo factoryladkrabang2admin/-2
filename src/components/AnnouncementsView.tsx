@@ -24,7 +24,9 @@ import {
   Plus,
   FileText,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
@@ -37,7 +39,8 @@ import {
   sortAnnouncementsLatestFirst, 
   getLocalAnnouncements,
   getAnnouncementsWebhookUrl,
-  ANNOUNCEMENTS_SHEET_URL
+  ANNOUNCEMENTS_SHEET_URL,
+  deleteAnnouncementRecord
 } from '../services/googleSheetSyncService';
 
 interface AnnouncementsViewProps {
@@ -45,6 +48,7 @@ interface AnnouncementsViewProps {
   searchQuery?: string;
   onSelectAnnouncement?: (item: AnnouncementItem) => void;
   onAnnouncementCreated?: (newAnnouncement: AnnouncementItem) => void;
+  onAnnouncementDeleted?: (deletedAnnouncement: AnnouncementItem) => void;
   onRefreshAnnouncements?: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
@@ -109,6 +113,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   searchQuery: externalSearchQuery = '',
   onSelectAnnouncement,
   onAnnouncementCreated,
+  onAnnouncementDeleted,
   onRefreshAnnouncements,
   currentUser,
   isAuthenticated = false,
@@ -123,6 +128,8 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [localCreatedList, setLocalCreatedList] = useState<AnnouncementItem[]>([]);
+  const [itemToDelete, setItemToDelete] = useState<AnnouncementItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   
   // Realtime pin updates trigger
   const [pinRevision, setPinRevision] = useState(0);
@@ -289,6 +296,40 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete || !isAdmin) return;
+    setIsDeleting(true);
+    try {
+      await deleteAnnouncementRecord(itemToDelete);
+      setLocalCreatedList((prev) =>
+        prev.filter((a) => a.id !== itemToDelete.id && a.title !== itemToDelete.title)
+      );
+      setToastMessage(
+        language === 'th'
+          ? `ลบข่าวประชาสัมพันธ์ "${itemToDelete.title}" เรียบร้อยแล้ว`
+          : `Deleted announcement "${itemToDelete.title}"`
+      );
+      if (
+        activeModalAnnouncement &&
+        (activeModalAnnouncement.id === itemToDelete.id ||
+          activeModalAnnouncement.title === itemToDelete.title)
+      ) {
+        setActiveModalAnnouncement(null);
+      }
+      if (onAnnouncementDeleted) {
+        onAnnouncementDeleted(itemToDelete);
+      }
+      if (onRefreshAnnouncements) {
+        await onRefreshAnnouncements();
+      }
+    } catch (err: any) {
+      setToastMessage(err.message || 'เกิดข้อผิดพลาดในการลบข่าวประชาสัมพันธ์');
+    } finally {
+      setIsDeleting(false);
+      setItemToDelete(null);
+    }
+  };
+
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
@@ -390,12 +431,12 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                 <ExternalLink className="w-5 h-5 group-hover:scale-110 transition-transform" />
               </a>
 
-              {/* Add Announcement Button with Icon & Label */}
+              {/* Add Announcement Button (Icon only) */}
               <button
                 type="button"
                 id="btn-create-announcement-icon"
                 onClick={() => setIsCreateModalOpen(true)}
-                className="relative px-3.5 sm:px-4 py-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2 group overflow-hidden"
+                className="relative p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
                 title={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Add Announcement (Admin Only)'}
                 aria-label={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'Add Announcement'}
               >
@@ -405,12 +446,6 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                 <div className="relative flex items-center justify-center">
                   <Megaphone className="w-5 h-5 text-white group-hover:scale-110 -rotate-12 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                 </div>
-                <span className="text-xs sm:text-sm font-black hidden sm:inline">
-                  {language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'Add Announcement'}
-                </span>
-                <span className="w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center shadow-xs border border-white leading-none pb-0.5">
-                  +
-                </span>
               </button>
             </div>
           )}
@@ -572,6 +607,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                 isAdmin={isAdmin}
                 onOpenDetail={() => handleOpenDetail(item)}
                 onTogglePin={() => handleTogglePin(item)}
+                onDelete={() => setItemToDelete(item)}
               />
             );
           })}
@@ -589,6 +625,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                 isAdmin={isAdmin}
                 onOpenDetail={() => handleOpenDetail(item)}
                 onTogglePin={() => handleTogglePin(item)}
+                onDelete={() => setItemToDelete(item)}
               />
             );
           })}
@@ -673,6 +710,7 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
         onClose={() => setActiveModalAnnouncement(null)}
         isAdmin={isAdmin}
         onTogglePin={handleTogglePin}
+        onDeleteAnnouncement={(item) => setItemToDelete(item)}
       />
 
       {/* Toast Notification */}
@@ -695,6 +733,79 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
           existingAnnouncements={rawAnnouncements}
         />
       )}
+
+      {/* Delete Confirmation Modal (จำกัดสิทธิ์เฉพาะผู้ดูแลและแอดมินเพจเท่านั้น) */}
+      {isAdmin && itemToDelete && (
+        <div 
+          className="fixed inset-0 z-70 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => !isDeleting && setItemToDelete(null)}
+        >
+          <div 
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-xs">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">
+                  ยืนยันการลบข่าวประชาสัมพันธ์
+                </h3>
+                <p className="text-xs text-rose-600 font-semibold">
+                  เฉพาะผู้ดูแลและแอดมินเพจเท่านั้นที่มีสิทธิ์ลบ
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-xs space-y-2">
+              <div className="font-bold text-slate-800 line-clamp-2 text-sm">
+                {itemToDelete.title}
+              </div>
+              <div className="flex items-center justify-between text-slate-500 font-medium">
+                <span>{formatDepartmentName(itemToDelete.department, language)}</span>
+                <span>{itemToDelete.startDate}</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 leading-relaxed font-medium flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>
+                คุณแน่ใจหรือไม่ว่าต้องการลบข่าวนี้? ข้อมูลจะถูกลบออกจากระบบและตัดการแสดงผลทันที
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs sm:text-sm font-bold shadow-md shadow-rose-600/30 transition-all cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>กำลังลบ...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>ยืนยันการลบข่าว</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -707,6 +818,7 @@ interface AnnouncementCardProps {
   isAdmin?: boolean;
   onOpenDetail: () => void;
   onTogglePin?: () => void;
+  onDelete?: () => void;
 }
 
 const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
@@ -714,6 +826,7 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
   isAdmin = false,
   onOpenDetail,
   onTogglePin,
+  onDelete,
 }) => {
   const { t, language } = useLanguage();
   const [imgError, setImgError] = useState(false);
@@ -809,22 +922,42 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
             </span>
           </div>
 
-          {/* Admin Pin Toggle Button */}
-          {isAdmin && onTogglePin && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin();
-              }}
-              className={`p-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1 text-xs font-bold ${
-                item.isPinned
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                  : 'bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20'
-              }`}
-              title={item.isPinned ? t.unpinAnnouncementTitle : t.pinAnnouncementTitle}
-            >
-              <Pin className={`w-3.5 h-3.5 ${item.isPinned ? 'fill-white rotate-45' : ''}`} />
-            </button>
+          {/* Admin Action Buttons (Delete & Pin) - Supervisor & Page Admin only */}
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 pointer-events-auto">
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="p-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center bg-black/60 hover:bg-rose-600 text-white backdrop-blur-md border border-white/20 hover:border-rose-400 group/del"
+                  title="ลบข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)"
+                  aria-label="ลบข่าวประชาสัมพันธ์"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-200 group-hover/del:text-white group-hover/del:scale-110 transition-transform" />
+                </button>
+              )}
+
+              {onTogglePin && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin();
+                  }}
+                  className={`p-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1 text-xs font-bold ${
+                    item.isPinned
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                      : 'bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20'
+                  }`}
+                  title={item.isPinned ? t.unpinAnnouncementTitle : t.pinAnnouncementTitle}
+                >
+                  <Pin className={`w-3.5 h-3.5 ${item.isPinned ? 'fill-white rotate-45' : ''}`} />
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -860,15 +993,34 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
           </p>
         </div>
 
-        {/* Card Footer (Sequence number "ลำดับที่ #" completely removed as requested) */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="text-slate-500 font-medium truncate max-w-[150px]">
+        {/* Card Footer */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+          <span className="text-slate-500 font-medium truncate max-w-[130px] sm:max-w-[150px]">
             {formattedDept}
           </span>
 
-          <div className="inline-flex items-center gap-1 font-bold text-blue-600 group-hover:text-blue-700 transition-colors">
-            <span>{t.readFullAnnouncement}</span>
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          <div className="flex items-center gap-2">
+            {/* Delete Icon Button for Admin & Page Admin only */}
+            {isAdmin && onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="p-1.5 rounded-lg text-rose-600 hover:text-white hover:bg-rose-600 bg-rose-50 border border-rose-200 transition-all cursor-pointer shadow-2xs flex items-center gap-1 text-[11px] font-bold"
+                title="ลบข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)"
+                aria-label="ลบข่าวประชาสัมพันธ์"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">ลบข่าว</span>
+              </button>
+            )}
+
+            <div className="inline-flex items-center gap-1 font-bold text-blue-600 group-hover:text-blue-700 transition-colors">
+              <span>{t.readFullAnnouncement}</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
           </div>
         </div>
       </div>
@@ -884,6 +1036,7 @@ interface AnnouncementListItemProps {
   isAdmin?: boolean;
   onOpenDetail: () => void;
   onTogglePin?: () => void;
+  onDelete?: () => void;
 }
 
 const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
@@ -891,6 +1044,7 @@ const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
   isAdmin = false,
   onOpenDetail,
   onTogglePin,
+  onDelete,
 }) => {
   const { t, language } = useLanguage();
   const [imgError, setImgError] = useState(false);
@@ -1004,10 +1158,26 @@ const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
         </div>
       </div>
 
-      {/* Right Action & Pin Button */}
+      {/* Right Action, Delete & Pin Button */}
       <div className="sm:border-l sm:border-slate-100 sm:pl-4 flex items-center justify-between sm:justify-end gap-2 shrink-0">
+        {isAdmin && onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 transition-colors shadow-2xs"
+            title="ลบข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)"
+            aria-label="ลบข่าวประชาสัมพันธ์"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         {isAdmin && onTogglePin && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onTogglePin();

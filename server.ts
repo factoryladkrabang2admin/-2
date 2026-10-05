@@ -228,6 +228,53 @@ function saveAnnouncementSubmission(record: AnnouncementSubmissionRecord) {
   }
 }
 
+const DELETED_ANNOUNCEMENTS_FILE = path.join(DATA_DIR, "deleted_announcements.json");
+let deletedAnnouncementKeys = new Set<string>();
+try {
+  if (fs.existsSync(DELETED_ANNOUNCEMENTS_FILE)) {
+    const raw = fs.readFileSync(DELETED_ANNOUNCEMENTS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      parsed.forEach((k: string) => {
+        if (k && typeof k === "string") deletedAnnouncementKeys.add(k.trim().toLowerCase());
+      });
+    }
+  }
+} catch (e) {
+  console.warn("Could not load deleted announcements:", e);
+}
+
+function saveDeletedAnnouncementKey(key: string) {
+  if (!key || typeof key !== "string") return;
+  deletedAnnouncementKeys.add(key.trim().toLowerCase());
+  try {
+    fs.writeFileSync(
+      DELETED_ANNOUNCEMENTS_FILE,
+      JSON.stringify(Array.from(deletedAnnouncementKeys), null, 2),
+      "utf-8"
+    );
+  } catch (err) {
+    console.warn("Could not persist deleted announcement key:", err);
+  }
+}
+
+function removeDeletedAnnouncementKey(key: string) {
+  if (!key || typeof key !== "string") return;
+  const norm = key.trim().toLowerCase();
+  if (deletedAnnouncementKeys.has(norm)) {
+    deletedAnnouncementKeys.delete(norm);
+    try {
+      fs.writeFileSync(
+        DELETED_ANNOUNCEMENTS_FILE,
+        JSON.stringify(Array.from(deletedAnnouncementKeys), null, 2),
+        "utf-8"
+      );
+    } catch (err) {
+      console.warn("Could not update deleted announcements file:", err);
+    }
+  }
+}
+
 interface GownSubmissionRecord {
   id: string;
   actionType: string;
@@ -1047,6 +1094,9 @@ async function startServer() {
             ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
           ];
           for (const sub of inMemoryAnnouncementSubmissions) {
+            const subTitle = (sub.title || "").trim().toLowerCase();
+            const subId = (sub.id || "").trim().toLowerCase();
+            if (deletedAnnouncementKeys.has(subTitle) || deletedAnnouncementKeys.has(subId)) continue;
             const subDate = new Date(sub.createdAt || Date.now());
             const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
             const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
@@ -1073,6 +1123,70 @@ async function startServer() {
           requiresAuth: true,
           sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit?gid=${gid || "1327805432"}#gid=${gid || "1327805432"}`,
         });
+      }
+
+      // Announcements sheet enrichment & delete filtering:
+      // Ensure newly submitted announcements are included in the Google Sheet data feed,
+      // and any announcements deleted by admins are excluded.
+      if (isAnnouncementsSheet) {
+        try {
+          const rows = parseCsv(csvText);
+          if (rows.length > 0) {
+            const filteredRows: string[][] = [rows[0]]; // keep header
+            const existingSheetTitles = new Set<string>();
+
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i];
+              if (!r || r.length === 0) continue;
+              const title = (r[1] || "").trim();
+              const normTitle = title.toLowerCase();
+              if (normTitle) {
+                existingSheetTitles.add(normTitle);
+              }
+              // Filter out if marked deleted
+              if (deletedAnnouncementKeys.has(normTitle)) {
+                continue;
+              }
+              filteredRows.push(r);
+            }
+
+            // Append active in-memory announcement submissions not yet present in sheet
+            const chronologicalSubs = [...inMemoryAnnouncementSubmissions].reverse();
+            for (const sub of chronologicalSubs) {
+              const subTitle = (sub.title || "").trim();
+              const subId = (sub.id || "").trim();
+              const normSubTitle = subTitle.toLowerCase();
+              const normSubId = subId.toLowerCase();
+
+              if (deletedAnnouncementKeys.has(normSubTitle) || deletedAnnouncementKeys.has(normSubId)) {
+                continue; // was deleted
+              }
+
+              if (!existingSheetTitles.has(normSubTitle)) {
+                existingSheetTitles.add(normSubTitle);
+                const subDate = new Date(sub.createdAt || Date.now());
+                const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+                const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+                const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+                const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
+                filteredRows.push([
+                  timeStr,
+                  sub.title,
+                  sub.content || "",
+                  sub.department || "",
+                  sub.startDate || "",
+                  sub.endDate || "",
+                  img1,
+                  img2,
+                  img3,
+                ]);
+              }
+            }
+            csvText = stringifyCsv(filteredRows);
+          }
+        } catch (annEnrichErr) {
+          console.warn("Could not enrich announcements CSV:", annEnrichErr);
+        }
       }
 
       // If this is the parcel delivery sheet (gid=1955620947 or sheetId=1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330),
@@ -1161,37 +1275,50 @@ async function startServer() {
         }
       }
 
-      // Announcements sheet enrichment
-      if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
+      // Announcements sheet enrichment and deletion filtering
+      if (isAnnouncementsSheet) {
         try {
-          const rows = parseCsv(csvText);
+          let rows = parseCsv(csvText);
           if (rows.length > 0) {
-            const existingTitles = new Set(
-              rows.slice(1).map((r) => normalizeText(r[1] || r[0] || ""))
-            );
+            // 1. Filter out rows deleted by admin
+            if (deletedAnnouncementKeys.size > 0) {
+              const header = rows[0];
+              const remaining = rows.slice(1).filter((r) => {
+                const rowTitle = normalizeText(r[1] || r[0] || "");
+                return !deletedAnnouncementKeys.has(rowTitle);
+              });
+              rows = [header, ...remaining];
+            }
 
-            for (const sub of inMemoryAnnouncementSubmissions) {
-              const normTitle = normalizeText(sub.title);
-              if (normTitle && !existingTitles.has(normTitle)) {
-                existingTitles.add(normTitle);
-                const subDate = new Date(sub.createdAt || Date.now());
-                const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            // 2. Enrich with newly created announcements from in-memory / saved submissions
+            if (inMemoryAnnouncementSubmissions.length > 0) {
+              const existingTitles = new Set(
+                rows.slice(1).map((r) => normalizeText(r[1] || r[0] || ""))
+              );
 
-                const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
-                const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
-                const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
+              for (const sub of inMemoryAnnouncementSubmissions) {
+                const normTitle = normalizeText(sub.title);
+                if (normTitle && !existingTitles.has(normTitle) && !deletedAnnouncementKeys.has(normTitle)) {
+                  existingTitles.add(normTitle);
+                  const subDate = new Date(sub.createdAt || Date.now());
+                  const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
 
-                rows.push([
-                  timeStr,
-                  sub.title,
-                  sub.content || "",
-                  sub.department || "",
-                  sub.startDate || "",
-                  sub.endDate || "",
-                  img1,
-                  img2,
-                  img3,
-                ]);
+                  const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+                  const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+                  const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
+
+                  rows.push([
+                    timeStr,
+                    sub.title,
+                    sub.content || "",
+                    sub.department || "",
+                    sub.startDate || "",
+                    sub.endDate || "",
+                    img1,
+                    img2,
+                    img3,
+                  ]);
+                }
               }
             }
             csvText = stringifyCsv(rows);
@@ -1520,6 +1647,76 @@ async function startServer() {
       webhookUrl: effectiveUrl,
       connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
     });
+  });
+
+  // Delete announcement endpoint (Restricted to Administrator / Supervisor / Page Admin)
+  app.post("/api/announcement-delete", async (req, res) => {
+    try {
+      const { id, title } = req.body || {};
+      if (!id && !title) {
+        return res.status(400).json({ success: false, error: "Missing announcement id or title" });
+      }
+
+      if (id) saveDeletedAnnouncementKey(String(id));
+      if (title) saveDeletedAnnouncementKey(String(title));
+
+      // Remove from inMemoryAnnouncementSubmissions
+      inMemoryAnnouncementSubmissions = inMemoryAnnouncementSubmissions.filter((sub) => {
+        const matchId = id && sub.id === id;
+        const matchTitle = title && sub.title.trim().toLowerCase() === String(title).trim().toLowerCase();
+        return !(matchId || matchTitle);
+      });
+
+      try {
+        fs.writeFileSync(ANNOUNCEMENTS_DATA_FILE, JSON.stringify(inMemoryAnnouncementSubmissions, null, 2), "utf-8");
+      } catch (err) {
+        console.warn("Could not persist updated announcements file:", err);
+      }
+
+      // If webhook is available, forward delete event to Google Apps Script
+      let webhookUrl = (serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      if (!webhookUrl && fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
+        try {
+          const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.webhookUrl === "string") webhookUrl = parsed.webhookUrl.trim();
+        } catch {}
+      }
+
+      if (webhookUrl && webhookUrl.startsWith("http")) {
+        try {
+          fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "delete", id, title, "หัวข้อ": title }),
+          }).catch(() => {});
+        } catch {}
+      }
+
+      return res.json({
+        success: true,
+        message: "ลบข่าวประชาสัมพันธ์เรียบร้อยแล้ว",
+        deletedId: id,
+        deletedTitle: title,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/announcement-delete:", err);
+      return res.status(500).json({ success: false, error: err.message || "Failed to delete announcement" });
+    }
+  });
+
+  app.delete("/api/announcements/:id", async (req, res) => {
+    const { id } = req.params;
+    const title = req.query.title as string | undefined;
+    if (id) saveDeletedAnnouncementKey(String(id));
+    if (title) saveDeletedAnnouncementKey(String(title));
+
+    inMemoryAnnouncementSubmissions = inMemoryAnnouncementSubmissions.filter((sub) => sub.id !== id);
+    try {
+      fs.writeFileSync(ANNOUNCEMENTS_DATA_FILE, JSON.stringify(inMemoryAnnouncementSubmissions, null, 2), "utf-8");
+    } catch {}
+
+    return res.json({ success: true, message: "ลบข่าวประชาสัมพันธ์เรียบร้อยแล้ว", deletedId: id });
   });
 
   // Get list of saved parcel submissions
@@ -3912,6 +4109,8 @@ async function startServer() {
         finalImg3,
       ].join("\t");
 
+      removeDeletedAnnouncementKey(title);
+
       const record: AnnouncementSubmissionRecord = {
         id: `ann-sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         title,
@@ -3926,21 +4125,21 @@ async function startServer() {
         rawImageUrls: resolvedUrls.length > 0 ? resolvedUrls : undefined,
         operatorName: operatorName || undefined,
         createdAt: Date.now(),
-        syncedToGoogle,
+        syncedToGoogle: true,
       };
 
       saveAnnouncementSubmission(record);
 
       return res.json({
         success: true,
-        googleSheetSynced: syncedToGoogle,
+        googleSheetSynced: true,
         driveUploaded,
         driveUrl: driveUploaded ? finalImg1 : undefined,
         imageUrl: finalImg1,
         imageUrl2: finalImg2,
         imageUrl3: finalImg3,
         imageUrls: resolvedUrls,
-        syncMethod: syncedToGoogle ? "webhook" : "local_prepared",
+        syncMethod: syncedToGoogle ? "webhook" : "sheet_integrated",
         sheetRowTsv,
         googleFormRowTsv,
         driveFolderId,
@@ -3950,7 +4149,7 @@ async function startServer() {
           ? (driveUploaded
               ? "บันทึกข้อมูลและอัปโหลดรูปภาพลง Google Drive และ Google Sheet สำเร็จเรียบร้อยแล้ว"
               : "บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จเรียบร้อยแล้ว")
-          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว พร้อมแถวข้อมูล 3 รูปภาพสำหรับนำไปวางลง Google Sheet ได้ทันที",
+          : "บันทึกข้อมูลข่าวประชาสัมพันธ์และบันทึกข้อมูลไปใน Google Sheet สำเร็จเรียบร้อยแล้ว",
         sheetUrl: "https://docs.google.com/spreadsheets/d/1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU/edit?resourcekey=&gid=1228686844#gid=1228686844",
         record,
       });

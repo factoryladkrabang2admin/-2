@@ -995,6 +995,12 @@ export default function App() {
                 isAuthenticated={isAuthenticated}
                 onAnnouncementCreated={(newAnn) => {
                   setAnnouncements((prev) => [newAnn, ...prev]);
+                  syncGoogleSheetAnnouncements();
+                }}
+                onAnnouncementDeleted={(deletedItem) => {
+                  setAnnouncements((prev) =>
+                    prev.filter((a) => a.id !== deletedItem.id && a.title !== deletedItem.title)
+                  );
                 }}
                 onRefreshAnnouncements={async () => {
                   await syncGoogleSheetAnnouncements();

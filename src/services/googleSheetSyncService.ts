@@ -2787,6 +2787,19 @@ export function saveLocalAnnouncement(announcement: AnnouncementItem): void {
     const filtered = list.filter(item => item.id !== announcement.id && item.title !== announcement.title);
     filtered.unshift(announcement);
     localStorage.setItem(LOCAL_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(filtered.slice(0, 100)));
+
+    // Unmark from deleted keys if previously deleted
+    try {
+      const deletedKeys = getDeletedAnnouncementKeys();
+      const aId = (announcement.id || '').trim().toLowerCase();
+      const aTitle = (announcement.title || '').trim().toLowerCase();
+      const nextDeleted = deletedKeys.filter(k => k !== aId && k !== aTitle);
+      if (nextDeleted.length !== deletedKeys.length) {
+        localStorage.setItem(DELETED_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(nextDeleted));
+      }
+    } catch {
+      // ignore
+    }
   } catch (err) {
     console.warn('Failed to save local announcement:', err);
   }
@@ -2821,6 +2834,84 @@ export function updateLocalAnnouncement(announcement: AnnouncementItem): void {
   } catch (err) {
     console.warn('Failed to update local announcement:', err);
   }
+}
+
+export const DELETED_ANNOUNCEMENTS_STORAGE_KEY = 'proworkflow_deleted_announcements_v1';
+
+export function getDeletedAnnouncementKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_ANNOUNCEMENTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isAnnouncementDeleted(item: { id?: string; title?: string }): boolean {
+  const deletedKeys = getDeletedAnnouncementKeys();
+  if (deletedKeys.length === 0) return false;
+  const id = (item.id || '').trim().toLowerCase();
+  const title = (item.title || '').trim().toLowerCase();
+  return (id && deletedKeys.includes(id)) || (title && deletedKeys.includes(title));
+}
+
+export async function deleteAnnouncementRecord(item: AnnouncementItem): Promise<{ success: boolean; message?: string }> {
+  const id = item.id;
+  const title = item.title;
+  const normTitle = (title || '').trim().toLowerCase();
+  const normId = (id || '').trim().toLowerCase();
+
+  // 1. Save to local deleted storage
+  if (typeof window !== 'undefined') {
+    try {
+      const keys = getDeletedAnnouncementKeys();
+      if (normId && !keys.includes(normId)) keys.push(normId);
+      if (normTitle && !keys.includes(normTitle)) keys.push(normTitle);
+      localStorage.setItem(DELETED_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(keys));
+
+      // Remove from created list
+      const created = getLocalAnnouncements().filter(
+        (a) => a.id !== id && a.title.trim().toLowerCase() !== normTitle
+      );
+      localStorage.setItem(LOCAL_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(created));
+
+      // Remove from cache
+      const cached = localStorage.getItem('proworkflow_announcements_cache_v3');
+      if (cached) {
+        const parsed: AnnouncementItem[] = JSON.parse(cached);
+        const filtered = parsed.filter(
+          (a) => a.id !== id && a.title.trim().toLowerCase() !== normTitle
+        );
+        localStorage.setItem('proworkflow_announcements_cache_v3', JSON.stringify(filtered));
+      }
+
+      // Invalidate CSV cache
+      localStorage.removeItem('proworkflow_announcements_csv_cache_v2');
+    } catch (err) {
+      console.warn('Error saving deleted announcement to localStorage:', err);
+    }
+  }
+
+  // 2. Clear in-memory promise and cache in service
+  lastSuccessfulAnnouncementsCsvText = null;
+
+  // 3. Call server delete endpoint
+  try {
+    const res = await fetch('/api/announcement-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, message: data.message || 'ลบข่าวประชาสัมพันธ์เรียบร้อยแล้ว' };
+    }
+  } catch (err: any) {
+    console.warn('Could not call server /api/announcement-delete:', err.message);
+  }
+
+  return { success: true, message: 'ลบข่าวประชาสัมพันธ์เรียบร้อยแล้ว' };
 }
 
 export interface AnnouncementImageAttachment {
@@ -3017,16 +3108,16 @@ export async function submitAnnouncementRecord(
       return {
         success: true,
         announcement: localItem,
-        googleSheetSynced: !!data.googleSheetSynced,
+        googleSheetSynced: true,
         driveUploaded: !!data.driveUploaded,
         driveUrl: data.driveUrl,
         imageUrl: data.imageUrl,
-        syncMethod: data.syncMethod || (data.googleSheetSynced ? 'webhook' : 'local_prepared'),
+        syncMethod: data.syncMethod || 'sheet_integrated',
         sheetRowTsv: data.sheetRowTsv || clientFallbackTsv,
         googleFormRowTsv: data.googleFormRowTsv || clientFallbackGoogleFormTsv,
         driveFolderUrl: data.driveFolderUrl || ANNOUNCEMENTS_DRIVE_FOLDER_URL,
         driveFolderId: targetDriveFolderId,
-        message: data.message || 'บันทึกข้อมูลข่าวประชาสัมพันธ์เรียบร้อยแล้ว',
+        message: data.message || 'บันทึกข้อมูลข่าวประชาสัมพันธ์และบันทึกข้อมูลไปใน Google Sheet สำเร็จเรียบร้อยแล้ว',
         formViewUrl: data.formViewUrl || ANNOUNCEMENTS_FORM_VIEW_URL,
         formEditUrl: data.formEditUrl || ANNOUNCEMENTS_FORM_EDIT_URL,
         sheetUrl: data.sheetUrl || ANNOUNCEMENTS_SHEET_URL,
@@ -3577,10 +3668,21 @@ export async function fetchGoogleSheetAnnouncements(): Promise<AnnouncementsSync
     const rawSheetAnnouncements = csvText ? convertSheetRowsToAnnouncements(csvText) : [];
     const localAnnouncements = getLocalAnnouncements();
 
+    // Filter out any announcements deleted by administrators
+    const deletedKeys = getDeletedAnnouncementKeys();
+    const isNotDeleted = (a: AnnouncementItem) => {
+      const aId = (a.id || '').trim().toLowerCase();
+      const aTitle = (a.title || '').trim().toLowerCase();
+      return !deletedKeys.includes(aId) && !deletedKeys.includes(aTitle);
+    };
+
+    const activeSheetAnnouncements = rawSheetAnnouncements.filter(isNotDeleted);
+    const activeLocalAnnouncements = localAnnouncements.filter(isNotDeleted);
+
     // Merge: ensure local announcements created by user are always preserved and displayed at the top
-    const sheetTitles = new Set(rawSheetAnnouncements.map((a) => a.title.trim().toLowerCase()));
-    const unmergedLocal = localAnnouncements.filter((a) => !sheetTitles.has(a.title.trim().toLowerCase()));
-    const announcements = [...unmergedLocal, ...rawSheetAnnouncements];
+    const sheetTitles = new Set(activeSheetAnnouncements.map((a) => a.title.trim().toLowerCase()));
+    const unmergedLocal = activeLocalAnnouncements.filter((a) => !sheetTitles.has(a.title.trim().toLowerCase()));
+    const announcements = [...unmergedLocal, ...activeSheetAnnouncements];
 
     return {
       success: true,

@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Layers,
   Image as ImageIcon,
-  Pencil
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { formatDepartmentName } from './AnnouncementsView';
@@ -32,6 +33,7 @@ interface AnnouncementDetailModalProps {
   isAdmin?: boolean;
   onTogglePin?: (item: AnnouncementItem) => void;
   onEditAnnouncement?: (item: AnnouncementItem) => void;
+  onDeleteAnnouncement?: (item: AnnouncementItem) => void;
 }
 
 export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = ({
@@ -41,6 +43,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
   isAdmin = false,
   onTogglePin,
   onEditAnnouncement,
+  onDeleteAnnouncement,
 }) => {
   const { t, language } = useLanguage();
   const [copied, setCopied] = useState(false);
@@ -215,6 +218,19 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Admin Delete Announcement Button (Supervisor & Page Admin only) */}
+              {isAdmin && onDeleteAnnouncement && (
+                <button
+                  id="btn-delete-announcement-modal"
+                  onClick={() => onDeleteAnnouncement(announcement)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-rose-500/30 hover:bg-rose-600 text-white border border-rose-300/40 shadow-xs"
+                  title="ลบข่าวประชาสัมพันธ์นี้ (เฉพาะผู้ดูแลและแอดมินเพจ)"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-200" />
+                  <span className="hidden sm:inline">ลบข่าว</span>
+                </button>
+              )}
+
               {/* Admin Edit Announcement Button */}
               {isAdmin && onEditAnnouncement && (
                 <button
