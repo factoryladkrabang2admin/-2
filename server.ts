@@ -196,6 +196,10 @@ interface AnnouncementSubmissionRecord {
   startDate: string;
   endDate?: string;
   imageUrl?: string;
+  imageUrl2?: string;
+  imageUrl3?: string;
+  imageUrls?: string[];
+  rawImageUrls?: string[];
   operatorName?: string;
   createdAt: number;
   syncedToGoogle?: boolean;
@@ -940,6 +944,10 @@ async function startServer() {
                 const subDate = new Date(sub.createdAt || Date.now());
                 const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
 
+                const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+                const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+                const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
+
                 rows.push([
                   timeStr,
                   sub.title,
@@ -947,7 +955,9 @@ async function startServer() {
                   sub.department || "",
                   sub.startDate || "",
                   sub.endDate || "",
-                  sub.imageUrl || "",
+                  img1,
+                  img2,
+                  img3,
                 ]);
               }
             }
@@ -3408,12 +3418,36 @@ async function startServer() {
       const department = (payload.department || payload["แผนก / ฝ่าย"] || payload["แผนก"] || "").trim();
       const rawStartDate = (payload.startDate || payload["วันเริ่มต้น"] || "").trim();
       const rawEndDate = (payload.endDate || payload["วันสิ้นสุด"] || "").trim();
-      let imageUrl = (payload.imageUrl || payload["รูปภาพประกอบ"] || payload["รูปภาพ"] || "").trim();
       const operatorName = (payload.operatorName || payload["ผู้บันทึก"] || "").trim();
-      const imageBase64 = (payload.imageBase64 || "").trim();
-      const imageFileName = (payload.imageFileName || "").trim();
-      const imageMimeType = (payload.imageMimeType || "image/jpeg").trim();
       const driveFolderId = (payload.driveFolderId || "1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb").trim();
+
+      // Collect raw images from all possible payload fields
+      const rawImageList: Array<{ url?: string; base64?: string; fileName?: string; mimeType?: string }> = [];
+      if (Array.isArray(payload.images)) {
+        payload.images.forEach((img: any) => {
+          if (img && (img.url || img.base64)) rawImageList.push(img);
+        });
+      }
+      if (Array.isArray(payload.imageUrls)) {
+        payload.imageUrls.forEach((u: string) => {
+          if (u && typeof u === "string" && u.trim()) rawImageList.push({ url: u.trim() });
+        });
+      }
+      const rawImg1 = (payload.imageUrl || payload["รูปภาพประกอบ"] || payload["รูปภาพ"] || payload.imageUrl1 || "").trim();
+      const rawImg2 = (payload.imageUrl2 || payload["รูปภาพประกอบ2"] || payload["รูปภาพ2"] || "").trim();
+      const rawImg3 = (payload.imageUrl3 || payload["รูปภาพประกอบ3"] || payload["รูปภาพ3"] || "").trim();
+
+      if (rawImg1 && !rawImageList.some((i) => i.url === rawImg1)) rawImageList.push({ url: rawImg1 });
+      if (rawImg2 && !rawImageList.some((i) => i.url === rawImg2)) rawImageList.push({ url: rawImg2 });
+      if (rawImg3 && !rawImageList.some((i) => i.url === rawImg3)) rawImageList.push({ url: rawImg3 });
+
+      if (payload.imageBase64 && rawImageList.length === 0) {
+        rawImageList.push({
+          base64: payload.imageBase64,
+          fileName: payload.imageFileName,
+          mimeType: payload.imageMimeType,
+        });
+      }
 
       if (!title) {
         return res.status(400).json({
@@ -3434,32 +3468,48 @@ async function startServer() {
         });
       }
 
-      // Handle local image attachment if provided
-      let localSavedImageUrl = "";
-      let cleanBase64 = "";
-      if (imageBase64) {
-        try {
-          cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
-          let ext = "jpg";
-          if (imageMimeType.includes("png")) ext = "png";
-          else if (imageMimeType.includes("webp")) ext = "webp";
-          else if (imageMimeType.includes("gif")) ext = "gif";
-          else if (imageFileName.includes(".")) {
-            ext = imageFileName.split(".").pop() || "jpg";
-          }
+      // Process local image saving for any base64 images (up to 3 images)
+      const resolvedUrls: string[] = [];
+      const imagesBase64Payload: Array<{ base64: string; fileName: string; mimeType: string }> = [];
 
-          const safeFileName = `ann_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
-          const savePath = path.join(process.cwd(), "data", "uploads", "announcements", safeFileName);
-          const buffer = Buffer.from(cleanBase64, "base64");
-          fs.writeFileSync(savePath, buffer);
-          localSavedImageUrl = `/uploads/announcements/${safeFileName}`;
-          if (!imageUrl) {
-            imageUrl = localSavedImageUrl;
+      for (let i = 0; i < Math.min(rawImageList.length, 3); i++) {
+        const item = rawImageList[i];
+        if (item.base64 && typeof item.base64 === "string" && item.base64.trim().length > 30) {
+          try {
+            const cleanBase64 = item.base64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
+            const mime = (item.mimeType || "image/jpeg").trim();
+            let ext = "jpg";
+            if (mime.includes("png")) ext = "png";
+            else if (mime.includes("webp")) ext = "webp";
+            else if (mime.includes("gif")) ext = "gif";
+            else if (item.fileName && item.fileName.includes(".")) {
+              ext = item.fileName.split(".").pop() || "jpg";
+            }
+
+            const safeFileName = `ann_${Date.now()}_${i + 1}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+            const savePath = path.join(process.cwd(), "data", "uploads", "announcements", safeFileName);
+            const buffer = Buffer.from(cleanBase64, "base64");
+            fs.writeFileSync(savePath, buffer);
+            const localSavedUrl = `/uploads/announcements/${safeFileName}`;
+            resolvedUrls.push(localSavedUrl);
+
+            imagesBase64Payload.push({
+              base64: cleanBase64,
+              fileName: item.fileName || safeFileName,
+              mimeType: mime,
+            });
+          } catch (err: any) {
+            console.warn("Could not save announcement image:", err.message);
+            if (item.url) resolvedUrls.push(item.url);
           }
-        } catch (imgErr: any) {
-          console.warn("Could not save local image attachment:", imgErr.message);
+        } else if (item.url && item.url.trim()) {
+          resolvedUrls.push(item.url.trim());
         }
       }
+
+      const finalImg1 = resolvedUrls[0] || "";
+      const finalImg2 = resolvedUrls[1] || "";
+      const finalImg3 = resolvedUrls[2] || "";
 
       // Format date to DD/MM/YYYY matching Google Sheet
       const formatToSheetDate = (dStr: string) => {
@@ -3495,10 +3545,9 @@ async function startServer() {
       }
       let syncedToGoogle = false;
       let driveUploaded = false;
-      let resolvedImageUrl = imageUrl;
       let webhookErrorDetails: string | null = null;
 
-      // 1. If an Apps Script Webhook URL is provided, send direct POST to upload image to Drive & append row in Google Sheet
+      // 1. If an Apps Script Webhook URL is provided, send direct POST to upload images to Drive & append row in Google Sheet
       if (webhookUrl && webhookUrl.startsWith("http")) {
         try {
           const webhookPayload = {
@@ -3518,12 +3567,19 @@ async function startServer() {
             วันเริ่มต้น: startDate,
             endDate: endDate || "",
             วันสิ้นสุด: endDate || "",
-            imageUrl: imageUrl || "",
-            รูปภาพประกอบ: imageUrl || "",
-            รูปภาพ: imageUrl || "",
-            imageBase64: cleanBase64,
-            imageFileName: imageFileName || `announcement_${Date.now()}.${imageMimeType.includes("png") ? "png" : "jpg"}`,
-            imageMimeType,
+            imageUrl: finalImg1,
+            imageUrl1: finalImg1,
+            imageUrl2: finalImg2,
+            imageUrl3: finalImg3,
+            imageUrls: [finalImg1, finalImg2, finalImg3].filter(Boolean),
+            รูปภาพประกอบ: finalImg1,
+            รูปภาพประกอบ2: finalImg2,
+            รูปภาพประกอบ3: finalImg3,
+            รูปภาพ: finalImg1,
+            imageBase64: imagesBase64Payload[0]?.base64 || "",
+            imageFileName: imagesBase64Payload[0]?.fileName || "",
+            imageMimeType: imagesBase64Payload[0]?.mimeType || "image/jpeg",
+            imagesBase64: imagesBase64Payload,
             driveFolderId,
             operatorName: operatorName || "",
             ผู้บันทึก: operatorName || "",
@@ -3569,15 +3625,7 @@ async function startServer() {
                     console.warn("Could not auto-persist working webhook:", wErr);
                   }
                 }
-                const driveLink = resData?.imageUrl || resData?.driveUrl || resData?.fileUrl || resData?.url;
-                if (driveLink && typeof driveLink === "string" && (driveLink.includes("drive.google.com") || driveLink.includes("docs.google.com") || driveLink.startsWith("http"))) {
-                  resolvedImageUrl = driveLink;
-                  driveUploaded = true;
-                } else if (resData?.fileId || resData?.driveFileId) {
-                  const id = resData.fileId || resData.driveFileId;
-                  resolvedImageUrl = `https://drive.google.com/file/d/${id}/view?usp=sharing`;
-                  driveUploaded = true;
-                } else if (resData?.driveUploaded) {
+                if (resData?.driveUploaded) {
                   driveUploaded = true;
                 }
               } else if (!resData) {
@@ -3599,16 +3647,14 @@ async function startServer() {
         }
       }
 
-      // If the image URL provided by the user is already a Google Drive link, mark driveUploaded as true
-      if (resolvedImageUrl && (resolvedImageUrl.includes("drive.google.com") || resolvedImageUrl.includes("docs.google.com"))) {
+      if (resolvedUrls.some((u) => u.includes("drive.google.com") || u.includes("docs.google.com"))) {
         driveUploaded = true;
       }
 
-      // 2. Format TSVs for 1-click clipboard paste
-      const finalImageLink = resolvedImageUrl || imageUrl || "";
+      // 2. Format 9-column TSVs matching Google Form Response format
+      // [A] ประทับเวลา, [B] หัวข้อ, [C] เนื้อหา, [D] แผนก / ฝ่าย, [E] วันเริ่มต้น, [F] วันสิ้นสุด, [G] รูปภาพประกอบ, [H] รูปภาพประกอบ2, [I] รูปภาพประกอบ3
       const timestampStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
-      // Google Form Response Sheet (7 columns: [A] ประทับเวลา, [B] หัวข้อ, [C] เนื้อหา, [D] แผนก / ฝ่าย, [E] วันเริ่มต้น, [F] วันสิ้นสุด, [G] รูปภาพประกอบ)
       const googleFormRowTsv = [
         timestampStr,
         title,
@@ -3616,17 +3662,21 @@ async function startServer() {
         department,
         startDate,
         endDate || "",
-        finalImageLink,
+        finalImg1,
+        finalImg2,
+        finalImg3,
       ].join("\t");
 
-      // Standard / Manual Sheet (6 columns: [A] หัวข้อ, [B] เนื้อหา, [C] แผนก / ฝ่าย, [D] วันเริ่มต้น, [E] วันสิ้นสุด, [F] รูปภาพประกอบ)
+      // Standard / Manual Sheet (8 columns: [A] หัวข้อ, [B] เนื้อหา, [C] แผนก / ฝ่าย, [D] วันเริ่มต้น, [E] วันสิ้นสุด, [F] รูปภาพประกอบ 1, [G] รูปภาพประกอบ 2, [H] รูปภาพประกอบ 3)
       const sheetRowTsv = [
         title,
         content.replace(/\n/g, " "),
         department,
         startDate,
         endDate || "",
-        finalImageLink,
+        finalImg1,
+        finalImg2,
+        finalImg3,
       ].join("\t");
 
       const record: AnnouncementSubmissionRecord = {
@@ -3636,7 +3686,11 @@ async function startServer() {
         department,
         startDate,
         endDate: endDate || undefined,
-        imageUrl: finalImageLink || undefined,
+        imageUrl: finalImg1 || undefined,
+        imageUrl2: finalImg2 || undefined,
+        imageUrl3: finalImg3 || undefined,
+        imageUrls: resolvedUrls.length > 0 ? resolvedUrls : undefined,
+        rawImageUrls: resolvedUrls.length > 0 ? resolvedUrls : undefined,
         operatorName: operatorName || undefined,
         createdAt: Date.now(),
         syncedToGoogle,
@@ -3648,8 +3702,11 @@ async function startServer() {
         success: true,
         googleSheetSynced: syncedToGoogle,
         driveUploaded,
-        driveUrl: driveUploaded ? resolvedImageUrl : undefined,
-        imageUrl: finalImageLink,
+        driveUrl: driveUploaded ? finalImg1 : undefined,
+        imageUrl: finalImg1,
+        imageUrl2: finalImg2,
+        imageUrl3: finalImg3,
+        imageUrls: resolvedUrls,
         syncMethod: syncedToGoogle ? "webhook" : "local_prepared",
         sheetRowTsv,
         googleFormRowTsv,
@@ -3660,7 +3717,7 @@ async function startServer() {
           ? (driveUploaded
               ? "บันทึกข้อมูลและอัปโหลดรูปภาพลง Google Drive และ Google Sheet สำเร็จเรียบร้อยแล้ว"
               : "บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จเรียบร้อยแล้ว")
-          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว พร้อมแถวข้อมูลสำหรับนำไปวางลง Google Sheet ได้ทันที",
+          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว พร้อมแถวข้อมูล 3 รูปภาพสำหรับนำไปวางลง Google Sheet ได้ทันที",
         sheetUrl: "https://docs.google.com/spreadsheets/d/1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU/edit?resourcekey=&gid=1228686844#gid=1228686844",
         record,
       });

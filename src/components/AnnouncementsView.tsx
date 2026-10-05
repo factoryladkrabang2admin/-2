@@ -29,6 +29,7 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
 import { CreateAnnouncementModal } from './CreateAnnouncementModal';
+import { AnnouncementCarousel } from './AnnouncementCarousel';
 import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { realtimeHub } from '../services/realtimeService';
 import { 
@@ -741,6 +742,9 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
 
   const status = getStatusBadge();
   const formattedDept = formatDepartmentName(item.department, language);
+  const displayImages = (item.imageUrls && item.imageUrls.length > 0)
+    ? item.imageUrls
+    : (item.imageUrl && !imgError ? [item.imageUrl] : []);
 
   return (
     <div 
@@ -751,16 +755,30 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
           : 'border-slate-200/80 shadow-sm hover:shadow-xl hover:border-blue-300'
       }`}
     >
-      {/* Top Image Preview Banner */}
+      {/* Top Image Preview Banner / 3-Image Rotating Carousel */}
       <div className="relative w-full min-h-[200px] sm:min-h-[220px] max-h-[320px] bg-slate-900/5 flex items-center justify-center overflow-hidden shrink-0 border-b border-slate-100/80">
-        {item.imageUrl && !imgError ? (
-          <img
-            src={item.imageUrl}
-            alt={item.title}
-            onError={() => setImgError(true)}
-            className="w-full h-auto max-h-[320px] object-contain group-hover:scale-[1.015] transition-transform duration-300"
-            referrerPolicy="no-referrer"
-            loading="lazy"
+        {displayImages.length > 0 ? (
+          <AnnouncementCarousel
+            images={displayImages}
+            title={item.title}
+            aspectClass="w-full min-h-[200px] sm:min-h-[220px] max-h-[320px]"
+            objectFit="contain"
+            showControls={true}
+            showIndicators={true}
+            showBadge={true}
+            badgePosition="bottom-right"
+            autoRotateInterval={3500}
+            onImageClick={() => onOpenDetail()}
+            fallbackIcon={
+              <div className="w-full h-48 bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 flex flex-col items-center justify-center p-6 text-center text-white relative">
+                <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mb-2 shadow-inner group-hover:scale-110 transition-transform">
+                  <Megaphone className="w-7 h-7 text-amber-300" />
+                </div>
+                <span className="text-xs font-bold text-amber-300/90 tracking-wide uppercase">
+                  {formattedDept}
+                </span>
+              </div>
+            }
           />
         ) : (
           <div className="w-full h-48 bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 flex flex-col items-center justify-center p-6 text-center text-white relative">
@@ -774,7 +792,7 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
         )}
 
         {/* Top Badges & Pin Controls */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-10">
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20 pointer-events-auto">
           <div className="flex items-center gap-1.5">
             {/* Pinned Badge */}
             {item.isPinned && (
@@ -811,10 +829,10 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
         </div>
 
         {/* Bottom Department Tag on Image */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs pointer-events-none">
+        <div className="absolute bottom-3 left-3 flex items-center text-white text-xs pointer-events-none z-10">
           <span className="inline-flex items-center gap-1.5 font-semibold drop-shadow-md bg-black/60 backdrop-blur-xs px-2.5 py-1 rounded-lg">
             <Building2 className="w-3.5 h-3.5 text-amber-300" />
-            <span className="truncate max-w-[200px]">{formattedDept}</span>
+            <span className="truncate max-w-[180px] sm:max-w-[200px]">{formattedDept}</span>
           </span>
         </div>
       </div>
@@ -901,6 +919,9 @@ const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
 
   const status = getStatusBadge();
   const formattedDept = formatDepartmentName(item.department, language);
+  const displayImages = (item.imageUrls && item.imageUrls.length > 0)
+    ? item.imageUrls
+    : (item.imageUrl && !imgError ? [item.imageUrl] : []);
 
   return (
     <div
@@ -911,16 +932,28 @@ const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
           : 'border-slate-200/80 shadow-xs hover:shadow-md hover:border-blue-300'
       }`}
     >
-      {/* Thumbnail or Icon */}
+      {/* Thumbnail with rotating images or Icon */}
       <div className="w-full sm:w-40 h-36 sm:h-28 rounded-xl overflow-hidden bg-slate-100 shrink-0 relative">
-        {item.imageUrl && !imgError ? (
-          <img
-            src={item.imageUrl}
-            alt={item.title}
-            onError={() => setImgError(true)}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            referrerPolicy="no-referrer"
-            loading="lazy"
+        {displayImages.length > 0 ? (
+          <AnnouncementCarousel
+            images={displayImages}
+            title={item.title}
+            aspectClass="w-full h-full"
+            objectFit="cover"
+            showControls={false}
+            showIndicators={displayImages.length > 1}
+            showBadge={displayImages.length > 1}
+            badgePosition="top-right"
+            autoRotateInterval={3200}
+            roundedClass="rounded-xl"
+            fallbackIcon={
+              <div className="w-full h-full bg-gradient-to-br from-blue-900 to-indigo-950 flex flex-col items-center justify-center p-3 text-white text-center">
+                <Megaphone className="w-6 h-6 text-amber-300 mb-1" />
+                <span className="text-[10px] font-bold text-slate-200 truncate max-w-[120px]">
+                  {formattedDept}
+                </span>
+              </div>
+            }
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-blue-900 to-indigo-950 flex flex-col items-center justify-center p-3 text-white text-center">
@@ -932,7 +965,7 @@ const AnnouncementListItem: React.FC<AnnouncementListItemProps> = ({
         )}
 
         {item.isPinned && (
-          <div className="absolute top-2 left-2 bg-amber-400 text-amber-950 p-1.5 rounded-lg shadow-md border border-amber-300">
+          <div className="absolute top-2 left-2 bg-amber-400 text-amber-950 p-1.5 rounded-lg shadow-md border border-amber-300 z-10">
             <Pin className="w-3.5 h-3.5 fill-amber-950" />
           </div>
         )}

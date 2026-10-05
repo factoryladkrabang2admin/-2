@@ -40,6 +40,7 @@ import {
 import { AnnouncementItem } from '../types';
 import { AdminUserAccount } from '../data/mockData';
 import { SuggestiveInput } from './SuggestiveInput';
+import { AnnouncementCarousel } from './AnnouncementCarousel';
 import {
   ANNOUNCEMENTS_SHEET_URL,
   ANNOUNCEMENTS_FORM_VIEW_URL,
@@ -51,6 +52,7 @@ import {
   getAnnouncementsWebhookUrl,
   setAnnouncementsWebhookUrl,
   AnnouncementSubmitResult,
+  AnnouncementImageAttachment,
 } from '../services/googleSheetSyncService';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -79,8 +81,8 @@ const POPULAR_DEPARTMENTS = [
 ];
 
 const APPS_SCRIPT_TEMPLATE = `/**
- * Google Apps Script Web App for Announcements & Google Drive Auto-Upload
- * บันทึกข่าวประชาสัมพันธ์พร้อมอัปโหลดรูปภาพลง Google Drive และเขียนแถวลง Google Sheet
+ * Google Apps Script Web App for Announcements & Google Drive Auto-Upload (3 Images)
+ * บันทึกข่าวประชาสัมพันธ์พร้อมอัปโหลด 3 รูปภาพหมุนวนลง Google Drive และเขียนแถวลง Google Sheet
  * โฟลเดอร์ Google Drive: รูปภาพประกอบ (File responses)
  * ID: 1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb
  */
@@ -97,7 +99,7 @@ function doPost(e) {
         ss = SpreadsheetApp.getActiveSpreadsheet();
       }
     }
-    var sheet = ss ? (ss.getSheetByName("การตอบแบบฟอร์ม 1") || ss.getSheets()[0]) : SpreadsheetApp.getActiveSheet();
+    var sheet = ss ? (ss.getSheetByName("การตอบแบบฟอร์ม 1") || ss.getSheetByName("คลังอุปกรณ์") || ss.getSheets()[0]) : SpreadsheetApp.getActiveSheet();
     var data = {};
     
     // Parse incoming payload (JSON or Form Data)
@@ -117,27 +119,36 @@ function doPost(e) {
     var department = data.department || data['แผนก / ฝ่าย'] || data['แผนก'] || data['ฝ่าย'] || '';
     var startDate = data.startDate || data['วันเริ่มต้น'] || '';
     var endDate = data.endDate || data['วันสิ้นสุด'] || '';
-    var imageUrl = data.imageUrl || data['รูปภาพประกอบ'] || data['รูปภาพ'] || data.image || '';
-    var operatorName = data.operatorName || data['ผู้บันทึก'] || '';
+
+    // Collect up to 3 raw image URLs
+    var imgUrls = [];
+    if (data.imageUrls && Array.isArray(data.imageUrls)) {
+      for (var u = 0; u < data.imageUrls.length; u++) {
+        if (data.imageUrls[u]) imgUrls.push(String(data.imageUrls[u]).trim());
+      }
+    }
+    var rawImg1 = data.imageUrl || data.imageUrl1 || data['รูปภาพประกอบ'] || data['รูปภาพ'] || data.image || '';
+    var rawImg2 = data.imageUrl2 || data['รูปภาพประกอบ2'] || data['รูปภาพ2'] || '';
+    var rawImg3 = data.imageUrl3 || data['รูปภาพประกอบ3'] || data['รูปภาพ3'] || '';
+    if (rawImg1 && imgUrls.indexOf(rawImg1) === -1) imgUrls.push(rawImg1);
+    if (rawImg2 && imgUrls.indexOf(rawImg2) === -1) imgUrls.push(rawImg2);
+    if (rawImg3 && imgUrls.indexOf(rawImg3) === -1) imgUrls.push(rawImg3);
+
     var driveUploaded = false;
-    var driveFileId = '';
 
     // 1. Target Google Drive Folder: "รูปภาพประกอบ (File responses)"
     var TARGET_DRIVE_FOLDER_ID = "1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb";
     var folderIdToUse = (data.driveFolderId && String(data.driveFolderId).trim()) ? String(data.driveFolderId).trim() : TARGET_DRIVE_FOLDER_ID;
 
-    // 2. Automatic Google Drive Upload if imageBase64 is provided
-    if (data.imageBase64 && typeof data.imageBase64 === 'string' && data.imageBase64.length > 50) {
+    // Helper to upload base64 image to Drive folder
+    function uploadBase64ToDrive(base64Data, fileName, mimeType) {
+      if (!base64Data || typeof base64Data !== 'string' || base64Data.length < 30) return '';
       try {
-        var base64Str = data.imageBase64;
-        if (base64Str.indexOf(',') > -1) {
-          base64Str = base64Str.split(',')[1];
-        }
-        var mimeType = data.imageMimeType || 'image/jpeg';
-        var fileName = data.imageFileName || ('announcement_' + new Date().getTime() + '.jpg');
-        var decodedBytes = Utilities.base64Decode(base64Str);
-        var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
-
+        var cleanB64 = base64Data.indexOf(',') > -1 ? base64Data.split(',')[1] : base64Data;
+        var m = mimeType || 'image/jpeg';
+        var fn = fileName || ('announcement_' + new Date().getTime() + '.jpg');
+        var decoded = Utilities.base64Decode(cleanB64);
+        var blob = Utilities.newBlob(decoded, m, fn);
         var folder;
         try {
           folder = DriveApp.getFolderById(folderIdToUse);
@@ -148,20 +159,44 @@ function doPost(e) {
             folder = DriveApp.getRootFolder();
           }
         }
-
-        var driveFile = folder.createFile(blob);
-        // Set sharing permissions: anyone with link can view
-        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        
-        driveFileId = driveFile.getId();
-        imageUrl = "https://drive.google.com/file/d/" + driveFileId + "/view?usp=sharing";
+        var file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         driveUploaded = true;
-      } catch (driveErr) {
-        // Keep existing imageUrl if drive upload fails
+        return "https://drive.google.com/file/d/" + file.getId() + "/view?usp=sharing";
+      } catch (err) {
+        return '';
       }
     }
 
-    // 3. Dynamic Column Header Mapping (alters for Google Form 7-column or manual 6-column)
+    // Process multiple base64 uploads if provided
+    var uploadedUrls = [];
+    if (data.imagesBase64 && Array.isArray(data.imagesBase64)) {
+      for (var b = 0; b < Math.min(data.imagesBase64.length, 3); b++) {
+        var bItem = data.imagesBase64[b];
+        if (bItem && bItem.base64) {
+          var uLink = uploadBase64ToDrive(bItem.base64, bItem.fileName, bItem.mimeType);
+          if (uLink) uploadedUrls.push(uLink);
+        }
+      }
+    } else if (data.imageBase64) {
+      var singleLink = uploadBase64ToDrive(data.imageBase64, data.imageFileName, data.imageMimeType);
+      if (singleLink) uploadedUrls.push(singleLink);
+    }
+
+    // Merge uploaded Drive links with existing URLs
+    for (var up = 0; up < uploadedUrls.length; up++) {
+      if (up < imgUrls.length) {
+        imgUrls[up] = uploadedUrls[up];
+      } else {
+        imgUrls.push(uploadedUrls[up]);
+      }
+    }
+
+    var finalImg1 = imgUrls[0] || '';
+    var finalImg2 = imgUrls[1] || '';
+    var finalImg3 = imgUrls[2] || '';
+
+    // 2. Dynamic Column Header Mapping for Google Form (9 columns) or manual sheet (8 columns)
     var lastCol = sheet.getLastColumn();
     var headers = [];
     if (lastCol > 0) {
@@ -179,7 +214,9 @@ function doPost(e) {
       var deptIdx = -1;
       var startIdx = -1;
       var endIdx = -1;
-      var imgIdx = -1;
+      var img1Idx = -1;
+      var img2Idx = -1;
+      var img3Idx = -1;
       var timeIdx = -1;
 
       for (var i = 0; i < normHeaders.length; i++) {
@@ -190,28 +227,34 @@ function doPost(e) {
         else if (deptIdx === -1 && (h.indexOf('แผนก') !== -1 || h.indexOf('ฝ่าย') !== -1 || h.indexOf('department') !== -1)) deptIdx = i;
         else if (startIdx === -1 && (h.indexOf('เริ่มต้น') !== -1 || h.indexOf('start') !== -1)) startIdx = i;
         else if (endIdx === -1 && (h.indexOf('สิ้นสุด') !== -1 || h.indexOf('end') !== -1)) endIdx = i;
-        else if (imgIdx === -1 && (h.indexOf('รูป') !== -1 || h.indexOf('ภาพ') !== -1 || h.indexOf('image') !== -1 || h.indexOf('แนบ') !== -1)) imgIdx = i;
+        else if (img3Idx === -1 && (h.indexOf('รูปภาพประกอบ3') !== -1 || h.indexOf('รูปภาพ3') !== -1 || h.indexOf('ภาพ3') !== -1 || h.indexOf('image3') !== -1)) img3Idx = i;
+        else if (img2Idx === -1 && (h.indexOf('รูปภาพประกอบ2') !== -1 || h.indexOf('รูปภาพ2') !== -1 || h.indexOf('ภาพ2') !== -1 || h.indexOf('image2') !== -1)) img2Idx = i;
+        else if (img1Idx === -1 && (h.indexOf('รูปภาพประกอบ') !== -1 || h.indexOf('รูปภาพ1') !== -1 || h.indexOf('รูปภาพ') !== -1 || h.indexOf('ภาพ') !== -1 || h.indexOf('image') !== -1)) img1Idx = i;
       }
 
-      // CRITICAL FOR GOOGLE FORM:
-      // If timeIdx is column 0 (Google Form default), Title MUST be at column 1 (คอลัมน์ B)
+      // CRITICAL FOR GOOGLE FORM 9-COLUMN STRUCTURE:
+      // [A] ประทับเวลา, [B] หัวข้อ, [C] เนื้อหา, [D] แผนก / ฝ่าย, [E] วันเริ่มต้น, [F] วันสิ้นสุด, [G] รูปภาพประกอบ, [H] รูปภาพประกอบ2, [I] รูปภาพประกอบ3
       if (timeIdx === 0) {
         if (titleIdx === -1 || titleIdx === 0) titleIdx = 1;
         if (contentIdx === -1 || contentIdx <= 1) contentIdx = 2;
         if (deptIdx === -1 || deptIdx <= 2) deptIdx = 3;
         if (startIdx === -1 || startIdx <= 3) startIdx = 4;
         if (endIdx === -1 || endIdx <= 4) endIdx = 5;
-        if (imgIdx === -1 || imgIdx <= 5) imgIdx = 6;
+        if (img1Idx === -1 || img1Idx <= 5) img1Idx = 6;
+        if (img2Idx === -1) img2Idx = 7;
+        if (img3Idx === -1) img3Idx = 8;
       } else {
         if (titleIdx === -1) titleIdx = 0;
         if (contentIdx === -1) contentIdx = 1;
         if (deptIdx === -1) deptIdx = 2;
         if (startIdx === -1) startIdx = 3;
         if (endIdx === -1) endIdx = 4;
-        if (imgIdx === -1) imgIdx = 5;
+        if (img1Idx === -1) img1Idx = 5;
+        if (img2Idx === -1) img2Idx = 6;
+        if (img3Idx === -1) img3Idx = 7;
       }
 
-      var maxIndex = Math.max(headers.length, timeIdx === 0 ? 7 : 6);
+      var maxIndex = Math.max(headers.length, timeIdx === 0 ? 9 : 8);
       var rowData = new Array(maxIndex);
       for (var j = 0; j < rowData.length; j++) rowData[j] = '';
 
@@ -221,11 +264,13 @@ function doPost(e) {
       if (deptIdx >= 0 && deptIdx < rowData.length) rowData[deptIdx] = department;
       if (startIdx >= 0 && startIdx < rowData.length) rowData[startIdx] = startDate;
       if (endIdx >= 0 && endIdx < rowData.length) rowData[endIdx] = endDate;
-      if (imgIdx >= 0 && imgIdx < rowData.length) rowData[imgIdx] = imageUrl;
+      if (img1Idx >= 0 && img1Idx < rowData.length) rowData[img1Idx] = finalImg1;
+      if (img2Idx >= 0 && img2Idx < rowData.length) rowData[img2Idx] = finalImg2;
+      if (img3Idx >= 0 && img3Idx < rowData.length) rowData[img3Idx] = finalImg3;
 
       sheet.appendRow(rowData);
     } else {
-      // Default to Google Form 7 columns if sheet has no headers
+      // Default to Google Form 9 columns if sheet has no headers
       sheet.appendRow([
         timestampStr,
         title,
@@ -233,19 +278,25 @@ function doPost(e) {
         department,
         startDate,
         endDate,
-        imageUrl
+        finalImg1,
+        finalImg2,
+        finalImg3
       ]);
     }
 
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
-      message: "บันทึกข้อมูลและอัปโหลดรูปเข้า Google Drive & Google Sheet สำเร็จ",
-      title: title,
-      imageUrl: imageUrl,
+      status: "ok",
+      message: "บันทึกข้อมูลข่าวประชาสัมพันธ์และอัปเดต Google Sheet เรียบร้อยแล้ว",
       driveUploaded: driveUploaded,
-      driveFolderId: folderIdToUse,
-      fileId: driveFileId
+      imageUrl: finalImg1,
+      imageUrl2: finalImg2,
+      imageUrl3: finalImg3,
+      imageUrls: [finalImg1, finalImg2, finalImg3].filter(Boolean),
+      title: title,
+      department: department
     })).setMimeType(ContentService.MimeType.JSON);
+
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
@@ -260,10 +311,11 @@ function doPost(e) {
 function doGet(e) {
   return ContentService.createTextOutput(JSON.stringify({
     status: "ok",
-    message: "Google Apps Script Announcement & Drive Upload Webhook is active",
-    targetDriveFolder: "1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb"
+    message: "Google Apps Script Announcement & 3-Image Drive Upload Webhook is active",
+    targetDriveFolder: "1EBXWk_SpFm-cGO5M3gLszNTtAMVyGxgwx4WLTZz1zYfLZ6c3urVwrsY8lMc448XnaRzoziQb",
+    columns: ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"]
   })).setMimeType(ContentService.MimeType.JSON);
-}`;
+};`;
 
 export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = ({
   isOpen,
@@ -331,14 +383,32 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   const [imageUrl, setImageUrl] = useState('');
   const [operatorName, setOperatorName] = useState(() => currentUser?.name || 'แอดมินธุรการ');
 
-  // Image Attachment Mode & File State
-  const [imageAttachmentMode, setImageAttachmentMode] = useState<'upload' | 'url'>('upload');
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachedImageBase64, setAttachedImageBase64] = useState<string>('');
-  const [attachedImageFileName, setAttachedImageFileName] = useState<string>('');
-  const [attachedImageFileSize, setAttachedImageFileSize] = useState<number>(0);
+  // Image Attachment Mode & 3-Slot File State (Up to 3 images for rotating carousel)
+  const [activeImageSlot, setActiveImageSlot] = useState<0 | 1 | 2>(0);
+  const [imageSlots, setImageSlots] = useState<Array<{
+    mode: 'upload' | 'url';
+    url: string;
+    file: File | null;
+    base64: string;
+    fileName: string;
+    fileSize: number;
+  }>>([
+    { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+    { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+    { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+  ]);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Backward compatibility alias for first image slot
+  const currentSlot = imageSlots[activeImageSlot] || imageSlots[0];
+  const imageAttachmentMode = currentSlot.mode;
+  const attachedFile = currentSlot.file;
+  const attachedImageBase64 = currentSlot.base64;
+  const attachedImageFileName = currentSlot.fileName;
+  const attachedImageFileSize = currentSlot.fileSize;
+  const setImageAttachmentMode = (mode: 'upload' | 'url') => handleSlotModeChange(activeImageSlot, mode);
+  const handleRemoveAttachedImage = () => handleRemoveSlotImage(activeImageSlot);
 
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -393,7 +463,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   }, []);
 
   // Handle local image file selection with client-side auto-compression for speed & reliability
-  const handleImageFilePicked = (file: File) => {
+  const handleImageFilePickedForSlot = (slotIdx: number, file: File) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setSubmitError('กรุณาเลือกไฟล์รูปภาพที่ถูกต้อง (.jpg, .jpeg, .png, .webp, .gif)');
@@ -405,9 +475,28 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     }
 
     setSubmitError(null);
-    setAttachedFile(file);
-    setAttachedImageFileName(file.name);
-    setAttachedImageFileSize(file.size);
+
+    const updateSlotWithBase64 = (base64Str: string) => {
+      setImageSlots((prev) => {
+        const next = [...prev];
+        next[slotIdx] = {
+          ...next[slotIdx],
+          mode: 'upload',
+          file,
+          fileName: file.name,
+          fileSize: file.size,
+          base64: base64Str,
+        };
+        return next;
+      });
+      // Also update legacy single-image state if slot 0
+      if (slotIdx === 0) {
+        setAttachedFile(file);
+        setAttachedImageFileName(file.name);
+        setAttachedImageFileSize(file.size);
+        setAttachedImageBase64(base64Str);
+      }
+    };
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -437,27 +526,71 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           if (ctx) {
             ctx.drawImage(img, 0, 0, w, h);
             const compressedUrl = canvas.toDataURL(file.type || 'image/jpeg', 0.88);
-            setAttachedImageBase64(compressedUrl);
+            updateSlotWithBase64(compressedUrl);
           } else {
-            setAttachedImageBase64(resultStr);
+            updateSlotWithBase64(resultStr);
           }
         };
         img.src = resultStr;
       } else {
-        setAttachedImageBase64(resultStr);
+        updateSlotWithBase64(resultStr);
       }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveAttachedImage = () => {
-    setAttachedFile(null);
-    setAttachedImageBase64('');
-    setAttachedImageFileName('');
-    setAttachedImageFileSize(0);
+  const handleImageFilePicked = (file: File) => {
+    handleImageFilePickedForSlot(activeImageSlot, file);
+  };
+
+  const handleRemoveSlotImage = (slotIdx: number) => {
+    setImageSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = {
+        mode: next[slotIdx].mode,
+        url: '',
+        file: null,
+        base64: '',
+        fileName: '',
+        fileSize: 0,
+      };
+      return next;
+    });
+    if (slotIdx === 0) {
+      setAttachedFile(null);
+      setAttachedImageBase64('');
+      setAttachedImageFileName('');
+      setAttachedImageFileSize(0);
+      setImageUrl('');
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleSlotUrlChange = (slotIdx: number, newUrl: string) => {
+    setImageSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = {
+        ...next[slotIdx],
+        url: newUrl,
+      };
+      return next;
+    });
+    if (slotIdx === 0) {
+      setImageUrl(newUrl);
+    }
+  };
+
+  const handleSlotModeChange = (slotIdx: number, newMode: 'upload' | 'url') => {
+    setImageSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = {
+        ...next[slotIdx],
+        mode: newMode,
+      };
+      return next;
+    });
   };
 
   // Copy Google Drive Folder URL
@@ -469,10 +602,12 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
 
   // Download attached image to user's device for easy drag-and-drop into Google Drive
   const handleDownloadAttachedImage = () => {
-    if (!attachedImageBase64) return;
+    const slot = imageSlots[activeImageSlot];
+    const b64 = slot?.base64 || attachedImageBase64;
+    if (!b64) return;
     const a = document.createElement('a');
-    a.href = attachedImageBase64;
-    a.download = attachedImageFileName || `announcement_${Date.now()}.jpg`;
+    a.href = b64;
+    a.download = slot?.fileName || attachedImageFileName || `announcement_${Date.now()}.jpg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -491,8 +626,16 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     setEndDate('');
     setHasEndDate(false);
     setImageUrl('');
-    handleRemoveAttachedImage();
-    setImageAttachmentMode('upload');
+    setImageSlots([
+      { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+      { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+      { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+    ]);
+    setActiveImageSlot(0);
+    setAttachedFile(null);
+    setAttachedImageBase64('');
+    setAttachedImageFileName('');
+    setAttachedImageFileSize(0);
     setCreatedItem(null);
     setLastSubmitResult(null);
     setSubmitError(null);
@@ -520,9 +663,24 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     return iso;
   };
 
-  // Live image preview
-  const liveImageInfo = extractGoogleDriveDirectImageUrl(imageUrl);
-  const displayPreviewUrl = liveImageInfo.previewUrl || imageUrl.trim();
+  // Active slot display preview
+  const activeSlotUrl = imageSlots[activeImageSlot]?.url || '';
+  const activeLiveInfo = extractGoogleDriveDirectImageUrl(activeSlotUrl);
+  const displayPreviewUrl = activeLiveInfo.previewUrl || activeSlotUrl.trim();
+
+  // All 3 image previews for the live rotating carousel preview
+  const liveCarouselImages = React.useMemo(() => {
+    const list: string[] = [];
+    imageSlots.forEach((s) => {
+      if (s.mode === 'upload' && s.base64) {
+        list.push(s.base64);
+      } else if (s.mode === 'url' && s.url.trim()) {
+        const info = extractGoogleDriveDirectImageUrl(s.url.trim());
+        list.push(info.previewUrl || s.url.trim());
+      }
+    });
+    return list;
+  }, [imageSlots]);
 
   // Handle in-app form submission
   const handleSubmitInApp = async (e: React.FormEvent) => {
@@ -553,16 +711,43 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       const formattedStartDate = formatIsoToThaiSheetDate(startDate);
       const formattedEndDate = hasEndDate && endDate ? formatIsoToThaiSheetDate(endDate) : undefined;
 
+      // Extract all attached images and URLs across the 3 slots
+      const payloadImages: AnnouncementImageAttachment[] = [];
+      const payloadImageUrls: string[] = [];
+
+      imageSlots.forEach((slot, sIdx) => {
+        if (slot.mode === 'upload' && slot.base64) {
+          payloadImages.push({
+            base64: slot.base64,
+            fileName: slot.fileName || `announcement_${Date.now()}_img${sIdx + 1}.jpg`,
+            mimeType: slot.file?.type || 'image/jpeg',
+          });
+        } else if (slot.mode === 'url' && slot.url.trim()) {
+          payloadImageUrls.push(slot.url.trim());
+          payloadImages.push({
+            url: slot.url.trim(),
+          });
+        }
+      });
+
+      const slot1Img = imageSlots[0].mode === 'url' ? imageSlots[0].url.trim() : '';
+      const slot2Img = imageSlots[1].mode === 'url' ? imageSlots[1].url.trim() : '';
+      const slot3Img = imageSlots[2].mode === 'url' ? imageSlots[2].url.trim() : '';
+
       const result = await submitAnnouncementRecord({
         title: title.trim(),
         content: content.trim(),
         department: department.trim(),
         startDate: formattedStartDate,
         endDate: formattedEndDate,
-        imageUrl: imageAttachmentMode === 'url' ? (imageUrl.trim() || undefined) : undefined,
-        imageBase64: imageAttachmentMode === 'upload' && attachedImageBase64 ? attachedImageBase64 : undefined,
-        imageFileName: imageAttachmentMode === 'upload' ? (attachedImageFileName || undefined) : undefined,
-        imageMimeType: imageAttachmentMode === 'upload' ? (attachedFile?.type || 'image/jpeg') : undefined,
+        imageUrl: slot1Img || payloadImageUrls[0] || undefined,
+        imageUrl2: slot2Img || payloadImageUrls[1] || undefined,
+        imageUrl3: slot3Img || payloadImageUrls[2] || undefined,
+        imageUrls: payloadImageUrls.length > 0 ? payloadImageUrls : undefined,
+        images: payloadImages.length > 0 ? payloadImages : undefined,
+        imageBase64: imageSlots[0].mode === 'upload' && imageSlots[0].base64 ? imageSlots[0].base64 : undefined,
+        imageFileName: imageSlots[0].mode === 'upload' ? (imageSlots[0].fileName || undefined) : undefined,
+        imageMimeType: imageSlots[0].mode === 'upload' ? (imageSlots[0].file?.type || 'image/jpeg') : undefined,
         driveFolderId: ANNOUNCEMENTS_DRIVE_FOLDER_ID,
         operatorName: operatorName.trim() || undefined,
         webhookUrl: webhookUrl.trim() || undefined,
@@ -1574,61 +1759,95 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                     </div>
                   </div>
 
-                  {/* Image Attachment & Drive Upload Section */}
-                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50/80 border border-slate-200">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <label className="text-xs font-black text-slate-800 tracking-wide uppercase flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-indigo-600" />
-                        <span>รูปภาพประกอบข่าวสาร (บันทึกเข้า Google Drive)</span>
-                        <span className="text-slate-400 font-normal text-[11px]">(ไม่บังคับ)</span>
-                      </label>
+                  {/* Image Attachment & Drive Upload Section (Up to 3 Images for Carousel Rotation) */}
+                  <div className="space-y-4 p-4.5 rounded-2xl bg-slate-50/90 border border-slate-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div>
+                        <label className="text-xs font-black text-slate-800 tracking-wide uppercase flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4 text-indigo-600" />
+                          <span>รูปภาพประกอบข่าวสาร (แสดงหมุนวนได้สูงสุด 3 รูป)</span>
+                        </label>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          รองรับการอัปโหลดหรือใส่ลิงก์ Drive แยก 3 รูปภาพ เพื่อแสดงหมุนวนในหน้าข่าวประชาสัมพันธ์
+                        </p>
+                      </div>
 
-                      {/* Mode Toggle Switcher */}
-                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl text-[11px] font-bold self-start sm:self-auto">
+                      {/* Mode Toggle Switcher for Active Slot */}
+                      <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl text-[11px] font-bold self-start sm:self-auto shrink-0">
                         <button
                           type="button"
-                          onClick={() => setImageAttachmentMode('upload')}
+                          onClick={() => handleSlotModeChange(activeImageSlot, 'upload')}
                           className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-                            imageAttachmentMode === 'upload'
+                            imageSlots[activeImageSlot]?.mode === 'upload'
                               ? 'bg-white text-indigo-700 shadow-xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
                           <HardDrive className="w-3.5 h-3.5" />
-                          <span>แนบจากเครื่อง (เข้า Drive)</span>
+                          <span>แนบไฟล์ (เข้า Drive)</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setImageAttachmentMode('url')}
+                          onClick={() => handleSlotModeChange(activeImageSlot, 'url')}
                           className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-                            imageAttachmentMode === 'url'
+                            imageSlots[activeImageSlot]?.mode === 'url'
                               ? 'bg-white text-indigo-700 shadow-xs'
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
                           <Globe className="w-3.5 h-3.5" />
-                          <span>ระบุ URL / ลิงก์ Drive</span>
+                          <span>ลิงก์ Drive / URL</span>
                         </button>
                       </div>
                     </div>
 
-                    {/* Mode 1: Local File Upload to Google Drive */}
-                    {imageAttachmentMode === 'upload' && (
+                    {/* 3 Image Slot Selector Tabs */}
+                    <div className="grid grid-cols-3 gap-2 p-1 bg-slate-200/60 rounded-xl">
+                      {[0, 1, 2].map((slotIdx) => {
+                        const slot = imageSlots[slotIdx];
+                        const isFilled = slot.mode === 'upload' ? !!slot.base64 : !!slot.url.trim();
+                        const isActive = activeImageSlot === slotIdx;
+                        return (
+                          <button
+                            key={`slot-tab-${slotIdx}`}
+                            type="button"
+                            onClick={() => setActiveImageSlot(slotIdx as 0 | 1 | 2)}
+                            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-500/20'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${isFilled ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                            <span className="truncate">
+                              {slotIdx === 0 ? 'รูปที่ 1 (หลัก)' : `รูปที่ ${slotIdx + 1}`}
+                            </span>
+                            {isFilled && (
+                              <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Slot Content Area */}
+                    {imageSlots[activeImageSlot]?.mode === 'upload' ? (
+                      /* Mode: Local Upload */
                       <div className="space-y-3">
                         <input
                           ref={fileInputRef}
                           type="file"
-                          id="input-file-announcement-image"
+                          id={`input-file-announcement-slot-${activeImageSlot}`}
                           accept="image/jpeg,image/png,image/webp,image/gif"
                           className="hidden"
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
-                              handleImageFilePicked(e.target.files[0]);
+                              handleImageFilePickedForSlot(activeImageSlot, e.target.files[0]);
                             }
                           }}
                         />
 
-                        {!attachedImageBase64 ? (
+                        {!imageSlots[activeImageSlot]?.base64 ? (
                           /* Dropzone */
                           <div
                             onDragOver={(e) => {
@@ -1643,7 +1862,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               e.preventDefault();
                               setIsDraggingImage(false);
                               if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                                handleImageFilePicked(e.dataTransfer.files[0]);
+                                handleImageFilePickedForSlot(activeImageSlot, e.dataTransfer.files[0]);
                               }
                             }}
                             onClick={() => fileInputRef.current?.click()}
@@ -1657,7 +1876,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               <UploadCloud className="w-6 h-6" />
                             </div>
                             <p className="text-xs sm:text-sm font-black text-slate-800">
-                              คลิกเพื่อแนบรูปภาพจากเครื่อง หรือลากไฟล์มาวางที่นี่
+                              คลิกเพื่อเลือกไฟล์รูปภาพที่ {activeImageSlot + 1} หรือลากไฟล์มาวางที่นี่
                             </p>
                             <p className="text-[11px] text-slate-500 mt-1">
                               รองรับ .JPG, .PNG, .WEBP (เมื่อกดบันทึก รูปภาพจะถูกส่งไปเก็บใน Google Drive โฟลเดอร์ <strong>&quot;รูปภาพประกอบ (File responses)&quot;</strong> ให้อัตโนมัติ)
@@ -1665,7 +1884,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                             <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
                               <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all">
                                 <FolderUp className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>เลือกรูปภาพจากเครื่อง</span>
+                                <span>เลือกรูปภาพสำหรับช่องที่ {activeImageSlot + 1}</span>
                               </div>
                               <a
                                 href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
@@ -1684,37 +1903,27 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                           <div className="p-3.5 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                             <div className="flex items-center gap-3 min-w-0">
                               <img
-                                src={attachedImageBase64}
-                                alt="preview"
+                                src={imageSlots[activeImageSlot]?.base64}
+                                alt={`รูปที่ ${activeImageSlot + 1}`}
                                 className="h-16 w-20 object-cover rounded-lg border border-slate-200 bg-slate-100 shrink-0"
                               />
                               <div className="space-y-0.5 min-w-0">
                                 <span className="font-bold text-xs text-slate-900 line-clamp-1 block">
-                                  {attachedImageFileName || 'รูปภาพประกอบ'}
+                                  {imageSlots[activeImageSlot]?.fileName || `รูปภาพประกอบที่ ${activeImageSlot + 1}`}
                                 </span>
                                 <div className="flex items-center gap-2 text-[11px] flex-wrap">
                                   <span className="text-slate-400">
-                                    {Math.round(attachedImageFileSize / 1024)} KB
+                                    {Math.round((imageSlots[activeImageSlot]?.fileSize || 0) / 1024)} KB
                                   </span>
                                   <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                     <HardDrive className="w-3 h-3 text-emerald-600" />
-                                    <span>บันทึกลงโฟลเดอร์ รูปภาพประกอบ (File responses)</span>
+                                    <span>บันทึกเข้า Drive ช่อง {activeImageSlot + 1}</span>
                                   </span>
                                 </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-1.5 flex-wrap self-end sm:self-center shrink-0">
-                              <a
-                                href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition-all cursor-pointer"
-                                title="เปิดโฟลเดอร์ Google Drive เพื่อดูหรือลากไฟล์ใส่"
-                              >
-                                <FolderOpen className="w-3.5 h-3.5" />
-                                <span>เปิด Drive</span>
-                              </a>
                               <button
                                 type="button"
                                 onClick={handleDownloadAttachedImage}
@@ -1733,66 +1942,60 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               </button>
                               <button
                                 type="button"
-                                onClick={handleRemoveAttachedImage}
+                                onClick={() => handleRemoveSlotImage(activeImageSlot)}
                                 className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-all cursor-pointer"
-                                title="ลบรูปภาพ"
+                                title="ลบรูปภาพช่องนี้"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
                         )}
-
-                        {/* Webhook Auto-Drive Upload Status */}
-                        {isWebhookConnected && (
-                          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs">
-                            <span className="flex items-center gap-1.5 font-bold text-emerald-800">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>ระบบพร้อมอัปโหลดรูปภาพเข้า Google Drive อัตโนมัติเมื่อกดบันทึก</span>
-                            </span>
-                            <span className="text-[10px] text-emerald-600 font-mono bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                              Webhook เชื่อมต่อแล้ว
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    )}
-
-                    {/* Mode 2: Direct URL / Google Drive Link */}
-                    {imageAttachmentMode === 'url' && (
+                    ) : (
+                      /* Mode: URL / Google Drive Link */
                       <div className="space-y-2.5">
                         <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5 text-xs text-slate-700">
                           <span className="font-black text-blue-950 block flex items-center gap-1.5">
                             <FolderOpen className="w-4 h-4 text-blue-600" />
-                            <span>วิธีนำรูปภาพจาก Google Drive มาแสดง:</span>
+                            <span>วิธีใส่ลิงก์รูปภาพที่ {activeImageSlot + 1} จาก Google Drive:</span>
                           </span>
                           <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
-                            <li>คลิกปุ่ม <strong>&quot;เปิดโฟลเดอร์ใน Drive&quot;</strong> ด้านบน แล้วอัปโหลดหรือเลือกรูปในโฟลเดอร์</li>
-                            <li>คลิกขวาที่รูปภาพใน Drive &gt; เลือก <strong>&quot;แชร์&quot;</strong> &gt; <strong>&quot;คัดลอกลิงก์&quot;</strong></li>
-                            <li>นำลิงก์มาวางในช่องด้านล่างนี้ ระบบจะแปลงเป็นภาพพรีวิวทันที</li>
+                            <li>คลิกปุ่ม <strong>&quot;เปิดโฟลเดอร์ใน Drive&quot;</strong> ด้านล่าง</li>
+                            <li>คลิกขวาที่รูปภาพ &gt; เลือก <strong>&quot;แชร์&quot;</strong> &gt; <strong>&quot;คัดลอกลิงก์&quot;</strong></li>
+                            <li>นำลิงก์มาวางในช่องด้านล่างนี้ ระบบจะแปลงเป็นรูปภาพพรีวิวให้อัตโนมัติ</li>
                           </ol>
                         </div>
 
-                        <input
-                          type="url"
-                          id="input-announcement-imageurl"
-                          value={imageUrl}
-                          onChange={(e) => setImageUrl(e.target.value)}
-                          placeholder="วางลิงก์ เช่น https://drive.google.com/file/d/... หรือ URL รูปภาพ"
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm font-medium text-slate-900 transition-all outline-hidden bg-white"
-                        />
-                        <p className="text-[11px] text-slate-500">
-                          💡 รองรับลิงก์ Google Drive โดยตรง ระบบจะแปลงเป็นรูปภาพพรีวิวให้อัตโนมัติ
-                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            id={`input-announcement-imageurl-slot-${activeImageSlot}`}
+                            value={imageSlots[activeImageSlot]?.url || ''}
+                            onChange={(e) => handleSlotUrlChange(activeImageSlot, e.target.value)}
+                            placeholder={`วางลิงก์รูปภาพที่ ${activeImageSlot + 1} เช่น https://drive.google.com/file/d/...`}
+                            className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-sm font-medium text-slate-900 transition-all outline-hidden bg-white"
+                          />
+                          <a
+                            href={ANNOUNCEMENTS_DRIVE_FOLDER_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition-all flex items-center gap-1 shrink-0"
+                            title="เปิด Google Drive เพื่อคัดลอกลิงก์"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">เปิด Drive</span>
+                          </a>
+                        </div>
 
-                        {/* Image Live Preview */}
-                        {displayPreviewUrl && (
+                        {/* Slot URL Preview */}
+                        {imageSlots[activeImageSlot]?.url && (
                           <div className="mt-2 p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs">
                             <div className="flex items-center gap-3 min-w-0">
                               <img
                                 src={displayPreviewUrl}
-                                alt="preview"
-                                className="h-16 w-24 object-cover rounded-lg border border-slate-300 bg-white shrink-0"
+                                alt={`preview slot ${activeImageSlot + 1}`}
+                                className="h-14 w-20 object-cover rounded-lg border border-slate-300 bg-white shrink-0"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
                                   (e.target as HTMLElement).style.display = 'none';
@@ -1801,21 +2004,55 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               <div className="text-xs text-slate-700 min-w-0">
                                 <span className="font-bold flex items-center gap-1 text-emerald-700">
                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                  <span>พบรูปภาพพรีวิว</span>
+                                  <span>พบรูปภาพพรีวิวสำหรับรูปที่ {activeImageSlot + 1}</span>
                                 </span>
-                                <span className="text-[11px] text-slate-500 truncate max-w-xs block mt-0.5">{imageUrl}</span>
+                                <span className="text-[11px] text-slate-500 truncate max-w-xs block mt-0.5">
+                                  {imageSlots[activeImageSlot]?.url}
+                                </span>
                               </div>
                             </div>
                             <button
                               type="button"
-                              onClick={() => setImageUrl('')}
+                              onClick={() => handleRemoveSlotImage(activeImageSlot)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-                              title="ล้าง URL"
+                              title="ล้างลิงก์ช่องนี้"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Live Rotating Carousel Preview (when 1 or more images are selected) */}
+                    {liveCarouselImages.length > 0 && (
+                      <div className="mt-3 p-3.5 bg-gradient-to-br from-indigo-50/70 to-slate-100 rounded-2xl border border-indigo-100 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                            <span>ตัวอย่างแสดงผลการหมุนวน 3 รูปภาพ (Live Carousel Preview):</span>
+                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
+                            {liveCarouselImages.length}/3 รูปภาพ
+                          </span>
+                        </div>
+                        <div className="rounded-xl overflow-hidden border border-slate-200/80 shadow-xs max-w-md mx-auto">
+                          <AnnouncementCarousel
+                            images={liveCarouselImages}
+                            title="ตัวอย่างภาพข่าวประชาสัมพันธ์"
+                            aspectClass="w-full h-44 sm:h-52"
+                            objectFit="contain"
+                            showControls={liveCarouselImages.length > 1}
+                            showIndicators={liveCarouselImages.length > 1}
+                            showBadge={liveCarouselImages.length > 1}
+                            autoRotateInterval={2800}
+                          />
+                        </div>
+                        <p className="text-[11px] text-center text-slate-500">
+                          {liveCarouselImages.length > 1
+                            ? '✨ รูปภาพจะหมุนวนอัตโนมัติทุก 3.5 วินาทีในการ์ดข่าว และสามารถคลิกเพื่อซูมดูรูปขนาดเต็มได้ทุกรูป'
+                            : 'แนบเพิ่มอีกได้สูงสุด 3 รูปเพื่อเปิดใช้งานการหมุนวนรูปภาพอัตโนมัติ'}
+                        </p>
                       </div>
                     )}
                   </div>

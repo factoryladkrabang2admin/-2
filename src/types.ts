@@ -136,6 +136,8 @@ export interface AnnouncementItem {
   endDate?: string;       // วันสิ้นสุด e.g. "31/8/2026"
   rawImageUrl?: string;   // Original link from sheet (e.g. Google Drive link)
   imageUrl?: string;      // Direct embeddable image URL (lh3/thumbnail)
+  rawImageUrls?: string[]; // Multiple raw links from sheet (up to 3 images)
+  imageUrls?: string[];    // Multiple embeddable image URLs (up to 3 images)
   category?: string;      // Auto-categorized by department
   status?: AnnouncementStatus;
   isPinned?: boolean;

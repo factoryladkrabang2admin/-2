@@ -3184,7 +3184,9 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
   let deptIdx = 2;
   let startIdx = 3;
   let endIdx = 4;
-  let imgIdx = 5;
+  let img1Idx = 5;
+  let img2Idx = -1;
+  let img3Idx = -1;
 
   for (let i = 0; i < Math.min(rows.length, 5); i++) {
     const row = rows[i];
@@ -3206,8 +3208,14 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
           startIdx = colIdx;
         } else if (c.includes('สิ้นสุด') || c.includes('จบ') || c.includes('end')) {
           endIdx = colIdx;
-        } else if (c.includes('รูปภาพ') || c.includes('ภาพ') || c.includes('image') || c.includes('ลิงก์') || c.includes('link') || c.includes('drive')) {
-          imgIdx = colIdx;
+        } else if (c.includes('รูปภาพประกอบ3') || c.includes('รูปภาพ3') || c.includes('ภาพ3') || c.includes('image3')) {
+          img3Idx = colIdx;
+        } else if (c.includes('รูปภาพประกอบ2') || c.includes('รูปภาพ2') || c.includes('ภาพ2') || c.includes('image2')) {
+          img2Idx = colIdx;
+        } else if (c.includes('รูปภาพประกอบ') || c.includes('รูปภาพ1') || c.includes('รูปภาพ') || c.includes('ภาพ') || c.includes('image') || c.includes('ลิงก์') || c.includes('link') || c.includes('drive')) {
+          if (img1Idx === 5 || img1Idx === -1) {
+            img1Idx = colIdx;
+          }
         }
       });
 
@@ -3218,7 +3226,14 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
         if (deptIdx <= 2 && row.length > 3) deptIdx = 3;
         if (startIdx <= 3 && row.length > 4) startIdx = 4;
         if (endIdx <= 4 && row.length > 5) endIdx = 5;
-        if (imgIdx <= 5 && row.length > 6) imgIdx = 6;
+        if (img1Idx <= 5 && row.length > 6) img1Idx = 6;
+      }
+      if (hasTimestampCol) {
+        if (img2Idx === -1 && row.length > 7) img2Idx = 7;
+        if (img3Idx === -1 && row.length > 8) img3Idx = 8;
+      } else {
+        if (img2Idx === -1 && row.length > 6) img2Idx = 6;
+        if (img3Idx === -1 && row.length > 7) img3Idx = 7;
       }
       break;
     }
@@ -3233,7 +3248,9 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
       deptIdx = 3;
       startIdx = 4;
       endIdx = 5;
-      imgIdx = 6;
+      img1Idx = 6;
+      img2Idx = 7;
+      img3Idx = 8;
     }
   }
 
@@ -3247,7 +3264,11 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
     const rawDept = row[deptIdx] || '';
     const rawStart = row[startIdx] || '';
     const rawEnd = row[endIdx] || '';
-    const rawImg = row[imgIdx] || '';
+
+    // Collect up to 3 raw image values from separate columns
+    const rawImg1 = img1Idx >= 0 && img1Idx < row.length ? (row[img1Idx] || '').trim() : '';
+    const rawImg2 = img2Idx >= 0 && img2Idx < row.length ? (row[img2Idx] || '').trim() : '';
+    const rawImg3 = img3Idx >= 0 && img3Idx < row.length ? (row[img3Idx] || '').trim() : '';
 
     // Ignore completely empty rows
     if (!rawTitle && !rawContent && !rawDept && !rawStart) return;
@@ -3257,9 +3278,37 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
     const department = (rawDept || '').replace(/^["'\s]+|["'\s]+$/g, '').trim() || 'ธุรการลาดกระบัง 2';
     const startDate = (rawStart || '').trim();
     const endDate = (rawEnd || '').trim();
-    const rawImageUrl = (rawImg || '').trim();
 
-    const imageInfo = extractGoogleDriveDirectImageUrl(rawImageUrl);
+    // Collect up to 3 distinct raw image URLs
+    const rawImageUrls: string[] = [];
+    const addRawCandidate = (raw: string) => {
+      if (!raw) return;
+      const parts = raw.split(/[\r\n,]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+      parts.forEach((p) => {
+        if (p && !rawImageUrls.includes(p)) {
+          rawImageUrls.push(p);
+        }
+      });
+    };
+    addRawCandidate(rawImg1);
+    addRawCandidate(rawImg2);
+    addRawCandidate(rawImg3);
+
+    // Convert to direct embeddable preview URLs
+    const imageUrls: string[] = [];
+    rawImageUrls.forEach((u) => {
+      const info = extractGoogleDriveDirectImageUrl(u);
+      const url = info.previewUrl || u;
+      if (url && !imageUrls.includes(url)) {
+        imageUrls.push(url);
+      }
+    });
+
+    const displayRawList = rawImageUrls.slice(0, 3);
+    const displayImgList = imageUrls.slice(0, 3);
+    const primaryRawUrl = displayRawList[0] || undefined;
+    const primaryImageUrl = displayImgList[0] || undefined;
+
     const category = getAnnouncementCategory(department, title);
     const status = calculateAnnouncementStatus(startDate, endDate);
 
@@ -3294,8 +3343,10 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
       department,
       startDate,
       endDate: endDate || undefined,
-      rawImageUrl: rawImageUrl || undefined,
-      imageUrl: imageInfo.previewUrl || undefined,
+      rawImageUrl: primaryRawUrl,
+      imageUrl: primaryImageUrl,
+      rawImageUrls: displayRawList,
+      imageUrls: displayImgList,
       category,
       status,
       isPinned: isItemPinned,
