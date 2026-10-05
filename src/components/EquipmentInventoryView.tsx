@@ -35,7 +35,12 @@ import {
   Printer,
   Sparkles,
   Info,
-  Edit3
+  Edit3,
+  FileSpreadsheet,
+  Send,
+  Loader2,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 import { InventoryProduct, InventoryTransaction, InventoryCategory } from '../types';
 import { 
@@ -49,9 +54,14 @@ import {
   updateProductDetails, 
   updateBatchStockAndPrice,
   generateInventorySheetTsv, 
+  generateTransactionRowTsv,
   getEquipmentInventoryWebhookUrl, 
   setEquipmentInventoryWebhookUrl, 
-  EQUIPMENT_INVENTORY_APPS_SCRIPT 
+  testEquipmentInventoryWebhook,
+  syncAllPendingEquipmentTransactions,
+  getPendingEquipmentTransactionsCount,
+  EQUIPMENT_INVENTORY_APPS_SCRIPT,
+  resetEquipmentInventory 
 } from '../services/equipmentInventoryService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canAccessEquipmentInventory } from '../data/mockData';
@@ -241,14 +251,85 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
   const [adjustStockNow, setAdjustStockNow] = useState<number>(0);
   const [adjustSubmitting, setAdjustSubmitting] = useState<boolean>(false);
 
-  // Webhook settings
+  // Webhook settings & Sync state
   const [webhookUrlInput, setWebhookUrlInput] = useState<string>(() => getEquipmentInventoryWebhookUrl());
   const [webhookSaveNotice, setWebhookSaveNotice] = useState<string | null>(null);
   const [copiedTsvNotice, setCopiedTsvNotice] = useState<boolean>(false);
   const [copiedScriptNotice, setCopiedScriptNotice] = useState<boolean>(false);
+  const [copiedTxNotice, setCopiedTxNotice] = useState<boolean>(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState<boolean>(false);
+  const [webhookTestNotice, setWebhookTestNotice] = useState<{ success: boolean; msg: string } | null>(null);
+  const [isSyncingAllPending, setIsSyncingAllPending] = useState<boolean>(false);
+  const [syncAllPendingNotice, setSyncAllPendingNotice] = useState<{ success: boolean; msg: string } | null>(null);
+  const [webhookModalTab, setWebhookModalTab] = useState<'webhook' | 'manual'>('webhook');
 
-  // Initial live sync from Google Sheet on mount
+  // Reset to default modal state
+  const [resetModalOpen, setResetModalOpen] = useState<boolean>(false);
+  const [resetMode, setResetMode] = useState<'cycle' | 'factory'>('cycle');
+  const [resetClearTransactions, setResetClearTransactions] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+
+  // Handle reset to default with Google Sheet deletion
+  const handleConfirmReset = async () => {
+    setIsResetting(true);
+    try {
+      const res = await resetEquipmentInventory({
+        mode: resetMode,
+        clearTransactions: resetClearTransactions,
+        operator: currentUser?.name || 'ผู้ดูแลระบบ',
+      });
+      setProducts(res.products);
+      setTransactions(res.transactions);
+      setResetModalOpen(false);
+
+      if (res.googleSheetSynced) {
+        setSyncStatusMsg({
+          text: isEn
+            ? 'Reset completed! Data in Google Sheet has been cleared and reset successfully.'
+            : 'รีเซ็ตข้อมูลสำเร็จ! ระบบได้ลบและรีเซ็ตข้อมูลใน Google Sheet เรียบร้อยแล้ว',
+          isError: false,
+        });
+      } else {
+        // Automatically copy clean TSV matrix to clipboard as a helpful instant backup!
+        const cleanTsv = generateInventorySheetTsv(res.products);
+        try {
+          await navigator.clipboard.writeText(cleanTsv);
+          setCopiedTsvNotice(true);
+          setTimeout(() => setCopiedTsvNotice(false), 4000);
+        } catch {
+          // ignore
+        }
+
+        setSyncStatusMsg({
+          text: isEn
+            ? 'System reset completed! Clean starting table copied to clipboard for Google Sheet.'
+            : 'รีเซ็ตข้อมูลในระบบเรียบร้อย! คัดลอกตารางตั้งต้นรอบใหม่ลงคลิปบอร์ดแล้ว (หรือเชื่อมต่อ Webhook เพื่อลบในชีตอัตโนมัติ)',
+          isError: false,
+        });
+      }
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    } catch {
+      setSyncStatusMsg({
+        text: isEn ? 'Failed to reset inventory.' : 'เกิดข้อผิดพลาดในการรีเซ็ตข้อมูล',
+        isError: true,
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Initial live sync from Google Sheet on mount & sync server webhook URL
   useEffect(() => {
+    fetch('/api/equipment-inventory-webhook')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.webhookUrl && typeof d.webhookUrl === 'string' && d.webhookUrl.startsWith('http')) {
+          setWebhookUrlInput((prev) => prev || d.webhookUrl);
+          setEquipmentInventoryWebhookUrl(d.webhookUrl);
+        }
+      })
+      .catch(() => {});
+
     handleSyncGoogleSheet(true);
   }, []);
 
@@ -501,10 +582,17 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
         note: restockNote,
       });
 
-      if (res.success) {
+      if (res.success && res.product && res.transaction) {
         setProducts(getLocalInventoryProducts());
         setTransactions(getLocalInventoryTransactions());
         setRestockModalOpen(false);
+
+        // Open Voucher Confirmation Modal with Google Sheet status
+        setLastSaleReceipt({
+          tx: res.transaction,
+          product: res.product,
+        });
+        setReceiptModalOpen(true);
       } else {
         setRestockError(res.error || 'เกิดข้อผิดพลาดในการรับเข้า');
       }
@@ -529,8 +617,10 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       });
 
       // If adjust stock now differs
+      let adjTx: InventoryTransaction | null = null;
+      let adjProd: InventoryProduct | null = null;
       if (adjustStockNow !== product.currentStock) {
-        await executeInventoryTransaction({
+        const adjRes = await executeInventoryTransaction({
           type: 'adjust',
           productId: product.id,
           quantity: adjustStockNow,
@@ -538,11 +628,23 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
           operatorName: currentUser?.name || 'ผู้ดูแลคลัง',
           note: `ปรับปรุงยอดสต็อกเป็น ${adjustStockNow} ${product.unit}`,
         });
+        if (adjRes.success && adjRes.product && adjRes.transaction) {
+          adjTx = adjRes.transaction;
+          adjProd = adjRes.product;
+        }
       }
 
       setProducts(getLocalInventoryProducts());
       setTransactions(getLocalInventoryTransactions());
       setAdjustModalOpen(false);
+
+      if (adjTx && adjProd) {
+        setLastSaleReceipt({
+          tx: adjTx,
+          product: adjProd,
+        });
+        setReceiptModalOpen(true);
+      }
     } catch {
       // ignore
     } finally {
@@ -562,6 +664,18 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     }
   };
 
+  // Copy single transaction row TSV
+  const handleCopyTransactionRow = async (tx: InventoryTransaction) => {
+    const tsv = generateTransactionRowTsv(tx);
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopiedTxNotice(true);
+      setTimeout(() => setCopiedTxNotice(false), 3000);
+    } catch {
+      // fallback
+    }
+  };
+
   // Copy Apps Script code
   const handleCopyAppsScript = async () => {
     try {
@@ -573,11 +687,61 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     }
   };
 
-  // Save Webhook URL
-  const handleSaveWebhook = () => {
-    setEquipmentInventoryWebhookUrl(webhookUrlInput);
-    setWebhookSaveNotice('บันทึก Webhook URL สำเร็จเรียบร้อย');
+  // Save Webhook URL & sync to server
+  const handleSaveWebhook = async () => {
+    const cleanUrl = webhookUrlInput.trim();
+    setEquipmentInventoryWebhookUrl(cleanUrl);
+    try {
+      await fetch('/api/equipment-inventory-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: cleanUrl }),
+      });
+    } catch {
+      // ignore
+    }
+    setWebhookSaveNotice('บันทึก Webhook URL สำเร็จเรียบร้อย (ซิงค์ทั่วทั้งระบบ)');
     setTimeout(() => setWebhookSaveNotice(null), 3000);
+  };
+
+  // Test Webhook Connection
+  const handleTestWebhook = async () => {
+    const cleanUrl = webhookUrlInput.trim();
+    if (!cleanUrl) {
+      setWebhookTestNotice({ success: false, msg: 'กรุณากรอก Webhook URL ให้ถูกต้องก่อนทดสอบ' });
+      return;
+    }
+    setIsTestingWebhook(true);
+    setWebhookTestNotice(null);
+    try {
+      const res = await testEquipmentInventoryWebhook(cleanUrl);
+      setWebhookTestNotice({ success: res.success, msg: res.message });
+      if (res.success) {
+        setEquipmentInventoryWebhookUrl(cleanUrl);
+      }
+    } catch (err: any) {
+      setWebhookTestNotice({ success: false, msg: err.message || 'การทดสอบล้มเหลว' });
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
+  // Sync All Pending (unsynced) Transactions
+  const handleSyncAllPending = async () => {
+    const cleanUrl = webhookUrlInput.trim();
+    setIsSyncingAllPending(true);
+    setSyncAllPendingNotice(null);
+    try {
+      const res = await syncAllPendingEquipmentTransactions(cleanUrl);
+      setSyncAllPendingNotice({ success: res.success, msg: res.message });
+      if (res.success) {
+        setTransactions(getLocalInventoryTransactions());
+      }
+    } catch (err: any) {
+      setSyncAllPendingNotice({ success: false, msg: err.message || 'การซิงค์ล้มเหลว' });
+    } finally {
+      setIsSyncingAllPending(false);
+    }
   };
 
   // Filtered Products
@@ -706,73 +870,174 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
             </div>
           </div>
 
-          {/* Quick Actions Header Toolbar - Icon Only Buttons */}
-          <div className="flex flex-wrap items-center gap-2 sm:self-start lg:self-center">
-            {/* 1. Open Google Sheet ต้นทาง (Icon Only) */}
-            <a
-              href={EQUIPMENT_INVENTORY_SHEET_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
-              title={isEn ? "Open Source Google Sheet" : "เปิดดู Google Sheet ต้นทาง"}
-              aria-label={isEn ? "Open Source Google Sheet" : "เปิดดู Google Sheet ต้นทาง"}
-            >
-              <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            </a>
+          {/* Quick Actions Header Toolbar */}
+          <div className="flex flex-col items-start sm:items-end gap-2.5 sm:self-start lg:self-center">
+            {/* Top Row: Google Sheet Tools & View Mode Switcher */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 0. Google Sheet Webhook Sync Status Pill (Icon Only) */}
+              <button
+                onClick={() => setWebhookModalOpen(true)}
+                className={`relative p-2.5 rounded-xl border backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group ${
+                  webhookUrlInput.trim().startsWith('http')
+                    ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-950 dark:text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-600/25 hover:bg-amber-600/35 text-amber-950 dark:text-amber-200 border-amber-500/40'
+                }`}
+                title={
+                  webhookUrlInput.trim().startsWith('http')
+                    ? (isEn ? 'Google Sheet Synced' : 'ซิงค์ Google Sheet แล้ว')
+                    : (isEn ? 'Connect Google Sheet Webhook' : 'ตั้งค่าซิงค์ Google Sheet')
+                }
+                aria-label={
+                  webhookUrlInput.trim().startsWith('http')
+                    ? (isEn ? 'Google Sheet Synced' : 'ซิงค์ Google Sheet แล้ว')
+                    : (isEn ? 'Connect Google Sheet Webhook' : 'ตั้งค่าซิงค์ Google Sheet')
+                }
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+                {getPendingEquipmentTransactionsCount() > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[9px] bg-rose-500 text-white font-bold animate-pulse shadow-xs">
+                    {getPendingEquipmentTransactionsCount()}
+                  </span>
+                )}
+              </button>
 
-            {/* 2. Copy Table to Sheet (Icon Only) */}
-            <button
-              onClick={handleCopyTsvToClipboard}
-              className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
-              title={copiedTsvNotice ? (isEn ? "Copied table to clipboard!" : "คัดลอกตารางแล้ว!") : (isEn ? "Copy table to Google Sheet" : "คัดลอกตารางไปวางที่ Sheet")}
-              aria-label={isEn ? "Copy table to Google Sheet" : "คัดลอกตารางไปวางที่ Sheet"}
-            >
-              {copiedTsvNotice ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-bounce" />
-              ) : (
-                <Copy className="w-4 h-4 group-hover:scale-110 transition-transform" />
-              )}
-            </button>
+              {/* 1. Open Google Sheet ต้นทาง (Icon Only) */}
+              <a
+                href={EQUIPMENT_INVENTORY_SHEET_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
+                title={isEn ? "Open Source Google Sheet" : "เปิดดู Google Sheet ต้นทาง"}
+                aria-label={isEn ? "Open Source Google Sheet" : "เปิดดู Google Sheet ต้นทาง"}
+              >
+                <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              </a>
 
-            {/* 3. Settings & Webhook (Icon Only) */}
-            <button
-              onClick={() => setWebhookModalOpen(true)}
-              className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
-              title={isEn ? "Settings & Webhook" : "ตั้งค่า Webhook & Google Sheet"}
-              aria-label={isEn ? "Settings & Webhook" : "ตั้งค่า Webhook & Google Sheet"}
-            >
-              <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
-            </button>
+              {/* 2. Copy Table to Sheet (Icon Only) */}
+              <button
+                onClick={handleCopyTsvToClipboard}
+                className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
+                title={copiedTsvNotice ? (isEn ? "Copied table to clipboard!" : "คัดลอกตารางแล้ว!") : (isEn ? "Copy table to Google Sheet" : "คัดลอกตารางไปวางที่ Sheet")}
+                aria-label={isEn ? "Copy table to Google Sheet" : "คัดลอกตารางไปวางที่ Sheet"}
+              >
+                {copiedTsvNotice ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-bounce" />
+                ) : (
+                  <Copy className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                )}
+              </button>
 
-            {/* 4. Edit Rows Restock & Price (Icon Only) */}
-            <button
-              onClick={() => handleOpenBatchRowEdit('both')}
-              className="p-2.5 rounded-xl bg-amber-900/80 hover:bg-amber-950 text-white dark:bg-amber-600/80 dark:hover:bg-amber-600 shadow-md shadow-amber-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
-              title={isEn ? "Edit Rows (Restock & Price)" : "แก้ไขแถว เพิ่มสต็อก, ราคาขาย"}
-              aria-label={isEn ? "Edit Rows (Restock & Price)" : "แก้ไขแถว เพิ่มสต็อก, ราคาขาย"}
-            >
-              <Edit3 className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
-            </button>
+              {/* 3. Settings & Webhook (Icon Only) */}
+              <button
+                onClick={() => setWebhookModalOpen(true)}
+                className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
+                title={isEn ? "Settings & Webhook" : "ตั้งค่า Webhook & Google Sheet"}
+                aria-label={isEn ? "Settings & Webhook" : "ตั้งค่า Webhook & Google Sheet"}
+              >
+                <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform" />
+              </button>
 
-            {/* 5. Sale / POS (Icon Only) */}
-            <button
-              onClick={() => handleOpenSaleModal()}
-              className="p-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-md shadow-emerald-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
-              title={isEn ? "New Sale / Dispatch" : "ทำรายการขาย / เบิก"}
-              aria-label={isEn ? "New Sale / Dispatch" : "ทำรายการขาย / เบิก"}
-            >
-              <ShoppingCart className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            </button>
+              {/* View Mode Switcher: Card, Table, Sheet Matrix (Icons Only in Header) */}
+              <div className="flex items-center gap-1 bg-white/40 dark:bg-white/10 p-1 rounded-xl border border-amber-900/15 dark:border-white/20 backdrop-blur-md shadow-xs">
+                {/* Card / Grid View */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('grid');
+                    setActiveMainTab('inventory');
+                  }}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'grid' && activeMainTab === 'inventory'
+                      ? 'bg-amber-900 text-white dark:bg-white dark:text-amber-950 shadow-xs scale-105'
+                      : 'text-amber-950/70 hover:text-amber-950 dark:text-stone-300 dark:hover:text-white hover:bg-white/30 dark:hover:bg-white/20'
+                  }`}
+                  title={isEn ? "Card View" : "มุมมองการ์ด"}
+                  aria-label={isEn ? "Card View" : "มุมมองการ์ด"}
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
 
-            {/* 6. Restock (Icon Only) */}
-            <button
-              onClick={() => handleOpenRestockModal()}
-              className="p-2.5 rounded-xl bg-stone-800 hover:bg-stone-900 text-white shadow-md shadow-stone-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
-              title={isEn ? "Restock Inventory" : "รับเข้าสต็อก"}
-              aria-label={isEn ? "Restock Inventory" : "รับเข้าสต็อก"}
-            >
-              <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            </button>
+                {/* Table View */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('table');
+                    setActiveMainTab('inventory');
+                  }}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'table' && activeMainTab === 'inventory'
+                      ? 'bg-amber-900 text-white dark:bg-white dark:text-amber-950 shadow-xs scale-105'
+                      : 'text-amber-950/70 hover:text-amber-950 dark:text-stone-300 dark:hover:text-white hover:bg-white/30 dark:hover:bg-white/20'
+                  }`}
+                  title={isEn ? "Table View" : "มุมมองตาราง"}
+                  aria-label={isEn ? "Table View" : "มุมมองตาราง"}
+                >
+                  <TableIcon className="w-4 h-4" />
+                </button>
+
+                {/* Sheet Matrix View */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('matrix');
+                    setActiveMainTab('inventory');
+                  }}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'matrix' && activeMainTab === 'inventory'
+                      ? 'bg-amber-900 text-white dark:bg-white dark:text-amber-950 shadow-xs scale-105'
+                      : 'text-amber-950/70 hover:text-amber-950 dark:text-stone-300 dark:hover:text-white hover:bg-white/30 dark:hover:bg-white/20'
+                  }`}
+                  title={isEn ? "Google Sheet View" : "มุมมองชีต"}
+                  aria-label={isEn ? "Google Sheet View" : "มุมมองชีต"}
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Row: Placed underneath the table view mode (บรรทัดล่างใต้ มุมมองตาราง) */}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
+              {/* 1. แก้ไขแถว (Icon Only) */}
+              <button
+                onClick={() => handleOpenBatchRowEdit('both')}
+                className="p-2.5 rounded-xl bg-amber-900/80 hover:bg-amber-950 text-white dark:bg-amber-600/80 dark:hover:bg-amber-600 shadow-md shadow-amber-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
+                title={isEn ? "Edit Rows (Restock & Price)" : "แก้ไขแถว เพิ่มสต็อก, ราคาขาย"}
+                aria-label={isEn ? "Edit Rows (Restock & Price)" : "แก้ไขแถว เพิ่มสต็อก, ราคาขาย"}
+              >
+                <Edit3 className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
+              </button>
+
+              {/* 2. ทำรายการขาย / เบิก (Icon Only) */}
+              <button
+                onClick={() => handleOpenSaleModal()}
+                className="p-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-md shadow-emerald-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
+                title={isEn ? "New Sale / Dispatch" : "ทำรายการขาย / เบิก"}
+                aria-label={isEn ? "New Sale / Dispatch" : "ทำรายการขาย / เบิก"}
+              >
+                <ShoppingCart className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              </button>
+
+              {/* 3. รับเข้าสต็อก (Icon Only) */}
+              <button
+                onClick={() => handleOpenRestockModal()}
+                className="p-2.5 rounded-xl bg-stone-800 hover:bg-stone-900 text-white shadow-md shadow-stone-950/20 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center group"
+                title={isEn ? "Restock Inventory" : "รับเข้าสต็อก"}
+                aria-label={isEn ? "Restock Inventory" : "รับเข้าสต็อก"}
+              >
+                <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              </button>
+
+              {/* 4. รีเซ็ตเป็นค่าเริ่มต้น (Icon Only) */}
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(true)}
+                className="p-2.5 rounded-xl bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 active:scale-95 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
+                title={isEn ? "Reset to Default (New Week/Month Cycle)" : "รีเซ็ตเป็นค่าเริ่มต้น (เริ่มรอบสัปดาห์/เดือนใหม่)"}
+                aria-label={isEn ? "Reset to Default (New Week/Month Cycle)" : "รีเซ็ตเป็นค่าเริ่มต้น (เริ่มรอบสัปดาห์/เดือนใหม่)"}
+              >
+                <RotateCcw className="w-4 h-4 group-hover:-rotate-90 transition-transform text-amber-950 dark:text-white" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -933,48 +1198,6 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
             )}
           </button>
         </div>
-
-        {/* View Mode Toggle (Only in Inventory Tab) */}
-        {activeMainTab === 'inventory' && (
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-              }`}
-              title={isEn ? "Card View (Grid)" : "มุมมองแบบการ์ด (Grid)"}
-            >
-              <Grid className="w-4 h-4" />
-              <span className="hidden md:inline">{isEn ? 'Cards' : 'การ์ด'}</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-              }`}
-              title={isEn ? "Table View" : "มุมมองแบบตารางคลังสินค้า (Table)"}
-            >
-              <TableIcon className="w-4 h-4" />
-              <span className="hidden md:inline">{isEn ? 'Table' : 'ตาราง'}</span>
-            </button>
-            <button
-              onClick={() => setViewMode('matrix')}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                viewMode === 'matrix'
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-              }`}
-              title={isEn ? "Google Sheet Matrix View" : "โครงสร้างแนวนอน Google Sheet"}
-            >
-              <FileText className="w-4 h-4" />
-              <span className="hidden md:inline">{isEn ? 'Sheet Matrix' : 'ชีต Matrix'}</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Tab Content 1: Inventory Management */}
@@ -1481,7 +1704,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                         {isEn ? 'Date' : 'วันที่'}
                       </td>
                       {products.map((p) => (
-                        <td key={p.id} className="p-2.5 text-center text-[11px] text-slate-500">
+                        <td key={p.id} className="p-2.5 text-center text-[11px] text-slate-500 whitespace-pre-line leading-relaxed font-mono align-top">
                           {p.lastUpdatedDate || '-'}
                         </td>
                       ))}
@@ -2546,18 +2769,25 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       {/* MODAL 4: WEBHOOK & GOOGLE SHEET INTEGRATION */}
       {webhookModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
-                  <Settings className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 flex items-center justify-center">
+                  <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base text-slate-900 dark:text-white">
-                    {isEn ? 'Google Sheet & Webhook Integration' : 'การเชื่อมต่อ Google Sheet & Webhook'}
+                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>{isEn ? 'Google Sheet & Webhook Integration' : 'การเชื่อมต่อ Google Sheet & Webhook'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      webhookUrlInput.trim().startsWith('http')
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                    }`}>
+                      {webhookUrlInput.trim().startsWith('http') ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้เชื่อมต่อ'}
+                    </span>
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {isEn ? 'Configure automatic sync to Google Sheet' : 'ตั้งค่าการบันทึกรายการลงใน Google Sheet แบบอัตโนมัติ'}
+                    {isEn ? 'Configure automatic sync to Google Sheet' : 'ตั้งค่าการบันทึกรายการขาย/รับเข้าลงใน Google Sheet แบบอัตโนมัติ'}
                   </p>
                 </div>
               </div>
@@ -2569,102 +2799,296 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
               </button>
             </div>
 
-            {/* Target Google Sheet Details */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
-              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>{isEn ? 'Connected Google Sheet:' : 'Google Sheet ที่เชื่อมต่อ:'}</span>
-                <span className="text-[11px] font-mono text-slate-400">GID: 172141710</span>
+            {/* Target Google Sheet Details Banner */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span className="text-slate-400 block sm:inline mr-2">Google Sheet:</span>
+                <span className="font-mono text-slate-800 dark:text-slate-200">คลังอุปกรณ์ (GID: 172141710)</span>
               </div>
               <a
                 href={EQUIPMENT_INVENTORY_SHEET_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 break-all font-mono"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all shrink-0 cursor-pointer"
               >
-                <span>{EQUIPMENT_INVENTORY_SHEET_URL}</span>
-                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{isEn ? 'Open Sheet' : 'เปิด Google Sheet'}</span>
               </a>
             </div>
 
-            {/* Webhook URL Input */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                {isEn 
-                  ? 'Google Apps Script Webhook URL (For automatic live sheet cell updates)' 
-                  : 'Google Apps Script Webhook URL (สำหรับการอัปเดตเซลล์ในชีตสดอัตโนมัติ)'}
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={webhookUrlInput}
-                  onChange={(e) => setWebhookUrlInput(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveWebhook}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
-                >
-                  {isEn ? 'Save' : 'บันทึก'}
-                </button>
-              </div>
-              {webhookSaveNotice && (
-                <div className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{webhookSaveNotice}</span>
-                </div>
-              )}
+            {/* Modal Tabs */}
+            <div className="flex border-b border-slate-200 dark:border-slate-800 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setWebhookModalTab('webhook')}
+                className={`px-4 py-2 border-b-2 cursor-pointer transition-all flex items-center gap-1.5 ${
+                  webhookModalTab === 'webhook'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>ตั้งค่าซิงก์อัตโนมัติ (Webhook)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWebhookModalTab('manual')}
+                className={`px-4 py-2 border-b-2 cursor-pointer transition-all flex items-center gap-1.5 ${
+                  webhookModalTab === 'manual'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>คัดลอกลงชีตด้วยตนเอง (Manual Copy)</span>
+              </button>
             </div>
 
-            {/* Apps Script Guide & Code */}
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-black text-slate-800 dark:text-white">
-                  {isEn ? 'Ready-to-use Google Apps Script code for installation:' : 'โค้ด Google Apps Script สำเร็จรูปสำหรับติดตั้งในชีต:'}
+            {/* TAB 1: WEBHOOK SETUP */}
+            {webhookModalTab === 'webhook' && (
+              <div className="space-y-4">
+                {/* Webhook URL Input & Buttons */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    {isEn 
+                      ? 'Google Apps Script Webhook URL (For automatic live sheet updates)' 
+                      : 'Google Apps Script Webhook URL (สำหรับการส่งข้อมูลเข้าชีตอัตโนมัติ)'}
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="url"
+                      value={webhookUrlInput}
+                      onChange={(e) => {
+                        setWebhookUrlInput(e.target.value);
+                        setWebhookTestNotice(null);
+                      }}
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                      className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isTestingWebhook}
+                        onClick={handleTestWebhook}
+                        className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        {isTestingWebhook ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>ทดสอบ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>ทดสอบเชื่อมต่อ</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveWebhook}
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs cursor-pointer"
+                      >
+                        {isEn ? 'Save' : 'บันทึก'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {webhookTestNotice && (
+                    <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      webhookTestNotice.success
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300'
+                    }`}>
+                      {webhookTestNotice.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span>{webhookTestNotice.msg}</span>
+                    </div>
+                  )}
+
+                  {webhookSaveNotice && (
+                    <div className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{webhookSaveNotice}</span>
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopyAppsScript}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs hover:bg-indigo-100 cursor-pointer"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>
-                    {copiedScriptNotice 
-                      ? (isEn ? 'Code Copied!' : 'คัดลอกโค้ดแล้ว!') 
-                      : (isEn ? 'Copy Code' : 'คัดลอกโค้ด')}
+
+                {/* Pending Transactions Sync Notice */}
+                {getPendingEquipmentTransactionsCount() > 0 && (
+                  <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="space-y-0.5">
+                      <span className="font-black text-amber-950 dark:text-amber-200 block flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600" />
+                        <span>มีรายการค้างส่งเข้า Google Sheet ({getPendingEquipmentTransactionsCount()} รายการ)</span>
+                      </span>
+                      <span className="text-amber-800 dark:text-amber-300 text-[11px] block">
+                        เมื่อเชื่อมต่อ Webhook สำเร็จแล้ว ท่านสามารถกดส่งทุกรายการเข้าชีตพร้อมกันได้ทันที
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isSyncingAllPending || !webhookUrlInput.trim().startsWith('http')}
+                      onClick={handleSyncAllPending}
+                      className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-black text-xs shadow-xs cursor-pointer shrink-0 flex items-center gap-1.5 justify-center"
+                    >
+                      {isSyncingAllPending ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>กำลังซิงค์...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>ซิงค์รายการค้างส่งทั้งหมด</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {syncAllPendingNotice && (
+                  <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                    syncAllPendingNotice.success
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}>
+                    {syncAllPendingNotice.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{syncAllPendingNotice.msg}</span>
+                  </div>
+                )}
+
+                {/* Apps Script Guide & Code */}
+                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-black text-slate-800 dark:text-white">
+                      {isEn ? 'Ready-to-use Google Apps Script code for installation:' : 'โค้ด Google Apps Script สำเร็จรูปสำหรับติดตั้งในชีต:'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyAppsScript}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs hover:bg-indigo-100 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>
+                        {copiedScriptNotice 
+                          ? (isEn ? 'Code Copied!' : 'คัดลอกโค้ดแล้ว!') 
+                          : (isEn ? 'Copy Code' : 'คัดลอกโค้ด')}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-1 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
+                    <div className="font-bold text-amber-900 dark:text-amber-200">ขั้นตอนการติดตั้ง (เพียง 1 นาที):</div>
+                    <div>1. เปิด Google Sheet ผ่านปุ่ม <strong>&quot;เปิด Google Sheet&quot;</strong> ด้านบน</div>
+                    <div>2. ไปที่เมนู <strong>ส่วนขยาย (Extensions)</strong> &gt; <strong>Apps Script</strong></div>
+                    <div>3. ลบโค้ดเดิมแล้ววางโค้ดที่คัดลอกจากด้านล่างนี้ แล้วกด <strong>บันทึก (Save)</strong></div>
+                    <div>4. กด <strong>ทำให้ใช้งานได้ (Deploy)</strong> &gt; <strong>การทำให้ใช้งานได้ใหม่</strong> &gt; เลือก <strong>เว็บแอป (Web app)</strong></div>
+                    <div>5. ตั้งค่า Who has access: <strong>Anyone (ทุกคน)</strong> แล้วก๊อปปี้ Web App URL มาใส่ในช่องด้านบน</div>
+                  </div>
+
+                  <div className="relative">
+                    <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-40 leading-relaxed">
+                      {EQUIPMENT_INVENTORY_APPS_SCRIPT}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: MANUAL TSV COPY & PASTE */}
+            {webhookModalTab === 'manual' && (
+              <div className="space-y-4 py-2">
+                <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl text-xs space-y-1">
+                  <span className="font-black text-blue-950 dark:text-blue-200 block">
+                    คัดลอกข้อมูลไปวางใน Google Sheet ด้วยตนเอง (Ctrl+V)
                   </span>
-                </button>
-              </div>
-
-              {isEn ? (
-                <div className="text-[11px] text-slate-500 space-y-1 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  <div className="font-bold text-amber-800 dark:text-amber-300">Quick Installation Steps (1 minute):</div>
-                  <div>1. Open Google Sheet via the link above</div>
-                  <div>2. Go to <strong>Extensions</strong> &gt; <strong>Apps Script</strong></div>
-                  <div>3. Delete existing code, paste the copied code, and click <strong>Save</strong></div>
-                  <div>4. Click <strong>Deploy</strong> &gt; <strong>New deployment</strong> &gt; Select <strong>Web app</strong></div>
-                  <div>5. Set Who has access: <strong>Anyone</strong>, click Deploy, and copy the Web App URL into the input above</div>
+                  <p className="text-blue-900 dark:text-blue-300 text-[11px] leading-relaxed">
+                    ระบบได้เตรียมแถวข้อมูลและตารางสต็อกรวมที่จัดคอลัมน์ตรงกับ Google Sheet 100% ท่านสามารถกดปุ่มเพื่อคัดลอกและเปิดชีตเพื่อวางได้ทันที
+                  </p>
                 </div>
-              ) : (
-                <div className="text-[11px] text-slate-500 space-y-1 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-800">
-                  <div className="font-bold text-amber-800 dark:text-amber-300">ขั้นตอนการติดตั้ง (เพียง 1 นาที):</div>
-                  <div>1. เปิด Google Sheet ลิงก์ด้านบน</div>
-                  <div>2. ไปที่เมนู <strong>ส่วนขยาย (Extensions)</strong> &gt; <strong>Apps Script</strong></div>
-                  <div>3. ลบโค้ดเดิมแล้ววางโค้ดที่คัดลอกลงไป แล้วกด <strong>บันทึก</strong></div>
-                  <div>4. กด <strong>ทำให้ใช้งานได้ (Deploy)</strong> &gt; <strong>การทำให้ใช้งานได้ใหม่</strong> &gt; เลือก <strong>เว็บแอป (Web app)</strong></div>
-                  <div>5. ตั้งค่า Who has access: <strong>Anyone (ทุกคน)</strong> แล้วก๊อปปี้ URL มาวางในช่องด้านบน</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Button 1: Copy Entire Matrix */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                        1. ตารางสต็อกรวม 28 รายการ (Matrix)
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        คัดลอกตาราง 7 แถว (ยอดตั้งต้น, เพิ่มสต็อก, ราคา, วันที่, ขาย, คงเหลือ, มูลค่า)
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyTsvToClipboard}
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedTsvNotice ? 'คัดลอกแล้ว!' : 'คัดลอกตารางรวม'}</span>
+                      </button>
+                      <a
+                        href={EQUIPMENT_INVENTORY_SHEET_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                        title="เปิด Google Sheet"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดชีต</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Button 2: Copy Latest Transaction */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                        2. แถวประวัติการทำรายการล่าสุด (11 คอลัมน์)
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        คัดลอกสำหรับวางต่อท้ายในแท็บ &quot;ประวัติการทำรายการ&quot;
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={transactions.length === 0}
+                        onClick={() => {
+                          if (transactions[0]) {
+                            handleCopyTransactionRow(transactions[0]);
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedTxNotice ? 'คัดลอกแล้ว!' : 'คัดลอกแถวล่าสุด'}</span>
+                      </button>
+                      <a
+                        href={EQUIPMENT_INVENTORY_SHEET_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                        title="เปิด Google Sheet"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดชีต</span>
+                      </a>
+                    </div>
+                  </div>
                 </div>
-              )}
-
-              <div className="relative">
-                <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-48 leading-relaxed">
-                  {EQUIPMENT_INVENTORY_APPS_SCRIPT}
-                </pre>
               </div>
-            </div>
+            )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setWebhookModalOpen(false)}
@@ -2677,27 +3101,91 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
         </div>
       )}
 
-      {/* MODAL 5: RECEIPT PREVIEW MODAL */}
+      {/* MODAL 5: RECEIPT & VOUCHER PREVIEW MODAL */}
       {receiptModalOpen && lastSaleReceipt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 text-center">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 text-center max-h-[90vh] overflow-y-auto">
             <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
               <CheckCircle2 className="w-6 h-6" />
             </div>
 
             <div>
               <h3 className="font-black text-lg text-slate-900 dark:text-white">
-                {isEn ? 'Sale Recorded Successfully!' : 'บันทึกรายการขายสำเร็จ!'}
+                {lastSaleReceipt.tx.type === 'sale'
+                  ? (isEn ? 'Sale Recorded Successfully!' : 'บันทึกรายการขายสำเร็จ!')
+                  : lastSaleReceipt.tx.type === 'restock'
+                  ? (isEn ? 'Restock Recorded Successfully!' : 'บันทึกรับเข้าคลังสำเร็จ!')
+                  : (isEn ? 'Stock Adjusted Successfully!' : 'ปรับปรุงสต็อกสำเร็จ!')}
               </h3>
-              <p className="text-xs text-slate-400">
-                {isEn ? 'Stock deducted and transaction logged successfully' : 'ระบบได้ตัดสต็อกและบันทึกประวัติเรียบร้อยแล้ว'}
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isEn ? 'Stock updated and transaction logged' : 'ระบบได้อัปเดตสต็อกและบันทึกประวัติเรียบร้อยแล้ว'}
               </p>
             </div>
+
+            {/* Google Sheet Sync Status Banner */}
+            {lastSaleReceipt.tx.googleSheetSynced ? (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-center gap-2.5 text-left">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <div className="text-xs">
+                  <span className="font-bold text-emerald-900 dark:text-emerald-300 block">
+                    บันทึกลง Google Sheet สำเร็จ
+                  </span>
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    อัปเดตสต็อกและบันทึกประวัติลงชีตอัตโนมัติแล้ว
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 rounded-2xl text-left space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <span className="font-black text-amber-950 dark:text-amber-200 block">
+                      ข้อมูลบันทึกในระบบแล้ว แต่ยังไม่ได้ส่งเข้า Google Sheet
+                    </span>
+                    <span className="text-[11px] text-amber-800 dark:text-amber-300 leading-tight block mt-0.5">
+                      เลือกวิธีส่งแถวข้อมูลนี้เข้า Google Sheet ได้ทันที:
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 pt-1">
+                  {/* Button 1: Copy row and Open Sheet */}
+                  <a
+                    href={EQUIPMENT_INVENTORY_SHEET_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => handleCopyTransactionRow(lastSaleReceipt.tx)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer text-center"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedTxNotice ? 'คัดลอกแล้ว! เปิด Google Sheet (Ctrl+V)' : 'คัดลอกแถว & เปิด Google Sheet (Ctrl+V)'}</span>
+                  </a>
+
+                  {/* Button 2: Setup Webhook */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceiptModalOpen(false);
+                      setWebhookModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-xs font-semibold cursor-pointer"
+                  >
+                    <Settings className="w-3 h-3 text-indigo-500" />
+                    <span>ตั้งค่า Webhook เพื่อซิงค์อัตโนมัติ</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Bill Receipt Card */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-left space-y-2 font-mono text-xs">
               <div className="text-center pb-2 border-b border-dashed border-slate-300 dark:border-slate-700 font-sans font-bold text-slate-800 dark:text-slate-200">
-                {isEn ? 'Equipment Sale / Dispatch Voucher' : 'ใบสำคัญการขาย / เบิกอุปกรณ์'}
+                {lastSaleReceipt.tx.type === 'sale'
+                  ? (isEn ? 'Equipment Sale / Dispatch Voucher' : 'ใบสำคัญการขาย / เบิกอุปกรณ์')
+                  : lastSaleReceipt.tx.type === 'restock'
+                  ? (isEn ? 'Equipment Restock Voucher' : 'ใบสำคัญการรับเข้าคลัง')
+                  : (isEn ? 'Stock Adjustment Voucher' : 'ใบสำคัญการปรับปรุงสต็อก')}
                 <div className="text-[10px] font-normal text-slate-400">
                   {isEn ? 'Lat Krabang Factory 2 Warehouse' : 'คลังโรงงานลาดกระบัง 2'}
                 </div>
@@ -2707,14 +3195,24 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 <span>{isEn ? 'Date:' : 'วันที่:'}</span>
                 <span>{lastSaleReceipt.tx.timestamp}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
-                <span>{isEn ? 'Buyer/Requester:' : 'ผู้ซื้อ/เบิก:'}</span>
-                <span className="font-sans font-bold text-slate-800 dark:text-slate-200">{lastSaleReceipt.tx.customerName || '-'}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>{isEn ? 'Department:' : 'แผนก:'}</span>
-                <span className="font-sans font-bold text-slate-800 dark:text-slate-200">{lastSaleReceipt.tx.department || '-'}</span>
-              </div>
+              {lastSaleReceipt.tx.customerName && (
+                <div className="flex justify-between text-slate-500">
+                  <span>{isEn ? 'Buyer/Requester:' : 'ผู้ซื้อ/เบิก:'}</span>
+                  <span className="font-sans font-bold text-slate-800 dark:text-slate-200">{lastSaleReceipt.tx.customerName}</span>
+                </div>
+              )}
+              {lastSaleReceipt.tx.department && (
+                <div className="flex justify-between text-slate-500">
+                  <span>{isEn ? 'Department:' : 'แผนก:'}</span>
+                  <span className="font-sans font-bold text-slate-800 dark:text-slate-200">{lastSaleReceipt.tx.department}</span>
+                </div>
+              )}
+              {lastSaleReceipt.tx.operatorName && (
+                <div className="flex justify-between text-slate-500">
+                  <span>ผู้ทำรายการ:</span>
+                  <span className="font-sans text-slate-700 dark:text-slate-300">{lastSaleReceipt.tx.operatorName}</span>
+                </div>
+              )}
 
               <div className="py-2 border-y border-dashed border-slate-300 dark:border-slate-700 space-y-1">
                 <div className="font-sans font-bold text-slate-900 dark:text-white">
@@ -2728,10 +3226,12 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between text-base font-black text-slate-900 dark:text-white pt-1">
-                <span>{isEn ? 'Total Amount:' : 'ยอดเงินรวม:'}</span>
-                <span className="text-emerald-600">฿{lastSaleReceipt.tx.totalAmount?.toLocaleString()}</span>
-              </div>
+              {lastSaleReceipt.tx.type === 'sale' && (
+                <div className="flex justify-between text-base font-black text-slate-900 dark:text-white pt-1">
+                  <span>{isEn ? 'Total Amount:' : 'ยอดเงินรวม:'}</span>
+                  <span className="text-emerald-600">฿{lastSaleReceipt.tx.totalAmount?.toLocaleString()}</span>
+                </div>
+              )}
 
               <div className="text-[10px] text-slate-400 text-center pt-2">
                 {isEn 
@@ -2753,6 +3253,178 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 className="px-6 py-2 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs cursor-pointer"
               >
                 {isEn ? 'Done' : 'เสร็จสิ้น'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET TO DEFAULT MODAL (FOR WEEKLY / MONTHLY NEW CYCLES) */}
+      {resetModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 shadow-inner">
+                  <RotateCcw className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
+                    {isEn ? 'Reset to Default Settings' : 'รีเซ็ตเป็นค่าเริ่มต้น'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {isEn ? 'Clear counts for a new weekly or monthly cycle' : 'เคลียร์ยอดเพื่อทำรายการใหม่สำหรับรอบสัปดาห์หรือประจำเดือน'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode selection */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                {isEn ? 'Select Reset Mode:' : 'เลือกรูปแบบการรีเซ็ต:'}
+              </span>
+
+              {/* Mode 1: Cycle Reset (Weekly / Monthly) */}
+              <label
+                onClick={() => setResetMode('cycle')}
+                className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+                  resetMode === 'cycle'
+                    ? 'border-amber-600 bg-amber-50/60 dark:bg-amber-950/30'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="resetMode"
+                  checked={resetMode === 'cycle'}
+                  onChange={() => setResetMode('cycle')}
+                  className="mt-1 text-amber-600 focus:ring-amber-500"
+                />
+                <div className="space-y-1">
+                  <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span>{isEn ? 'New Cycle (Weekly / Monthly)' : 'เริ่มรอบใหม่ประจำสัปดาห์ / ประจำเดือน (แนะนำ)'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">นิยม</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {isEn
+                      ? 'Reset sold count to 0 and added stock to 0. Restore current stock back to original starting stock (ยอดตั้งต้น), keeping catalog items and prices.'
+                      : 'เคลียร์ยอดขายสะสมเป็น 0 และยอดเพิ่มสต็อกเป็น 0 แล้วปรับยอดคงเหลือคืนตามยอดตั้งต้นเดิม (ยอดยกมา) โดยยังคงรักษารายการสินค้าและราคาขายเดิมไว้'}
+                  </p>
+                </div>
+              </label>
+
+              {/* Mode 2: Factory Initial Reset */}
+              <label
+                onClick={() => setResetMode('factory')}
+                className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+                  resetMode === 'factory'
+                    ? 'border-amber-600 bg-amber-50/60 dark:bg-amber-950/30'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="resetMode"
+                  checked={resetMode === 'factory'}
+                  onChange={() => setResetMode('factory')}
+                  className="mt-1 text-amber-600 focus:ring-amber-500"
+                />
+                <div className="space-y-1">
+                  <div className="font-bold text-xs text-slate-900 dark:text-white">
+                    {isEn ? 'Full Factory Reset' : 'รีเซ็ตกลับเป็นค่าเริ่มต้นระบบทั้งหมด (Factory Default)'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {isEn
+                      ? 'Restore all 27 original equipment products, standard prices, and initial stock quantities according to master config.'
+                      : 'คืนค่าสินค้าทั้ง 27 รายการเดิม, ราคาขายมาตรฐาน และจำนวนสต็อกเริ่มต้นตามชุดข้อมูลมาตรฐานของระบบ'}
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Clear Transactions Checkbox */}
+            <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={resetClearTransactions}
+                onChange={(e) => setResetClearTransactions(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+              />
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                {isEn
+                  ? 'Also clear Transaction History for the new cycle'
+                  : 'ล้างประวัติการทำรายการ (Transaction History) ทั้งหมด เพื่อเริ่มบันทึกรอบใหม่'}
+              </span>
+            </label>
+
+            {/* Google Sheet Sync & Delete Notice */}
+            <div className={`p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 ${
+              webhookUrlInput.trim().startsWith('http')
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+            }`}>
+              <FileSpreadsheet className={`w-4 h-4 shrink-0 mt-0.5 ${
+                webhookUrlInput.trim().startsWith('http') ? 'text-emerald-600' : 'text-amber-600'
+              }`} />
+              <div className="space-y-1">
+                <span className="font-bold flex items-center gap-1.5">
+                  <span>{webhookUrlInput.trim().startsWith('http')
+                    ? (isEn ? 'Automatic Google Sheet Sync is Active' : 'ระบบเชื่อมต่อ Google Sheet เรียบร้อยแล้ว')
+                    : (isEn ? 'Google Sheet Webhook not yet connected' : 'ยังไม่ได้เชื่อมต่อ Google Sheet Webhook')}
+                  </span>
+                  {webhookUrlInput.trim().startsWith('http') && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-600 text-white font-black">
+                      ลบในชีตอัตโนมัติ
+                    </span>
+                  )}
+                </span>
+                <p className="text-[11px] leading-relaxed">
+                  {webhookUrlInput.trim().startsWith('http')
+                    ? (isEn
+                        ? 'When confirmed, the system will immediately reset rows in your Google Sheet (clearing restock and sold numbers to 0, and restoring remaining stock to baseline).'
+                        : 'เมื่อกดยืนยัน ระบบจะส่งคำสั่งไปล้างยอดใน Google Sheet ให้เป็น 0 (ล้างยอดขายและเพิ่มสต็อกเป็น 0 และปรับยอดคงเหลือคืนตามยอดตั้งต้น) ให้อัตโนมัติทันที!')
+                    : (isEn
+                        ? 'System will reset local data and automatically copy clean starting values to clipboard so you can paste (Ctrl+V) into Google Sheet.'
+                        : 'ระบบจะรีเซ็ตในโปรแกรมและคัดลอกตารางใหม่ลงคลิปบอร์ดให้ทันที เพื่อให้ท่านกดเปิด Google Sheet แล้วกดวาง (Ctrl+V) ได้สะดวก')}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                {isEn ? 'Cancel' : 'ยกเลิก'}
+              </button>
+              <button
+                type="button"
+                disabled={isResetting}
+                onClick={handleConfirmReset}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-700 to-amber-900 hover:from-amber-800 hover:to-amber-950 text-white font-black text-xs shadow-md shadow-amber-950/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{isEn ? 'Resetting...' : 'กำลังรีเซ็ต...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isEn ? 'Confirm Reset' : 'ยืนยันการรีเซ็ต'}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

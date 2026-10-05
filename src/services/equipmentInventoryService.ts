@@ -463,16 +463,51 @@ export function getEquipmentInventoryWebhookUrl(): string {
 }
 
 /**
- * Save configured Webhook URL
+ * Save configured Webhook URL to localStorage and server backend
  */
 export function setEquipmentInventoryWebhookUrl(url: string): void {
   try {
+    const cleanUrl = url ? url.trim() : '';
     if (typeof window !== 'undefined') {
-      localStorage.setItem(LOCAL_STORAGE_WEBHOOK_KEY, url.trim());
+      if (cleanUrl) {
+        localStorage.setItem(LOCAL_STORAGE_WEBHOOK_KEY, cleanUrl);
+      } else {
+        localStorage.removeItem(LOCAL_STORAGE_WEBHOOK_KEY);
+      }
+    }
+    // Also sync to server backend
+    fetch('/api/equipment-inventory-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: cleanUrl }),
+    }).catch(() => {});
+  } catch (err) {
+    console.error('Could not save equipment inventory webhook:', err);
+  }
+}
+
+/**
+ * Fetch and sync server-side Webhook URL
+ */
+export async function fetchServerEquipmentWebhookUrl(): Promise<string> {
+  try {
+    const res = await fetch('/api/equipment-inventory-webhook');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.webhookUrl && typeof data.webhookUrl === 'string') {
+        const url = data.webhookUrl.trim();
+        if (url) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(LOCAL_STORAGE_WEBHOOK_KEY, url);
+          }
+          return url;
+        }
+      }
     }
   } catch {
     // ignore
   }
+  return getEquipmentInventoryWebhookUrl();
 }
 
 /**
@@ -539,6 +574,129 @@ export function saveLocalInventoryTransactions(transactions: InventoryTransactio
   } catch {
     // ignore
   }
+}
+
+/**
+ * Reset inventory products and optionally clear transactions for weekly/monthly cycles,
+ * with automatic deletion and reset of Google Sheet rows via Webhook.
+ */
+export async function resetEquipmentInventory(options?: {
+  mode?: 'cycle' | 'factory';
+  clearTransactions?: boolean;
+  operator?: string;
+}): Promise<{
+  products: InventoryProduct[];
+  transactions: InventoryTransaction[];
+  googleSheetSynced: boolean;
+  message: string;
+  error?: string;
+}> {
+  const mode = options?.mode || 'cycle';
+  const clearTransactions = options?.clearTransactions ?? false;
+  const operator = options?.operator || 'ผู้ดูแลระบบ';
+
+  const now = new Date();
+  const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+  let newProducts: InventoryProduct[] = [];
+
+  if (mode === 'factory') {
+    // Reset to initial preconfigured catalog
+    newProducts = INITIAL_INVENTORY_PRODUCTS.map((item) => ({
+      ...item,
+      lastUpdatedDate: dateStr,
+      soldCount: 0,
+      stockIn: 0,
+      currentStock: item.initialStock,
+      stockValue: item.initialStock * item.price,
+    }));
+  } else {
+    // Cycle mode (weekly/monthly): keep item catalog and prices, reset sold count and added stock to 0, restore currentStock to initialStock
+    const existing = getLocalInventoryProducts();
+    newProducts = existing.map((p) => {
+      const initStock = p.initialStock ?? 0;
+      return {
+        ...p,
+        soldCount: 0,
+        stockIn: 0,
+        currentStock: initStock,
+        stockValue: initStock * p.price,
+        lastUpdatedDate: dateStr,
+      };
+    });
+  }
+
+  saveLocalInventoryProducts(newProducts);
+
+  let newTransactions: InventoryTransaction[] = [];
+  if (clearTransactions) {
+    saveLocalInventoryTransactions([]);
+    newTransactions = [];
+  } else {
+    newTransactions = getLocalInventoryTransactions();
+  }
+
+  // Synchronize reset/delete with Google Sheet via server endpoint and Webhook
+  let googleSheetSynced = false;
+  let responseMessage = 'รีเซ็ตข้อมูลในระบบเรียบร้อยแล้ว';
+  const webhookUrl = getEquipmentInventoryWebhookUrl();
+
+  try {
+    const res = await fetch('/api/equipment-inventory-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        clearTransactions,
+        operator,
+        webhookUrl,
+        products: newProducts,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.googleSheetSynced) {
+        googleSheetSynced = true;
+        responseMessage = data.message || 'ลบและรีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว';
+      }
+    }
+  } catch (err: any) {
+    console.warn('Could not call /api/equipment-inventory-reset:', err);
+  }
+
+  // Fallback: direct browser fetch to Webhook if server proxy couldn't sync and client has webhook URL
+  if (!googleSheetSynced && webhookUrl && webhookUrl.startsWith('http')) {
+    try {
+      const directRes = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'reset',
+          mode,
+          clearTransactions,
+          operator,
+          timestamp: new Date().toLocaleString('th-TH'),
+          txId: `reset-${Date.now()}`,
+          note: 'รีเซ็ตข้อมูลคลังอุปกรณ์เป็นค่าเริ่มต้น (เริ่มรอบสัปดาห์/เดือนใหม่)',
+        }),
+      });
+
+      if (directRes.ok || directRes.status === 200 || directRes.status === 302) {
+        googleSheetSynced = true;
+        responseMessage = 'ลบและรีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว';
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    products: newProducts,
+    transactions: newTransactions,
+    googleSheetSynced,
+    message: responseMessage,
+  };
 }
 
 /**
@@ -672,8 +830,14 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
       ? parseFloat(rowSold[col])
       : (baseItem.soldCount || 0);
 
+    // Keep any local sales or restocks that haven't been committed to Google Sheet yet
+    const localSoldCount = baseItem.soldCount || 0;
+    const effectiveSold = Math.max(sold, localSoldCount);
+    const localStockIn = baseItem.stockIn || 0;
+    const effectiveRestock = Math.max(restock, localStockIn);
+
     // Remaining is initial + restock - sold
-    const calculatedRemaining = Math.max(0, initial + restock - sold);
+    const calculatedRemaining = Math.max(0, initial + effectiveRestock - effectiveSold);
     const remaining = rowRemaining[col] && rowRemaining[col].trim() !== '' && !isNaN(parseFloat(rowRemaining[col]))
       ? parseFloat(rowRemaining[col])
       : calculatedRemaining;
@@ -685,9 +849,9 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
     result.push({
       ...baseItem,
       initialStock: initial,
-      stockIn: restock,
+      stockIn: effectiveRestock,
       price: price,
-      soldCount: sold,
+      soldCount: effectiveSold,
       currentStock: remaining,
       stockValue: value,
       lastUpdatedDate: date,
@@ -786,6 +950,15 @@ export function updateBatchStockAndPrice(
     const initialStock = up.initialStock !== undefined && up.initialStock >= 0 ? up.initialStock : p.initialStock;
     const currentStock = Math.max(0, initialStock + stockIn - (p.soldCount || 0));
     const stockValue = currentStock * price;
+
+    const existingDates = p.lastUpdatedDate
+      ? p.lastUpdatedDate.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+    if (!existingDates.includes(dateStr)) {
+      existingDates.push(dateStr);
+    }
+    const newDateStr = existingDates.length > 0 ? existingDates.join('\n') : dateStr;
+
     return {
       ...p,
       initialStock,
@@ -793,7 +966,7 @@ export function updateBatchStockAndPrice(
       price,
       currentStock,
       stockValue,
-      lastUpdatedDate: dateStr,
+      lastUpdatedDate: newDateStr,
     };
   });
 
@@ -822,6 +995,9 @@ export async function executeInventoryTransaction(
   success: boolean;
   product?: InventoryProduct;
   transaction?: InventoryTransaction;
+  googleSheetSynced?: boolean;
+  transactionRowTsv?: string;
+  matrixTsv?: string;
   error?: string;
 }> {
   const products = getLocalInventoryProducts();
@@ -865,7 +1041,13 @@ export async function executeInventoryTransaction(
   }
 
   prod.stockValue = prod.currentStock * prod.price;
-  prod.lastUpdatedDate = dateStr;
+
+  // บันทึกวันที่ต่อลงด้านล่างเรื่อยๆ ของแต่ละหัวข้อคอลัมน์
+  const existingDates = prod.lastUpdatedDate
+    ? prod.lastUpdatedDate.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  existingDates.push(dateStr);
+  prod.lastUpdatedDate = existingDates.join('\n');
 
   products[prodIndex] = prod;
   saveLocalInventoryProducts(products);
@@ -890,17 +1072,33 @@ export async function executeInventoryTransaction(
   const transactions = [newTx, ...getLocalInventoryTransactions()];
   saveLocalInventoryTransactions(transactions);
 
+  let googleSheetSynced = false;
+  let transactionRowTsv = generateTransactionRowTsv(newTx);
+  const matrixTsv = generateInventorySheetTsv(products);
+
   // Sync to Backend Express Server API & Google Apps Script Webhook
   try {
-    syncTransactionToBackend(newTx, prod, products);
-  } catch {
-    // background sync
+    const syncRes = await syncTransactionToBackend(newTx, prod, products);
+    if (syncRes.googleSheetSynced) {
+      googleSheetSynced = true;
+      newTx.googleSheetSynced = true;
+      transactions[0] = newTx;
+      saveLocalInventoryTransactions(transactions);
+    }
+    if (syncRes.transactionRowTsv) {
+      transactionRowTsv = syncRes.transactionRowTsv;
+    }
+  } catch (syncErr) {
+    console.warn("Sync error:", syncErr);
   }
 
   return {
     success: true,
     product: prod,
     transaction: newTx,
+    googleSheetSynced,
+    transactionRowTsv,
+    matrixTsv,
   };
 }
 
@@ -936,6 +1134,26 @@ export function updateProductDetails(
   return prod;
 }
 
+/**
+ * Generate formatted TSV row for single transaction log for pasting into "ประวัติการทำรายการ"
+ */
+export function generateTransactionRowTsv(tx: InventoryTransaction): string {
+  const actionTh = tx.type === 'sale' ? 'ขาย / เบิกจ่าย' : (tx.type === 'restock' ? 'รับเข้าคลัง' : 'ปรับปรุงสต็อก');
+  return [
+    tx.timestamp,
+    actionTh,
+    tx.productName,
+    Math.abs(tx.quantity),
+    tx.unitPrice,
+    tx.totalAmount,
+    tx.customerName || '-',
+    tx.department || '-',
+    tx.operatorName || '-',
+    tx.note || '-',
+    tx.id || '-',
+  ].join('\t');
+}
+
 // Client-side cache to prevent duplicate background sync calls
 const sentTransactionIds = new Set<string>();
 
@@ -946,10 +1164,10 @@ async function syncTransactionToBackend(
   transaction: InventoryTransaction,
   product: InventoryProduct,
   allProducts: InventoryProduct[]
-): Promise<void> {
+): Promise<{ googleSheetSynced: boolean; transactionRowTsv?: string; sheetUrl?: string }> {
   const txId = transaction.id;
   if (txId && sentTransactionIds.has(txId)) {
-    return;
+    return { googleSheetSynced: true };
   }
   if (txId) {
     sentTransactionIds.add(txId);
@@ -979,6 +1197,8 @@ async function syncTransactionToBackend(
   };
 
   let serverSynced = false;
+  let transactionRowTsv = generateTransactionRowTsv(transaction);
+  let sheetUrl = EQUIPMENT_INVENTORY_SHEET_URL;
 
   // 1. Post to Express Server API (which proxies & forwards to Google Apps Script Webhook)
   try {
@@ -990,6 +1210,12 @@ async function syncTransactionToBackend(
     if (res.ok) {
       const data = await res.json();
       serverSynced = data.googleSheetSynced === true;
+      if (data.transactionRowTsv) {
+        transactionRowTsv = data.transactionRowTsv;
+      }
+      if (data.sheetUrl) {
+        sheetUrl = data.sheetUrl;
+      }
     }
   } catch (err) {
     console.warn('Could not post to /api/equipment-inventory-submit:', err);
@@ -1000,7 +1226,7 @@ async function syncTransactionToBackend(
   // causing Google Sheet to record 2x (e.g. 1 item sold was recorded as 2 items in Google Sheet).
   if (!serverSynced && webhookUrl && webhookUrl.startsWith('http')) {
     try {
-      await fetch(webhookUrl, {
+      const directRes = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -1019,10 +1245,19 @@ async function syncTransactionToBackend(
           remainingStock: product.currentStock,
         }),
       });
+      if (directRes.ok || directRes.status === 200 || directRes.status === 302) {
+        serverSynced = true;
+      }
     } catch {
       // ignore
     }
   }
+
+  return {
+    googleSheetSynced: serverSynced,
+    transactionRowTsv,
+    sheetUrl,
+  };
 }
 
 /**
@@ -1033,12 +1268,89 @@ export function generateInventorySheetTsv(products: InventoryProduct[]): string 
   const initial = ['ยอดตั้งต้น', ...products.map((p) => String(p.initialStock))].join('\t');
   const restock = ['เพิ่มสต็อก', ...products.map((p) => String(p.stockIn))].join('\t');
   const price = ['ราคาขาย', ...products.map((p) => String(p.price))].join('\t');
-  const date = ['วันที่', ...products.map((p) => p.lastUpdatedDate || '')].join('\t');
+  const date = [
+    'วันที่',
+    ...products.map((p) => {
+      const d = p.lastUpdatedDate || '';
+      return d.includes('\n') ? `"${d.replace(/"/g, '""')}"` : d;
+    }),
+  ].join('\t');
   const sold = ['จำนวนขาย', ...products.map((p) => String(p.soldCount))].join('\t');
   const remaining = ['คงเหลือ', ...products.map((p) => String(p.currentStock))].join('\t');
   const value = ['มูลค่าคงเหลือ (฿)', ...products.map((p) => String(Math.round(p.stockValue)))].join('\t');
 
   return [header, initial, restock, price, date, sold, remaining, value].join('\n');
+}
+
+/**
+ * Test Equipment Inventory Webhook
+ */
+export async function testEquipmentInventoryWebhook(
+  url: string
+): Promise<{ success: boolean; message: string; error?: string }> {
+  try {
+    const res = await fetch('/api/equipment-inventory-webhook-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: url }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, message: data.message || 'เชื่อมต่อ Webhook สำเร็จ' };
+    }
+    return { success: false, message: data.error || 'การเชื่อมต่อไม่สำเร็จ', error: data.error };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ', error: err.message };
+  }
+}
+
+/**
+ * Sync all pending (unsynced) equipment transactions to Google Sheet via Webhook
+ */
+export async function syncAllPendingEquipmentTransactions(
+  url?: string
+): Promise<{ success: boolean; syncedCount: number; message: string; error?: string }> {
+  try {
+    const res = await fetch('/api/equipment-inventory-sync-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: url }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      // Mark local transactions as synced
+      const localTxs = getLocalInventoryTransactions();
+      const updated = localTxs.map((t) => ({ ...t, googleSheetSynced: true }));
+      saveLocalInventoryTransactions(updated);
+
+      return {
+        success: true,
+        syncedCount: data.syncedCount || 0,
+        message: data.message || 'ซิงค์ข้อมูลสำเร็จ',
+      };
+    }
+    return {
+      success: false,
+      syncedCount: 0,
+      message: data.error || 'ซิงค์ข้อมูลไม่สำเร็จ',
+      error: data.error,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      syncedCount: 0,
+      message: err.message || 'เกิดข้อผิดพลาด',
+      error: err.message,
+    };
+  }
+}
+
+/**
+ * Get count of pending unsynced transactions
+ */
+export function getPendingEquipmentTransactionsCount(): number {
+  const txs = getLocalInventoryTransactions();
+  return txs.filter((t) => !t.googleSheetSynced).length;
 }
 
 /**
@@ -1066,6 +1378,65 @@ function doPost(e) {
     var data = JSON.parse(raw);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName("คลังอุปกรณ์") || ss.getSheetByName("Sheet1") || ss.getSheets()[0];
+
+    // ตอบกลับกรณี ping ทดสอบการเชื่อมต่อ
+    if (data.action === "ping") {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "เชื่อมต่อ Webhook ของคลังอุปกรณ์สำเร็จเรียบร้อย"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // จัดการคำสั่ง reset เพื่อลบและรีเซ็ตข้อมูลใน Google Sheet เริ่มรอบใหม่
+    if (data.action === "reset") {
+      var mode = data.mode || "cycle";
+      var clearLogs = data.clearTransactions !== false;
+      var todayStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy");
+      var lastCol = sheet.getLastColumn();
+      
+      // 1. ล้างและรีเซ็ตทุกคอลัมน์ในแถวของคลังอุปกรณ์
+      // แถว 2: ยอดตั้งต้น, แถว 3: เพิ่มสต็อก, แถว 4: ราคาขาย, แถว 5: วันที่, แถว 6: จำนวนขาย, แถว 7: คงเหลือ, แถว 8: มูลค่าคงเหลือ (฿)
+      for (var c = 2; c <= lastCol; c++) {
+        var initVal = Number(sheet.getRange(2, c).getValue()) || 0;
+        var priceVal = Number(sheet.getRange(4, c).getValue()) || 0;
+        
+        sheet.getRange(3, c).setValue(0); // ล้างยอดเพิ่มสต็อกเป็น 0
+        sheet.getRange(6, c).setValue(0); // ล้างจำนวนขายเป็น 0
+        sheet.getRange(5, c).setValue(todayStr); // อัปเดตวันที่เป็นวันนี้
+        sheet.getRange(7, c).setValue(initVal); // คงเหลือกลับเป็นยอดตั้งต้น
+        sheet.getRange(8, c).setValue(Math.round(initVal * priceVal)); // คำนวณมูลค่าคงเหลือ
+      }
+
+      // 2. จัดการชีตประวัติการทำรายการ (History Logs)
+      var logSheet = ss.getSheetByName("ประวัติการทำรายการ");
+      if (logSheet) {
+        if (clearLogs) {
+          var lastRow = logSheet.getLastRow();
+          if (lastRow > 1) {
+            logSheet.getRange(2, 1, lastRow - 1, logSheet.getLastColumn()).clearContent();
+          }
+        }
+        logSheet.appendRow([
+          Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy HH:mm:ss"),
+          "รีเซ็ตเริ่มต้นรอบใหม่",
+          "ทุกรายการสินค้า (เคลียร์ยอดขายและเพิ่มสต็อกเป็น 0)",
+          0,
+          0,
+          0,
+          "-",
+          "-",
+          data.operator || "ผู้ดูแลระบบ",
+          "รีเซ็ตข้อมูลและลบข้อมูลใน Google Sheet เริ่มรอบใหม่",
+          data.txId || "reset-" + new Date().getTime()
+        ]);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "ลบและรีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        action: "reset"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
     // ป้องกันการประมวลผลคำสั่งซ้ำ (Idempotency / Deduplication)
     var txId = data.txId || data.transactionId || (data.transaction && data.transaction.id);
@@ -1114,12 +1485,33 @@ function doPost(e) {
       } else if (action === "restock") {
         var currentRestock = Number(sheet.getRange(3, colIndex).getValue()) || 0;
         sheet.getRange(3, colIndex).setValue(currentRestock + qty);
+      } else if (action === "adjust") {
+        sheet.getRange(7, colIndex).setValue(qty);
       }
       
       if (price > 0) {
         sheet.getRange(4, colIndex).setValue(price);
       }
-      sheet.getRange(5, colIndex).setValue(date);
+
+      // บันทึกวันที่ลงด้านล่างลงเรื่อยๆ ของแต่ละหัวข้อคอลัมน์ (แถวที่ 5: วันที่)
+      var curDateVal = sheet.getRange(5, colIndex).getValue();
+      var curDateText = (curDateVal !== null && curDateVal !== undefined) ? curDateVal.toString().trim() : "";
+      if (!curDateText) {
+        sheet.getRange(5, colIndex).setValue(date);
+      } else {
+        var dateLines = curDateText.split(/[\r\n]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+        dateLines.push(date);
+        sheet.getRange(5, colIndex).setValue(dateLines.join("\n"));
+      }
+
+      // คำนวณยอดคงเหลือและมูลค่าอัตโนมัติ
+      var initStock = Number(sheet.getRange(2, colIndex).getValue()) || 0;
+      var curRestock = Number(sheet.getRange(3, colIndex).getValue()) || 0;
+      var curSold = Number(sheet.getRange(6, colIndex).getValue()) || 0;
+      var curPrice = Number(sheet.getRange(4, colIndex).getValue()) || price;
+      var remaining = Math.max(0, initStock + curRestock - curSold);
+      sheet.getRange(7, colIndex).setValue(remaining);
+      sheet.getRange(8, colIndex).setValue(Math.round(remaining * curPrice));
     }
 
     // 2. บันทึกลงชีตประวัติการทำรายการ (History Logs)
@@ -1132,7 +1524,7 @@ function doPost(e) {
 
     var actionTh = action === "sale" ? "ขาย / เบิกจ่าย" : (action === "restock" ? "รับเข้าคลัง" : "ปรับปรุงสต็อก");
     logSheet.appendRow([
-      data.timestamp || new Date(),
+      data.timestamp || Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy HH:mm:ss"),
       actionTh,
       itemName,
       qty,

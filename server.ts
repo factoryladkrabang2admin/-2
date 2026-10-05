@@ -939,6 +939,85 @@ async function startServer() {
         }
       }
 
+      // Equipment Inventory sheet enrichment (sheetId: 1HEs4tRSU9c0crWYlPbk_PTHEdTmUKwWXbWl6N7hlaFA, gid: 172141710)
+      const isEquipmentInventorySheet =
+        targetGid === "172141710" ||
+        sheetId === "1HEs4tRSU9c0crWYlPbk_PTHEdTmUKwWXbWl6N7hlaFA" ||
+        (sheetName && (sheetName.includes("คลังอุปกรณ์") || sheetName.includes("Equipment")));
+
+      if (isEquipmentInventorySheet && inMemoryInventoryTransactions.length > 0) {
+        try {
+          const rows = parseCsv(csvText);
+          if (rows.length >= 6) {
+            // Row 0: รายการสินค้า
+            // Row 1: ยอดตั้งต้น
+            // Row 2: เพิ่มสต็อก
+            // Row 3: ราคาขาย
+            // Row 4: วันที่
+            // Row 5: จำนวนขาย
+            // Row 6: คงเหลือ
+            // Row 7: มูลค่าคงเหลือ (฿)
+            const itemHeaders = rows[0];
+            const salesMap = new Map<string, number>();
+            const restockMap = new Map<string, number>();
+            for (const tx of inMemoryInventoryTransactions) {
+              const pName = (tx.productName || "").trim();
+              if (!pName) continue;
+              if (tx.type === "sale") {
+                salesMap.set(pName, (salesMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
+              } else if (tx.type === "restock") {
+                restockMap.set(pName, (restockMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
+              }
+            }
+
+            for (let c = 1; c < itemHeaders.length; c++) {
+              const itemName = (itemHeaders[c] || "").trim();
+              if (!itemName) continue;
+              const addedSales = salesMap.get(itemName) || 0;
+              const addedRestock = restockMap.get(itemName) || 0;
+              if (addedSales > 0 || addedRestock > 0) {
+                const currentSold = parseFloat(rows[5]?.[c] || "0") || 0;
+                const newSold = currentSold + addedSales;
+                if (!rows[5]) rows[5] = [];
+                rows[5][c] = String(newSold);
+
+                const currentRestock = parseFloat(rows[2]?.[c] || "0") || 0;
+                const newRestock = currentRestock + addedRestock;
+                if (!rows[2]) rows[2] = [];
+                rows[2][c] = String(newRestock);
+
+                const initial = parseFloat(rows[1]?.[c] || "0") || 0;
+                const price = parseFloat(rows[3]?.[c] || "0") || 0;
+                const remaining = Math.max(0, initial + newRestock - newSold);
+                if (!rows[6]) rows[6] = [];
+                rows[6][c] = String(remaining);
+
+                if (!rows[7]) rows[7] = [];
+                rows[7][c] = String(Math.round(remaining * price));
+
+                // Row 4: วันที่ (Date) - บันทึกวันที่ต่อลงด้านล่างเรื่อยๆ
+                if (!rows[4]) rows[4] = [];
+                const curDate = (rows[4][c] || "").trim();
+                const now = new Date();
+                const todayStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+                if (!curDate) {
+                  rows[4][c] = todayStr;
+                } else {
+                  const dateLines = curDate.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+                  if (!dateLines.includes(todayStr)) {
+                    dateLines.push(todayStr);
+                    rows[4][c] = dateLines.join("\n");
+                  }
+                }
+              }
+            }
+            csvText = stringifyCsv(rows);
+          }
+        } catch (enrichErr) {
+          console.warn("Could not enrich equipment inventory CSV:", enrichErr);
+        }
+      }
+
       // Keys sheet enrichment: ensure recent borrow/return submissions with trackingCode are immediately reflected before Google gviz cache expires
       const isKeysSheet =
         targetGid === "546384221" ||
@@ -2829,7 +2908,19 @@ async function startServer() {
     try {
       const payload = req.body || {};
       const tx = payload.transaction || payload;
-      const targetWebhook = payload.webhookUrl || serverInventoryWebhookUrl;
+      let targetWebhook = (payload.webhookUrl || serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "").trim();
+      if (!targetWebhook && fs.existsSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE)) {
+        try {
+          const raw = fs.readFileSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+            targetWebhook = parsed.webhookUrl.trim();
+            serverInventoryWebhookUrl = targetWebhook;
+          }
+        } catch (wErr) {
+          console.warn("Could not read equipment webhook from disk:", wErr);
+        }
+      }
       const txId = (tx && tx.id) || payload.txId || "";
 
       // Deduplication check: if this transaction ID was already forwarded, skip re-triggering webhook
@@ -2859,6 +2950,7 @@ async function startServer() {
       }
 
       let googleSheetSynced = false;
+      let webhookErrorDetails: string | null = null;
       if (!alreadyForwarded && targetWebhook && targetWebhook.startsWith("http")) {
         try {
           const webhookPayload = {
@@ -2875,6 +2967,7 @@ async function startServer() {
             date: tx.dateStr || "",
             timestamp: tx.timestamp || "",
             remainingStock: payload.product?.currentStock,
+            allProductsSummary: payload.allProductsSummary,
           };
           const fRes = await fetch(targetWebhook, {
             method: "POST",
@@ -2882,33 +2975,363 @@ async function startServer() {
             body: JSON.stringify(webhookPayload),
             redirect: "follow",
           });
-          googleSheetSynced = fRes.ok || fRes.status === 200 || fRes.status === 302;
-          if (txId) {
+
+          const resText = await fRes.text().catch(() => "");
+          let resJson: any = null;
+          try {
+            resJson = JSON.parse(resText);
+          } catch {
+            resJson = null;
+          }
+
+          const isTextSuccess =
+            resText.includes('"status":"success"') ||
+            resText.includes('"status":"ok"') ||
+            resText.includes('"status":"skipped_duplicate"') ||
+            resText.includes("success") ||
+            resText.includes("บันทึก") ||
+            resText.includes("ok");
+
+          googleSheetSynced =
+            (fRes.ok || fRes.status === 200 || fRes.status === 302) &&
+            ((resJson && (resJson.status === "success" || resJson.status === "ok" || resJson.status === "skipped_duplicate" || resJson.success === true)) ||
+              isTextSuccess);
+
+          if (googleSheetSynced && targetWebhook && serverInventoryWebhookUrl !== targetWebhook) {
+            serverInventoryWebhookUrl = targetWebhook;
+            try {
+              fs.writeFileSync(
+                EQUIPMENT_INVENTORY_WEBHOOK_FILE,
+                JSON.stringify({ webhookUrl: targetWebhook }, null, 2),
+                "utf-8"
+              );
+            } catch (pErr) {
+              console.warn("Could not persist equipment webhook:", pErr);
+            }
+          }
+          if (txId && googleSheetSynced) {
             forwardedInventoryTxIds.add(txId);
             if (forwardedInventoryTxIds.size > 1000) {
               const firstKey = forwardedInventoryTxIds.values().next().value;
               if (firstKey) forwardedInventoryTxIds.delete(firstKey);
             }
           }
-        } catch (webhookErr) {
+          if (!googleSheetSynced) {
+            webhookErrorDetails = resJson?.message || `Webhook status ${fRes.status}: ${resText.slice(0, 150)}`;
+          }
+        } catch (webhookErr: any) {
           console.warn("Error forwarding to Google Sheet Apps Script webhook:", webhookErr);
+          webhookErrorDetails = webhookErr.message;
         }
       } else if (alreadyForwarded) {
         googleSheetSynced = true;
       }
 
+      const now = new Date();
+      const timestampStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      const actionTh = tx.type === "sale" ? "ขาย / เบิกจ่าย" : (tx.type === "restock" ? "รับเข้าคลัง" : "ปรับปรุงสต็อก");
+      const transactionRowTsv = [
+        tx.timestamp || timestampStr,
+        actionTh,
+        tx.productName || payload.product?.name || "",
+        Math.abs(tx.quantity || 1),
+        tx.unitPrice || 0,
+        tx.totalAmount || 0,
+        tx.customerName || "-",
+        tx.department || "-",
+        tx.operatorName || "-",
+        tx.note || "-",
+        txId || "-",
+      ].join("\t");
+
       return res.json({
         success: true,
-        message: alreadyForwarded ? "รายการนี้ถูกส่งไปยัง Google Sheet แล้ว" : "บันทึกรายการคลังอุปกรณ์สำเร็จ",
+        message: googleSheetSynced ? "ส่งข้อมูลไปยัง Google Sheet สำเร็จเรียบร้อยแล้ว" : "บันทึกรายการในระบบสำเร็จ (รอส่งเข้า Google Sheet)",
         googleSheetSynced,
         alreadyForwarded: !!alreadyForwarded,
         transaction: tx,
+        transactionRowTsv,
+        webhookError: webhookErrorDetails,
+        sheetUrl: "https://docs.google.com/spreadsheets/d/1HEs4tRSU9c0crWYlPbk_PTHEdTmUKwWXbWl6N7hlaFA/edit?gid=172141710#gid=172141710",
       });
     } catch (err: any) {
       console.error("Error in /api/equipment-inventory-submit:", err);
       return res.status(500).json({
         success: false,
         error: err.message || "Internal error in equipment inventory submission",
+      });
+    }
+  });
+
+  // Test endpoint for Equipment Inventory Apps Script Webhook
+  app.post("/api/equipment-inventory-webhook-test", async (req, res) => {
+    try {
+      const { webhookUrl } = req.body || {};
+      const targetUrl = (webhookUrl || serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "").trim();
+      if (!targetUrl || !targetUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "กรุณาระบุ URL ของ Google Apps Script Webhook ให้ถูกต้อง (ขึ้นต้นด้วย https://)",
+        });
+      }
+
+      // 1. Try GET probe
+      let getOk = false;
+      try {
+        const getRes = await fetch(targetUrl, { method: "GET", redirect: "follow" });
+        if (getRes.ok || getRes.status === 200 || getRes.status === 302) {
+          getOk = true;
+        }
+      } catch (gErr) {
+        console.warn("GET probe error:", gErr);
+      }
+
+      // 2. Try POST test ping
+      const pingPayload = {
+        txId: `ping-test-${Date.now()}`,
+        action: "ping",
+        item: "ทดสอบการเชื่อมต่อระบบ",
+        quantity: 0,
+        unitPrice: 0,
+        totalAmount: 0,
+        customer: "ระบบตรวจสอบ",
+        department: "IT",
+        operator: "Admin Test",
+        note: "ทดสอบการเชื่อมต่อ Webhook",
+        timestamp: new Date().toLocaleString("th-TH"),
+      };
+
+      const postRes = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(pingPayload),
+        redirect: "follow",
+      });
+
+      const text = await postRes.text().catch(() => "");
+      let parsedJson: any = null;
+      try {
+        parsedJson = JSON.parse(text);
+      } catch {
+        parsedJson = null;
+      }
+
+      const isSuccess =
+        postRes.ok &&
+        ((parsedJson && (parsedJson.status === "success" || parsedJson.status === "ok" || parsedJson.status === "skipped_duplicate" || parsedJson.success === true)) ||
+          text.includes("success") ||
+          text.includes("ok") ||
+          text.includes("บันทึก") ||
+          getOk);
+
+      if (isSuccess) {
+        serverInventoryWebhookUrl = targetUrl;
+        try {
+          fs.writeFileSync(
+            EQUIPMENT_INVENTORY_WEBHOOK_FILE,
+            JSON.stringify({ webhookUrl: targetUrl }, null, 2),
+            "utf-8"
+          );
+        } catch (wErr) {
+          console.warn("Could not save equipment webhook:", wErr);
+        }
+
+        return res.json({
+          success: true,
+          message: "เชื่อมต่อกับ Google Apps Script Webhook สำเร็จเรียบร้อยแล้ว!",
+          webhookUrl: targetUrl,
+          rawResponse: text.slice(0, 300),
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: `การทดสอบ Webhook ไม่สำเร็จ (HTTP ${postRes.status}): ${text.slice(0, 200) || "ไม่มีข้อมูลตอบกลับ"}`,
+          webhookUrl: targetUrl,
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: `ไม่สามารถเชื่อมต่อไปยัง Webhook URL ได้: ${err.message}`,
+      });
+    }
+  });
+
+  // Sync all pending unsynced Equipment Inventory transactions to Google Sheet
+  app.post("/api/equipment-inventory-sync-all", async (req, res) => {
+    try {
+      const { webhookUrl } = req.body || {};
+      const targetUrl = (webhookUrl || serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "").trim();
+      if (!targetUrl || !targetUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "ยังไม่ได้ตั้งค่า Google Apps Script Webhook URL",
+        });
+      }
+
+      const unsynced = inMemoryInventoryTransactions.filter((tx) => !tx.googleSheetSynced);
+      if (unsynced.length === 0) {
+        return res.json({
+          success: true,
+          syncedCount: 0,
+          message: "รายการทั้งหมดถูกซิงค์เข้า Google Sheet เรียบร้อยแล้ว",
+        });
+      }
+
+      let successCount = 0;
+      for (const tx of unsynced) {
+        try {
+          const webhookPayload = {
+            txId: tx.id || `tx-${Date.now()}`,
+            action: tx.type || "sale",
+            item: tx.productName || "",
+            quantity: Math.abs(tx.quantity || 1),
+            unitPrice: tx.unitPrice || 0,
+            totalAmount: tx.totalAmount || 0,
+            customer: tx.customerName || "-",
+            department: tx.department || "-",
+            operator: tx.operatorName || "-",
+            note: tx.note || "-",
+            date: tx.dateStr || "",
+            timestamp: tx.timestamp || "",
+          };
+
+          const fRes = await fetch(targetUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(webhookPayload),
+            redirect: "follow",
+          });
+
+          const text = await fRes.text().catch(() => "");
+          if (fRes.ok || fRes.status === 200 || fRes.status === 302 || text.includes("success") || text.includes("ok")) {
+            tx.googleSheetSynced = true;
+            if (tx.id) forwardedInventoryTxIds.add(tx.id);
+            successCount++;
+          }
+        } catch (itemErr) {
+          console.warn("Error syncing pending transaction:", itemErr);
+        }
+      }
+
+      try {
+        fs.writeFileSync(
+          EQUIPMENT_INVENTORY_DATA_FILE,
+          JSON.stringify(inMemoryInventoryTransactions, null, 2),
+          "utf-8"
+        );
+      } catch (fErr) {
+        console.warn("Could not save updated inventory submissions:", fErr);
+      }
+
+      return res.json({
+        success: true,
+        syncedCount: successCount,
+        totalUnsynced: unsynced.length,
+        message: `ซิงค์รายการเข้า Google Sheet สำเร็จ ${successCount} จาก ${unsynced.length} รายการ`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to sync all equipment transactions",
+      });
+    }
+  });
+
+  // Reset endpoint for Equipment Inventory: clears in-memory transactions and commands Google Sheet via Webhook to reset/delete data
+  app.post("/api/equipment-inventory-reset", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const { mode, clearTransactions, operator, webhookUrl } = payload;
+      let targetWebhook = (webhookUrl || serverInventoryWebhookUrl || process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "").trim();
+      if (!targetWebhook && fs.existsSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE)) {
+        try {
+          const raw = fs.readFileSync(EQUIPMENT_INVENTORY_WEBHOOK_FILE, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+            targetWebhook = parsed.webhookUrl.trim();
+            serverInventoryWebhookUrl = targetWebhook;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 1. Reset server in-memory & file state
+      inMemoryInventoryTransactions = [];
+      forwardedInventoryTxIds.clear();
+      try {
+        fs.writeFileSync(
+          EQUIPMENT_INVENTORY_DATA_FILE,
+          JSON.stringify([], null, 2),
+          "utf-8"
+        );
+      } catch (err) {
+        console.warn("Could not clear equipment inventory submissions file:", err);
+      }
+
+      // 2. Forward reset action to Google Sheet Webhook if available
+      let googleSheetSynced = false;
+      let webhookErrorDetails: string | null = null;
+      if (targetWebhook && targetWebhook.startsWith("http")) {
+        try {
+          const resetPayload = {
+            action: "reset",
+            mode: mode || "cycle",
+            clearTransactions: clearTransactions !== false,
+            operator: operator || "ผู้ดูแลระบบ",
+            timestamp: new Date().toLocaleString("th-TH"),
+            txId: `reset-${Date.now()}`,
+            note: "รีเซ็ตข้อมูลคลังอุปกรณ์เป็นค่าเริ่มต้น (เริ่มรอบสัปดาห์/เดือนใหม่)",
+          };
+
+          const fRes = await fetch(targetWebhook, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(resetPayload),
+            redirect: "follow",
+          });
+
+          const resText = await fRes.text().catch(() => "");
+          let resJson: any = null;
+          try {
+            resJson = JSON.parse(resText);
+          } catch {
+            resJson = null;
+          }
+
+          const isSuccess =
+            (fRes.ok || fRes.status === 200 || fRes.status === 302) &&
+            ((resJson && (resJson.status === "success" || resJson.status === "ok" || resJson.success === true)) ||
+              resText.includes("success") ||
+              resText.includes("ok") ||
+              resText.includes("สำเร็จ") ||
+              resText.includes("ลบ"));
+
+          if (isSuccess) {
+            googleSheetSynced = true;
+          } else {
+            webhookErrorDetails = resJson?.message || `Webhook status ${fRes.status}: ${resText.slice(0, 150)}`;
+          }
+        } catch (webhookErr: any) {
+          console.warn("Error forwarding reset action to Google Sheet Apps Script webhook:", webhookErr);
+          webhookErrorDetails = webhookErr.message;
+        }
+      }
+
+      return res.json({
+        success: true,
+        googleSheetSynced,
+        webhookError: webhookErrorDetails,
+        message: googleSheetSynced
+          ? "รีเซ็ตข้อมูลในระบบและลบ/รีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว"
+          : "รีเซ็ตข้อมูลในระบบเรียบร้อย (ยังไม่ได้เชื่อมต่อ Google Sheet หรือ Webhook ไม่ตอบกลับ)",
+      });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-inventory-reset:", err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to reset equipment inventory",
       });
     }
   });

@@ -23,7 +23,8 @@ import {
   Check,
   Plus,
   FileText,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
@@ -34,7 +35,8 @@ import {
   parseAnnouncementDate, 
   sortAnnouncementsLatestFirst, 
   getLocalAnnouncements,
-  getAnnouncementsWebhookUrl
+  getAnnouncementsWebhookUrl,
+  ANNOUNCEMENTS_SHEET_URL
 } from '../services/googleSheetSyncService';
 
 interface AnnouncementsViewProps {
@@ -372,15 +374,27 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Add Announcement Icon Only (จำกัดสิทธิ์การมองเห็นและทำรายการเฉพาะผู้ดูแลและแอดมินเพจเท่านั้น) */}
+          {/* Action Buttons: Add Announcement & Google Sheet Links */}
           {isAdmin && (
             <div className="flex items-center gap-2 self-start sm:self-center">
-              {/* Add Announcement Icon Button with PR/Broadcasting Megaphone & Plus Badge */}
+              {/* Direct Open Google Sheet Link */}
+              <a
+                href={ANNOUNCEMENTS_SHEET_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-md transition-all cursor-pointer shadow-xs inline-flex items-center justify-center group"
+                title={language === 'th' ? 'เปิดดู Google Sheet ข่าวประชาสัมพันธ์' : 'Open Announcements Google Sheet'}
+                aria-label={language === 'th' ? 'เปิด Google Sheet' : 'Open Google Sheet'}
+              >
+                <ExternalLink className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              </a>
+
+              {/* Add Announcement Button with Icon & Label */}
               <button
                 type="button"
                 id="btn-create-announcement-icon"
                 onClick={() => setIsCreateModalOpen(true)}
-                className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
+                className="relative px-3.5 sm:px-4 py-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2 group overflow-hidden"
                 title={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Add Announcement (Admin Only)'}
                 aria-label={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'Add Announcement'}
               >
@@ -388,11 +402,14 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                 <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
 
                 <div className="relative flex items-center justify-center">
-                  <Megaphone className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 -rotate-12 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
-                  <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center shadow-xs border border-white group-hover:scale-110 transition-transform leading-none pb-0.5">
-                    +
-                  </span>
+                  <Megaphone className="w-5 h-5 text-white group-hover:scale-110 -rotate-12 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
                 </div>
+                <span className="text-xs sm:text-sm font-black hidden sm:inline">
+                  {language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'Add Announcement'}
+                </span>
+                <span className="w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center shadow-xs border border-white leading-none pb-0.5">
+                  +
+                </span>
               </button>
             </div>
           )}
