@@ -25,6 +25,25 @@ const ANNOUNCEMENTS_DATA_FILE = path.join(DATA_DIR, "announcements_submissions.j
 const ANNOUNCEMENT_WEBHOOK_FILE = path.join(DATA_DIR, "announcement_webhook.json");
 const EQUIPMENT_INVENTORY_DATA_FILE = path.join(DATA_DIR, "equipment_inventory_submissions.json");
 const EQUIPMENT_INVENTORY_WEBHOOK_FILE = path.join(DATA_DIR, "equipment_inventory_webhook.json");
+const EQUIPMENT_INVENTORY_RESET_FILE = path.join(DATA_DIR, "equipment_inventory_reset.json");
+
+let equipmentInventoryResetState: {
+  isReset: boolean;
+  resetTime: number;
+  resetDate?: string;
+  mode?: string;
+} = { isReset: false, resetTime: 0 };
+try {
+  if (fs.existsSync(EQUIPMENT_INVENTORY_RESET_FILE)) {
+    const raw = fs.readFileSync(EQUIPMENT_INVENTORY_RESET_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.isReset === "boolean") {
+      equipmentInventoryResetState = parsed;
+    }
+  }
+} catch {
+  // ignore
+}
 
 let serverAnnouncementWebhookUrl: string = process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
 let serverInventoryWebhookUrl: string = process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "";
@@ -945,7 +964,7 @@ async function startServer() {
         sheetId === "1HEs4tRSU9c0crWYlPbk_PTHEdTmUKwWXbWl6N7hlaFA" ||
         (sheetName && (sheetName.includes("คลังอุปกรณ์") || sheetName.includes("Equipment")));
 
-      if (isEquipmentInventorySheet && inMemoryInventoryTransactions.length > 0) {
+      if (isEquipmentInventorySheet && (inMemoryInventoryTransactions.length > 0 || equipmentInventoryResetState.isReset)) {
         try {
           const rows = parseCsv(csvText);
           if (rows.length >= 6) {
@@ -958,6 +977,24 @@ async function startServer() {
             // Row 6: คงเหลือ
             // Row 7: มูลค่าคงเหลือ (฿)
             const itemHeaders = rows[0];
+
+            // If system has been reset, clear any old pre-reset restock and sales counts from Google Sheet CSV
+            if (equipmentInventoryResetState.isReset) {
+              const now = new Date();
+              const todayStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+              for (let c = 1; c < itemHeaders.length; c++) {
+                if (rows[2]) rows[2][c] = "0"; // เพิ่มสต็อก (ลบข้อมูลเดิมเป็น 0)
+                if (rows[5]) rows[5][c] = "0"; // จำนวนขาย (ลบข้อมูลเดิมเป็น 0)
+                if (rows[4]) rows[4][c] = todayStr; // วันที่ (เริ่มรอบใหม่)
+                const initial = parseFloat(rows[1]?.[c] || "0") || 0;
+                const price = parseFloat(rows[3]?.[c] || "0") || 0;
+                if (!rows[6]) rows[6] = [];
+                rows[6][c] = String(initial); // คงเหลือ = ยอดตั้งต้น
+                if (!rows[7]) rows[7] = [];
+                rows[7][c] = String(Math.round(initial * price)); // มูลค่าคงเหลือ
+              }
+            }
+
             const salesMap = new Map<string, number>();
             const restockMap = new Map<string, number>();
             for (const tx of inMemoryInventoryTransactions) {
@@ -3258,6 +3295,24 @@ async function startServer() {
       }
 
       // 1. Reset server in-memory & file state
+      const now = new Date();
+      const todayStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      equipmentInventoryResetState = {
+        isReset: true,
+        resetTime: Date.now(),
+        resetDate: todayStr,
+        mode: mode || "cycle",
+      };
+      try {
+        fs.writeFileSync(
+          EQUIPMENT_INVENTORY_RESET_FILE,
+          JSON.stringify(equipmentInventoryResetState, null, 2),
+          "utf-8"
+        );
+      } catch (err) {
+        console.warn("Could not save equipment inventory reset state file:", err);
+      }
+
       inMemoryInventoryTransactions = [];
       forwardedInventoryTxIds.clear();
       try {
@@ -3334,6 +3389,14 @@ async function startServer() {
         error: err.message || "Failed to reset equipment inventory",
       });
     }
+  });
+
+  // Get current Equipment Inventory reset state
+  app.get("/api/equipment-inventory-reset-state", (req, res) => {
+    return res.json({
+      success: true,
+      ...equipmentInventoryResetState,
+    });
   });
 
   // Announcements Google Form & Google Sheet direct submission endpoint

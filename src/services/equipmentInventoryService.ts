@@ -447,6 +447,60 @@ export const INITIAL_INVENTORY_PRODUCTS: InventoryProduct[] = [
 const LOCAL_STORAGE_PRODUCTS_KEY = 'proworkflow_equipment_inventory_products_v2';
 const LOCAL_STORAGE_TRANSACTIONS_KEY = 'proworkflow_equipment_inventory_transactions_v2';
 const LOCAL_STORAGE_WEBHOOK_KEY = 'proworkflow_equipment_inventory_webhook_url';
+export const LOCAL_STORAGE_RESET_KEY = 'proworkflow_equipment_inventory_reset_state_v2';
+
+export interface EquipmentResetState {
+  isReset: boolean;
+  resetTime: number;
+  resetDate: string;
+  mode: 'cycle' | 'factory';
+}
+
+/**
+ * Get current Reset lock state from localStorage
+ */
+export function getLocalEquipmentResetState(): EquipmentResetState | null {
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem(LOCAL_STORAGE_RESET_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.isReset === 'boolean') {
+          return parsed;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Save current Reset lock state to localStorage
+ */
+export function saveLocalEquipmentResetState(state: EquipmentResetState): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_STORAGE_RESET_KEY, JSON.stringify(state));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clear Reset lock state
+ */
+export function clearLocalEquipmentResetState(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(LOCAL_STORAGE_RESET_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 /**
  * Get configured Webhook URL from localStorage
@@ -592,11 +646,13 @@ export async function resetEquipmentInventory(options?: {
   error?: string;
 }> {
   const mode = options?.mode || 'cycle';
-  const clearTransactions = options?.clearTransactions ?? false;
+  // Default to clearing transactions to guarantee a pristine start for the new cycle
+  const clearTransactions = options?.clearTransactions ?? true;
   const operator = options?.operator || 'ผู้ดูแลระบบ';
 
   const now = new Date();
   const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  const resetTimestamp = Date.now();
 
   let newProducts: InventoryProduct[] = [];
 
@@ -626,8 +682,18 @@ export async function resetEquipmentInventory(options?: {
     });
   }
 
+  // 1. Lock reset state in localStorage so old pre-reset data from Google Sheet is NEVER restored
+  saveLocalEquipmentResetState({
+    isReset: true,
+    resetTime: resetTimestamp,
+    resetDate: dateStr,
+    mode,
+  });
+
+  // 2. Save pristine products locally
   saveLocalInventoryProducts(newProducts);
 
+  // 3. Clear transactions
   let newTransactions: InventoryTransaction[] = [];
   if (clearTransactions) {
     saveLocalInventoryTransactions([]);
@@ -638,7 +704,7 @@ export async function resetEquipmentInventory(options?: {
 
   // Synchronize reset/delete with Google Sheet via server endpoint and Webhook
   let googleSheetSynced = false;
-  let responseMessage = 'รีเซ็ตข้อมูลในระบบเรียบร้อยแล้ว';
+  let responseMessage = 'รีเซ็ตและลบข้อมูลในระบบเรียบร้อยแล้ว ข้อมูลเดิมถูกลบทั้งหมด';
   const webhookUrl = getEquipmentInventoryWebhookUrl();
 
   try {
@@ -788,6 +854,30 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
   const initialListMap = new Map<string, InventoryProduct>();
   INITIAL_INVENTORY_PRODUCTS.forEach((p) => initialListMap.set(p.name.trim(), p));
 
+  // Reset Lock: If user has reset the system, old pre-reset numbers from the sheet CSV must be purged!
+  const resetState = getLocalEquipmentResetState();
+  const isResetActive = !!(resetState && resetState.isReset);
+
+  const localTxs = getLocalInventoryTransactions();
+  // Group post-reset local transactions by product name
+  const postResetSalesMap = new Map<string, number>();
+  const postResetRestockMap = new Map<string, number>();
+  if (isResetActive && resetState) {
+    for (const tx of localTxs) {
+      const pName = (tx.productName || '').trim();
+      if (!pName) continue;
+      const txTime = new Date(tx.timestamp || '').getTime();
+      // Only include transactions made at or after the reset timestamp
+      if (isNaN(txTime) || txTime >= resetState.resetTime) {
+        if (tx.type === 'sale') {
+          postResetSalesMap.set(pName, (postResetSalesMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
+        } else if (tx.type === 'restock') {
+          postResetRestockMap.set(pName, (postResetRestockMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
+        }
+      }
+    }
+  }
+
   const result: InventoryProduct[] = [];
 
   for (let col = 1; col < headerRow.length; col++) {
@@ -814,37 +904,41 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
       ? parseFloat(rowInitial[col])
       : baseItem.initialStock;
 
-    // Parse stockIn (เพิ่มสต็อก)
-    const restock = rowRestock[col] && rowRestock[col].trim() !== '' && !isNaN(parseFloat(rowRestock[col]))
-      ? parseFloat(rowRestock[col])
-      : 0;
-
     // Parse price (ราคาขาย)
     const price = rowPrice[col] && rowPrice[col].trim() !== '' && !isNaN(parseFloat(rowPrice[col]))
       ? parseFloat(rowPrice[col])
       : baseItem.price;
 
-    const date = rowDate[col]?.trim() || baseItem.lastUpdatedDate;
-    
-    const sold = rowSold[col] && rowSold[col].trim() !== '' && !isNaN(parseFloat(rowSold[col]))
-      ? parseFloat(rowSold[col])
-      : (baseItem.soldCount || 0);
+    let effectiveSold = 0;
+    let effectiveRestock = 0;
+    let effectiveDate = '';
 
-    // Keep any local sales or restocks that haven't been committed to Google Sheet yet
-    const localSoldCount = baseItem.soldCount || 0;
-    const effectiveSold = Math.max(sold, localSoldCount);
-    const localStockIn = baseItem.stockIn || 0;
-    const effectiveRestock = Math.max(restock, localStockIn);
+    if (isResetActive && resetState) {
+      // System was reset! Purge old pre-reset numbers completely so they never come back.
+      // Only include post-reset transactions.
+      effectiveSold = postResetSalesMap.get(itemName) || 0;
+      effectiveRestock = postResetRestockMap.get(itemName) || 0;
+      effectiveDate = (effectiveSold > 0 || effectiveRestock > 0)
+        ? (baseItem.lastUpdatedDate || resetState.resetDate)
+        : resetState.resetDate;
+    } else {
+      const restock = rowRestock[col] && rowRestock[col].trim() !== '' && !isNaN(parseFloat(rowRestock[col]))
+        ? parseFloat(rowRestock[col])
+        : 0;
+      const sold = rowSold[col] && rowSold[col].trim() !== '' && !isNaN(parseFloat(rowSold[col]))
+        ? parseFloat(rowSold[col])
+        : (baseItem.soldCount || 0);
+
+      const localSoldCount = baseItem.soldCount || 0;
+      effectiveSold = Math.max(sold, localSoldCount);
+      const localStockIn = baseItem.stockIn || 0;
+      effectiveRestock = Math.max(restock, localStockIn);
+      effectiveDate = rowDate[col]?.trim() || baseItem.lastUpdatedDate;
+    }
 
     // Remaining is initial + restock - sold
     const calculatedRemaining = Math.max(0, initial + effectiveRestock - effectiveSold);
-    const remaining = rowRemaining[col] && rowRemaining[col].trim() !== '' && !isNaN(parseFloat(rowRemaining[col]))
-      ? parseFloat(rowRemaining[col])
-      : calculatedRemaining;
-
-    const value = rowValue[col] && rowValue[col].trim() !== '' && !isNaN(parseFloat(rowValue[col]))
-      ? parseFloat(rowValue[col])
-      : remaining * price;
+    const value = calculatedRemaining * price;
 
     result.push({
       ...baseItem,
@@ -852,9 +946,9 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
       stockIn: effectiveRestock,
       price: price,
       soldCount: effectiveSold,
-      currentStock: remaining,
+      currentStock: calculatedRemaining,
       stockValue: value,
-      lastUpdatedDate: date,
+      lastUpdatedDate: effectiveDate,
     });
   }
 
@@ -1377,7 +1471,17 @@ function doPost(e) {
     var raw = e.postData.contents;
     var data = JSON.parse(raw);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("คลังอุปกรณ์") || ss.getSheetByName("Sheet1") || ss.getSheets()[0];
+    var sheets = ss.getSheets();
+    var sheet = null;
+    for (var i = 0; i < sheets.length; i++) {
+      if (sheets[i].getSheetId() === 172141710) {
+        sheet = sheets[i];
+        break;
+      }
+    }
+    if (!sheet) {
+      sheet = ss.getSheetByName("คลังอุปกรณ์") || ss.getSheetByName("Sheet1") || sheets[0];
+    }
 
     // ตอบกลับกรณี ping ทดสอบการเชื่อมต่อ
     if (data.action === "ping") {
@@ -1393,18 +1497,31 @@ function doPost(e) {
       var clearLogs = data.clearTransactions !== false;
       var todayStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy");
       var lastCol = sheet.getLastColumn();
+      var numCols = lastCol - 1;
       
-      // 1. ล้างและรีเซ็ตทุกคอลัมน์ในแถวของคลังอุปกรณ์
+      // 1. ล้างและรีเซ็ตทุกคอลัมน์ในแถวของคลังอุปกรณ์แบบชุดเดียว (Batch setValues - รวดเร็วไม่เกิด Timeout)
       // แถว 2: ยอดตั้งต้น, แถว 3: เพิ่มสต็อก, แถว 4: ราคาขาย, แถว 5: วันที่, แถว 6: จำนวนขาย, แถว 7: คงเหลือ, แถว 8: มูลค่าคงเหลือ (฿)
-      for (var c = 2; c <= lastCol; c++) {
-        var initVal = Number(sheet.getRange(2, c).getValue()) || 0;
-        var priceVal = Number(sheet.getRange(4, c).getValue()) || 0;
+      if (numCols > 0) {
+        var row2Values = sheet.getRange(2, 2, 1, numCols).getValues()[0];
+        var row4Values = sheet.getRange(4, 2, 1, numCols).getValues()[0];
         
-        sheet.getRange(3, c).setValue(0); // ล้างยอดเพิ่มสต็อกเป็น 0
-        sheet.getRange(6, c).setValue(0); // ล้างจำนวนขายเป็น 0
-        sheet.getRange(5, c).setValue(todayStr); // อัปเดตวันที่เป็นวันนี้
-        sheet.getRange(7, c).setValue(initVal); // คงเหลือกลับเป็นยอดตั้งต้น
-        sheet.getRange(8, c).setValue(Math.round(initVal * priceVal)); // คำนวณมูลค่าคงเหลือ
+        var zeros = [];
+        var dates = [];
+        var remainings = [];
+        var values = [];
+        for (var i = 0; i < numCols; i++) {
+          zeros.push(0);
+          dates.push(todayStr);
+          var initVal = Number(row2Values[i]) || 0;
+          var priceVal = Number(row4Values[i]) || 0;
+          remainings.push(initVal);
+          values.push(Math.round(initVal * priceVal));
+        }
+        sheet.getRange(3, 2, 1, numCols).setValues([zeros]); // ล้างยอดเพิ่มสต็อกเป็น 0
+        sheet.getRange(5, 2, 1, numCols).setValues([dates]); // อัปเดตวันที่เป็นวันนี้ เริ่มต้นรอบใหม่
+        sheet.getRange(6, 2, 1, numCols).setValues([zeros]); // ล้างจำนวนขายเป็น 0
+        sheet.getRange(7, 2, 1, numCols).setValues([remainings]); // คงเหลือกลับเป็นยอดตั้งต้น
+        sheet.getRange(8, 2, 1, numCols).setValues([values]); // มูลค่าคงเหลือ = ยอดตั้งต้น * ราคา
       }
 
       // 2. จัดการชีตประวัติการทำรายการ (History Logs)
@@ -1419,21 +1536,21 @@ function doPost(e) {
         logSheet.appendRow([
           Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy HH:mm:ss"),
           "รีเซ็ตเริ่มต้นรอบใหม่",
-          "ทุกรายการสินค้า (เคลียร์ยอดขายและเพิ่มสต็อกเป็น 0)",
+          "ทุกรายการสินค้า (ลบยอดขายและเพิ่มสต็อกเป็น 0 เริ่มรอบสัปดาห์/เดือนใหม่)",
           0,
           0,
           0,
           "-",
           "-",
           data.operator || "ผู้ดูแลระบบ",
-          "รีเซ็ตข้อมูลและลบข้อมูลใน Google Sheet เริ่มรอบใหม่",
+          "รีเซ็ตข้อมูลและลบข้อมูลเดิมใน Google Sheet เรียบร้อย",
           data.txId || "reset-" + new Date().getTime()
         ]);
       }
 
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "ลบและรีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+        message: "ลบและรีเซ็ตข้อมูลใน Google Sheet สำเร็จเรียบร้อยแล้ว ข้อมูลเดิมถูกลบทั้งหมด",
         action: "reset"
       })).setMimeType(ContentService.MimeType.JSON);
     }

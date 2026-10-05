@@ -266,7 +266,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
   // Reset to default modal state
   const [resetModalOpen, setResetModalOpen] = useState<boolean>(false);
   const [resetMode, setResetMode] = useState<'cycle' | 'factory'>('cycle');
-  const [resetClearTransactions, setResetClearTransactions] = useState<boolean>(false);
+  const [resetClearTransactions, setResetClearTransactions] = useState<boolean>(true);
   const [isResetting, setIsResetting] = useState<boolean>(false);
 
   // Handle reset to default with Google Sheet deletion
@@ -285,8 +285,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       if (res.googleSheetSynced) {
         setSyncStatusMsg({
           text: isEn
-            ? 'Reset completed! Data in Google Sheet has been cleared and reset successfully.'
-            : 'รีเซ็ตข้อมูลสำเร็จ! ระบบได้ลบและรีเซ็ตข้อมูลใน Google Sheet เรียบร้อยแล้ว',
+            ? 'Reset completed! Old data permanently deleted from system and Google Sheet (will not return).'
+            : 'รีเซ็ตสำเร็จ! ลบข้อมูลเดิมออกจากระบบและ Google Sheet เรียบร้อยแล้ว (ระบบจะไม่นำข้อมูลเดิมกลับมาอีก)',
           isError: false,
         });
       } else {
@@ -302,8 +302,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
         setSyncStatusMsg({
           text: isEn
-            ? 'System reset completed! Clean starting table copied to clipboard for Google Sheet.'
-            : 'รีเซ็ตข้อมูลในระบบเรียบร้อย! คัดลอกตารางตั้งต้นรอบใหม่ลงคลิปบอร์ดแล้ว (หรือเชื่อมต่อ Webhook เพื่อลบในชีตอัตโนมัติ)',
+            ? 'Reset completed! System locked into fresh cycle with clean data. Clean table copied to clipboard.'
+            : 'รีเซ็ตข้อมูลสำเร็จ! ระบบลบข้อมูลเดิมทั้งหมดเรียบร้อยแล้วและเริ่มรอบใหม่ คัดลอกตารางเริ่มรอบใหม่ลงคลิปบอร์ดแล้ว',
           isError: false,
         });
       }
@@ -3352,17 +3352,17 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
             </div>
 
             {/* Clear Transactions Checkbox */}
-            <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer">
+            <label className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 cursor-pointer">
               <input
                 type="checkbox"
                 checked={resetClearTransactions}
                 onChange={(e) => setResetClearTransactions(e.target.checked)}
                 className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
               />
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                 {isEn
-                  ? 'Also clear Transaction History for the new cycle'
-                  : 'ล้างประวัติการทำรายการ (Transaction History) ทั้งหมด เพื่อเริ่มบันทึกรอบใหม่'}
+                  ? 'Permanently delete all transaction history and lock system from restoring old data'
+                  : 'ลบประวัติการทำรายการเดิมทั้งหมด และป้องกันไม่ให้ระบบนำข้อมูลเดิมกลับมาอีก'}
               </span>
             </label>
 
