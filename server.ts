@@ -702,6 +702,18 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Global CORS and Cross-Origin-Resource-Policy for seamless embedding inside iframes and cross-origin subresources
+  app.use((_req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    if (_req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -714,7 +726,213 @@ async function startServer() {
       console.warn("Could not create uploads directory:", mkdirErr);
     }
   }
-  app.use("/uploads", express.static(path.join(process.cwd(), "data", "uploads")));
+  app.use("/uploads", express.static(path.join(process.cwd(), "data", "uploads"), {
+    setHeaders: (res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+    }
+  }));
+
+  // In-memory & disk cache for Google Drive images to guarantee 100% reliable rendering without CORS/iFrame issues
+  const driveImageCache = new Map<string, { buffer: Buffer; contentType: string; timestamp: number }>();
+  const IMAGE_CACHE_DIR = path.join(process.cwd(), "data", "image_cache");
+  if (!fs.existsSync(IMAGE_CACHE_DIR)) {
+    try {
+      fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Pre-load disk cache on server start
+  try {
+    const cachedFiles = fs.readdirSync(IMAGE_CACHE_DIR);
+    for (const f of cachedFiles) {
+      if (f.endsWith(".bin")) {
+        const fileId = f.replace(/\.bin$/, "");
+        const metaPath = path.join(IMAGE_CACHE_DIR, `${fileId}.meta`);
+        let contentType = "image/jpeg";
+        if (fs.existsSync(metaPath)) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+            if (meta.contentType) contentType = meta.contentType;
+          } catch {
+            // ignore
+          }
+        }
+        try {
+          const buffer = fs.readFileSync(path.join(IMAGE_CACHE_DIR, f));
+          driveImageCache.set(fileId, { buffer, contentType, timestamp: Date.now() });
+        } catch {
+          // ignore
+        }
+      }
+    }
+    console.log(`Loaded ${driveImageCache.size} cached images from disk.`);
+  } catch (err) {
+    console.warn("Could not pre-load image cache:", err);
+  }
+
+  // Helper to fetch and cache a Google Drive image
+  async function fetchAndCacheDriveImage(fileId: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    // 1. Check RAM cache
+    const ram = driveImageCache.get(fileId);
+    if (ram && Date.now() - ram.timestamp < 14 * 24 * 60 * 60 * 1000) {
+      return ram;
+    }
+
+    // 2. Check Disk cache
+    const diskFilePath = path.join(IMAGE_CACHE_DIR, `${fileId}.bin`);
+    const diskMetaPath = path.join(IMAGE_CACHE_DIR, `${fileId}.meta`);
+    if (fs.existsSync(diskFilePath)) {
+      try {
+        const buffer = fs.readFileSync(diskFilePath);
+        let contentType = "image/jpeg";
+        if (fs.existsSync(diskMetaPath)) {
+          const meta = JSON.parse(fs.readFileSync(diskMetaPath, "utf-8"));
+          if (meta.contentType) contentType = meta.contentType;
+        }
+        const entry = { buffer, contentType, timestamp: Date.now() };
+        driveImageCache.set(fileId, entry);
+        return entry;
+      } catch {
+        // continue to network fetch
+      }
+    }
+
+    // 3. Network fetch with multiple reliable endpoints and timeout
+    const candidateUrls = [
+      `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
+      `https://lh3.googleusercontent.com/d/${fileId}`,
+      `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`,
+      `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`,
+      `https://drive.usercontent.google.com/download?id=${fileId}&export=view`,
+      `https://drive.google.com/uc?export=view&id=${fileId}`,
+      `https://drive.google.com/uc?id=${fileId}`,
+    ];
+
+    for (const targetUrl of candidateUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+        const googleRes = await fetch(targetUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          },
+          redirect: "follow",
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (googleRes.ok) {
+          const contentType = googleRes.headers.get("content-type") || "image/jpeg";
+          if (contentType.startsWith("image/") || contentType === "application/octet-stream") {
+            const arrayBuf = await googleRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuf);
+            if (buffer.length > 500) {
+              const finalContentType = contentType === "application/octet-stream" ? "image/jpeg" : contentType;
+              const entry = { buffer, contentType: finalContentType, timestamp: Date.now() };
+              driveImageCache.set(fileId, entry);
+              try {
+                fs.writeFileSync(diskFilePath, buffer);
+                fs.writeFileSync(diskMetaPath, JSON.stringify({ contentType: finalContentType }));
+              } catch {
+                // ignore
+              }
+              return entry;
+            }
+          }
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+
+    return null;
+  }
+
+  // Prewarm announcement images from Google Sheet in the background
+  async function prewarmAnnouncementImages() {
+    try {
+      const sheetUrl = "https://docs.google.com/spreadsheets/d/1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU/gviz/tq?tqx=out:csv&gid=1228686844";
+      const res = await fetch(sheetUrl, { headers: { Accept: "text/csv" } });
+      if (!res.ok) return;
+      const csv = await res.text();
+      const driveIdMatches = Array.from(csv.matchAll(/(?:file\/d\/|[?&]id=|googleusercontent\.com\/d\/)([a-zA-Z0-9_-]{20,})/g));
+      const fileIds = Array.from(new Set(driveIdMatches.map(m => m[1])));
+      for (const id of fileIds) {
+        if (!driveImageCache.has(id)) {
+          await fetchAndCacheDriveImage(id).catch(() => {});
+        }
+      }
+    } catch {
+      // background task quiet fail
+    }
+  }
+
+  // Run pre-warm after server boot and every 10 minutes
+  setTimeout(() => prewarmAnnouncementImages(), 1500);
+  setInterval(() => prewarmAnnouncementImages(), 10 * 60 * 1000);
+
+  app.get("/api/drive-image", async (req, res) => {
+    try {
+      const rawId = (req.query.id as string) || "";
+      const rawUrl = (req.query.url as string) || "";
+
+      let fileId = rawId.trim();
+      if (!fileId && rawUrl) {
+        const matchD = rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        const matchId = rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        const matchLh3 = rawUrl.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+        const matchDirect = rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        fileId = matchD ? matchD[1] : matchId ? matchId[1] : matchLh3 ? matchLh3[1] : matchDirect ? matchDirect[1] : "";
+      }
+
+      if (!fileId) {
+        return res.status(400).send("Missing Google Drive file ID");
+      }
+
+      // Fetch or read from cache
+      const cached = await fetchAndCacheDriveImage(fileId);
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+
+      if (cached && cached.buffer) {
+        res.setHeader("Content-Type", cached.contentType);
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.send(cached.buffer);
+      }
+
+      // If network fetch could not download the image stream directly, redirect to Google CDN
+      return res.redirect(`https://lh3.googleusercontent.com/d/${fileId}`);
+    } catch (err: any) {
+      console.warn("Error proxying drive image:", err);
+      // Return safe SVG fallback so <img> never breaks
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      return res.send(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+          <defs>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#1e293b"/>
+              <stop offset="100%" stop-color="#0f172a"/>
+            </linearGradient>
+          </defs>
+          <rect width="600" height="400" fill="url(#bg)"/>
+          <circle cx="300" cy="170" r="50" fill="#334155"/>
+          <path d="M280 160 L300 140 L320 160 L310 160 L310 190 L290 190 L290 160 Z" fill="#f59e0b"/>
+          <text x="300" y="250" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="16" font-weight="bold">ข่าวประชาสัมพันธ์ ฟาร์มเฮ้าส์</text>
+          <text x="300" y="275" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="12">ธุรการลาดกระบัง 2</text>
+        </svg>
+      `);
+    }
+  });
 
   // Google Sheet proxy endpoint for streaming raw CSV with intelligent parcel itemTitle enrichment
   app.get("/api/sheet-csv", async (req, res) => {
@@ -752,11 +970,14 @@ async function startServer() {
       } catch (fetchErr: any) {
         if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
           const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
           ];
           for (const sub of inMemoryAnnouncementSubmissions) {
             const subDate = new Date(sub.createdAt || Date.now());
             const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
             fallbackRows.push([
               timeStr,
               sub.title,
@@ -764,7 +985,9 @@ async function startServer() {
               sub.department || "",
               sub.startDate || "",
               sub.endDate || "",
-              sub.imageUrl || "",
+              img1,
+              img2,
+              img3,
             ]);
           }
           res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -776,11 +999,14 @@ async function startServer() {
       if (!response.ok) {
         if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
           const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
           ];
           for (const sub of inMemoryAnnouncementSubmissions) {
             const subDate = new Date(sub.createdAt || Date.now());
             const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
             fallbackRows.push([
               timeStr,
               sub.title,
@@ -788,7 +1014,9 @@ async function startServer() {
               sub.department || "",
               sub.startDate || "",
               sub.endDate || "",
-              sub.imageUrl || "",
+              img1,
+              img2,
+              img3,
             ]);
           }
           res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -816,11 +1044,14 @@ async function startServer() {
       ) {
         if (isAnnouncementsSheet && inMemoryAnnouncementSubmissions.length > 0) {
           const fallbackRows: string[][] = [
-            ["ประทับเวลา", "หัวข้อข่าวประชาสัมพันธ์", "เนื้อหาข่าว / รายละเอียด", "แผนก / ฝ่าย", "วันที่เริ่มแสดง", "วันที่สิ้นสุด", "รูปภาพประกอบ (File responses)"],
+            ["ประทับเวลา", "หัวข้อ", "เนื้อหา", "แผนก / ฝ่าย", "วันเริ่มต้น", "วันสิ้นสุด", "รูปภาพประกอบ", "รูปภาพประกอบ2", "รูปภาพประกอบ3"],
           ];
           for (const sub of inMemoryAnnouncementSubmissions) {
             const subDate = new Date(sub.createdAt || Date.now());
             const timeStr = `${subDate.getDate()}/${subDate.getMonth() + 1}/${subDate.getFullYear()} ${String(subDate.getHours()).padStart(2, "0")}:${String(subDate.getMinutes()).padStart(2, "0")}:${String(subDate.getSeconds()).padStart(2, "0")}`;
+            const img1 = sub.imageUrl || sub.imageUrls?.[0] || "";
+            const img2 = sub.imageUrl2 || sub.imageUrls?.[1] || "";
+            const img3 = sub.imageUrl3 || sub.imageUrls?.[2] || "";
             fallbackRows.push([
               timeStr,
               sub.title,
@@ -828,7 +1059,9 @@ async function startServer() {
               sub.department || "",
               sub.startDate || "",
               sub.endDate || "",
-              sub.imageUrl || "",
+              img1,
+              img2,
+              img3,
             ]);
           }
           res.setHeader("Content-Type", "text/csv; charset=utf-8");

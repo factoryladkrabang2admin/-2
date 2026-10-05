@@ -17,11 +17,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Pencil
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { formatDepartmentName } from './AnnouncementsView';
 import { AnnouncementCarousel } from './AnnouncementCarousel';
+import { extractGoogleDriveFileId } from '../services/googleSheetSyncService';
 
 interface AnnouncementDetailModalProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ interface AnnouncementDetailModalProps {
   onClose: () => void;
   isAdmin?: boolean;
   onTogglePin?: (item: AnnouncementItem) => void;
+  onEditAnnouncement?: (item: AnnouncementItem) => void;
 }
 
 export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = ({
@@ -37,6 +40,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
   onClose,
   isAdmin = false,
   onTogglePin,
+  onEditAnnouncement,
 }) => {
   const { t, language } = useLanguage();
   const [copied, setCopied] = useState(false);
@@ -112,6 +116,26 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDetailImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, originalSrc?: string) => {
+    const target = e.currentTarget;
+    const srcToCheck = originalSrc || target.src;
+    const fileId = extractGoogleDriveFileId(srcToCheck);
+    if (!fileId) return;
+
+    if (target.src.includes('/api/drive-image')) {
+      target.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
+      return;
+    }
+    if (target.src.includes('google.com/thumbnail')) {
+      target.src = `https://lh3.googleusercontent.com/d/${fileId}`;
+      return;
+    }
+    if (target.src.includes('googleusercontent.com')) {
+      target.src = `https://drive.google.com/uc?export=view&id=${fileId}`;
+      return;
+    }
   };
 
   // Format date display
@@ -191,6 +215,19 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Admin Edit Announcement Button */}
+              {isAdmin && onEditAnnouncement && (
+                <button
+                  id="btn-edit-announcement-modal"
+                  onClick={() => onEditAnnouncement(announcement)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-white/15 hover:bg-white/25 text-white border border-white/20"
+                  title="แก้ไขข้อมูลข่าวประชาสัมพันธ์นี้"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="hidden sm:inline">แก้ไขข้อมูล</span>
+                </button>
+              )}
+
               {/* Admin Pin/Unpin Button */}
               {isAdmin && onTogglePin && (
                 <button
@@ -270,7 +307,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
                     title={announcement.title}
                     activeIndex={activeImageIndex}
                     onIndexChange={(idx) => setActiveImageIndex(idx)}
-                    aspectClass="w-full min-h-[260px] sm:min-h-[320px] max-h-[520px]"
+                    aspectClass="w-full h-[300px] sm:h-[420px]"
                     objectFit="contain"
                     showControls={displayImages.length > 1}
                     showIndicators={displayImages.length > 1}
@@ -326,6 +363,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
                             <img
                               src={imgUrl}
                               alt={`รูปที่ ${idx + 1}`}
+                              onError={(e) => handleDetailImageError(e, imgUrl)}
                               className="w-7 h-7 rounded-md object-cover border border-slate-200"
                               referrerPolicy="no-referrer"
                             />
@@ -386,6 +424,16 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
             </div>
 
             <div className="flex items-center gap-2">
+              {isAdmin && onEditAnnouncement && (
+                <button
+                  id="btn-edit-announcement-footer"
+                  onClick={() => onEditAnnouncement(announcement)}
+                  className="px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>แก้ไขข้อมูลข่าว</span>
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="px-6 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-300 transition-all cursor-pointer shadow-2xs"
@@ -454,6 +502,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
             <img
               src={displayImages[activeImageIndex]}
               alt={`${announcement.title} - รูปที่ ${activeImageIndex + 1}`}
+              onError={(e) => handleDetailImageError(e, displayImages[activeImageIndex])}
               className="max-w-full max-h-[78vh] object-contain rounded-xl shadow-2xl transition-all duration-300"
               referrerPolicy="no-referrer"
             />
@@ -492,6 +541,7 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
                     <img
                       src={imgUrl}
                       alt={`ภาพที่ ${idx + 1}`}
+                      onError={(e) => handleDetailImageError(e, imgUrl)}
                       className="w-12 h-12 sm:w-14 sm:h-14 object-cover"
                       referrerPolicy="no-referrer"
                     />

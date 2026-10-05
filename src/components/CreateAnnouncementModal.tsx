@@ -36,6 +36,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Layers,
 } from 'lucide-react';
 import { AnnouncementItem } from '../types';
 import { AdminUserAccount } from '../data/mockData';
@@ -51,6 +52,7 @@ import {
   extractGoogleDriveDirectImageUrl,
   getAnnouncementsWebhookUrl,
   setAnnouncementsWebhookUrl,
+  updateLocalAnnouncement,
   AnnouncementSubmitResult,
   AnnouncementImageAttachment,
 } from '../services/googleSheetSyncService';
@@ -60,10 +62,12 @@ interface CreateAnnouncementModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAnnouncementCreated?: (newAnnouncement: AnnouncementItem) => void;
+  onAnnouncementUpdated?: (updatedAnnouncement: AnnouncementItem) => void;
   onRefreshFromSheet?: () => void;
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
   existingAnnouncements?: AnnouncementItem[];
+  editingAnnouncement?: AnnouncementItem | null;
 }
 
 // Popular department tags for quick selection
@@ -321,11 +325,14 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
   isOpen,
   onClose,
   onAnnouncementCreated,
+  onAnnouncementUpdated,
   onRefreshFromSheet,
   currentUser,
   existingAnnouncements = [],
+  editingAnnouncement,
 }) => {
   const { language } = useLanguage();
+  const isEditing = !!editingAnnouncement;
 
   // Active Tab: 'in-app' | 'webhook-setup' | 'external-links'
   const [activeTab, setActiveTab] = useState<'in-app' | 'webhook-setup' | 'external-links'>('in-app');
@@ -462,6 +469,89 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       .catch(() => {});
   }, []);
 
+  // Prepopulate form fields when editing an existing announcement
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (editingAnnouncement) {
+      setTitle(editingAnnouncement.title || '');
+      setDepartment(editingAnnouncement.department || '');
+      setContent(editingAnnouncement.content || '');
+
+      // Parse start date
+      if (editingAnnouncement.startDate) {
+        const clean = editingAnnouncement.startDate.trim();
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
+          const [d, m, y] = clean.split('/');
+          setStartDate(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+          setStartDate(clean);
+        }
+      }
+
+      // Parse end date
+      if (editingAnnouncement.endDate) {
+        const clean = editingAnnouncement.endDate.trim();
+        setHasEndDate(true);
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
+          const [d, m, y] = clean.split('/');
+          setEndDate(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+          setEndDate(clean);
+        } else {
+          setEndDate(clean);
+        }
+      } else {
+        setHasEndDate(false);
+        setEndDate('');
+      }
+
+      // Populate 3 image slots from rawImageUrls or imageUrls
+      const sourceImgs: string[] = [];
+      if (editingAnnouncement.rawImageUrls && editingAnnouncement.rawImageUrls.length > 0) {
+        editingAnnouncement.rawImageUrls.forEach((u) => u && sourceImgs.push(u));
+      } else if (editingAnnouncement.imageUrls && editingAnnouncement.imageUrls.length > 0) {
+        editingAnnouncement.imageUrls.forEach((u) => u && sourceImgs.push(u));
+      } else if (editingAnnouncement.rawImageUrl) {
+        sourceImgs.push(editingAnnouncement.rawImageUrl);
+      } else if (editingAnnouncement.imageUrl) {
+        sourceImgs.push(editingAnnouncement.imageUrl);
+      }
+
+      setImageSlots([
+        { mode: 'url', url: sourceImgs[0] || '', file: null, base64: '', fileName: '', fileSize: 0 },
+        { mode: 'url', url: sourceImgs[1] || '', file: null, base64: '', fileName: '', fileSize: 0 },
+        { mode: 'url', url: sourceImgs[2] || '', file: null, base64: '', fileName: '', fileSize: 0 },
+      ]);
+      setImageUrl(sourceImgs[0] || '');
+      setActiveImageSlot(0);
+      setIsSaveSuccess(false);
+      setCreatedItem(null);
+      setSubmitError(null);
+    } else {
+      // New announcement defaults
+      setTitle('');
+      setContent('');
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      setStartDate(`${y}-${m}-${d}`);
+      setEndDate('');
+      setHasEndDate(false);
+      setImageSlots([
+        { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+        { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+        { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
+      ]);
+      setImageUrl('');
+      setActiveImageSlot(0);
+      setIsSaveSuccess(false);
+      setCreatedItem(null);
+      setSubmitError(null);
+    }
+  }, [isOpen, editingAnnouncement]);
+
   // Handle local image file selection with client-side auto-compression for speed & reliability
   const handleImageFilePickedForSlot = (slotIdx: number, file: File) => {
     if (!file) return;
@@ -489,13 +579,6 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
         };
         return next;
       });
-      // Also update legacy single-image state if slot 0
-      if (slotIdx === 0) {
-        setAttachedFile(file);
-        setAttachedImageFileName(file.name);
-        setAttachedImageFileSize(file.size);
-        setAttachedImageBase64(base64Str);
-      }
     };
 
     const reader = new FileReader();
@@ -557,10 +640,6 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       return next;
     });
     if (slotIdx === 0) {
-      setAttachedFile(null);
-      setAttachedImageBase64('');
-      setAttachedImageFileName('');
-      setAttachedImageFileSize(0);
       setImageUrl('');
     }
     if (fileInputRef.current) {
@@ -632,10 +711,6 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
       { mode: 'upload', url: '', file: null, base64: '', fileName: '', fileSize: 0 },
     ]);
     setActiveImageSlot(0);
-    setAttachedFile(null);
-    setAttachedImageBase64('');
-    setAttachedImageFileName('');
-    setAttachedImageFileSize(0);
     setCreatedItem(null);
     setLastSubmitResult(null);
     setSubmitError(null);
@@ -776,7 +851,25 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           // ignore
         }
 
-        if (onAnnouncementCreated) {
+        if (editingAnnouncement) {
+          const updatedItem: AnnouncementItem = {
+            ...editingAnnouncement,
+            title: title.trim(),
+            content: content.trim(),
+            department: department.trim(),
+            startDate: formattedStartDate,
+            endDate: formattedEndDate || undefined,
+            rawImageUrl: result.announcement?.rawImageUrl || slot1Img || editingAnnouncement.rawImageUrl,
+            imageUrl: result.announcement?.imageUrl || slot1Img || editingAnnouncement.imageUrl,
+            rawImageUrls: result.announcement?.rawImageUrls || (payloadImageUrls.length > 0 ? payloadImageUrls : editingAnnouncement.rawImageUrls),
+            imageUrls: result.announcement?.imageUrls || (payloadImageUrls.length > 0 ? payloadImageUrls : editingAnnouncement.imageUrls),
+          };
+          updateLocalAnnouncement(updatedItem);
+          setCreatedItem(updatedItem);
+          if (onAnnouncementUpdated) {
+            onAnnouncementUpdated(updatedItem);
+          }
+        } else if (onAnnouncementCreated) {
           onAnnouncementCreated(result.announcement);
         }
 
@@ -902,6 +995,10 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
     if (formatOverride) setPasteFormat(formatOverride);
 
     let rowText = '';
+    const img1 = createdItem.rawImageUrls?.[0] || createdItem.imageUrls?.[0] || createdItem.rawImageUrl || createdItem.imageUrl || '';
+    const img2 = createdItem.rawImageUrls?.[1] || createdItem.imageUrls?.[1] || '';
+    const img3 = createdItem.rawImageUrls?.[2] || createdItem.imageUrls?.[2] || '';
+
     if (formatToUse === 'google_form') {
       if (lastSubmitResult?.googleFormRowTsv) {
         rowText = lastSubmitResult.googleFormRowTsv;
@@ -915,7 +1012,9 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           createdItem.department,
           createdItem.startDate,
           createdItem.endDate || '',
-          createdItem.rawImageUrl || createdItem.imageUrl || '',
+          img1,
+          img2,
+          img3,
         ].join('\t');
       }
     } else {
@@ -927,7 +1026,9 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
           createdItem.department,
           createdItem.startDate,
           createdItem.endDate || '',
-          createdItem.rawImageUrl || createdItem.imageUrl || '',
+          img1,
+          img2,
+          img3,
         ].join('\t');
     }
 
@@ -1009,13 +1110,13 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
-                  <span>{language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'New Announcement'}</span>
+                  <span>{isEditing ? (language === 'th' ? 'แก้ไขข้อมูลข่าวประชาสัมพันธ์' : 'Edit Announcement') : (language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'New Announcement')}</span>
                 </h2>
               </div>
               <p className="text-xs text-blue-100/90 font-medium">
-                {language === 'th'
-                  ? 'สร้างและเผยแพร่ข่าวสารประชาสัมพันธ์ของโรงงาน'
-                  : 'Create and publish factory announcements'}
+                {isEditing
+                  ? (language === 'th' ? 'ปรับปรุงข้อมูลข่าวสารและรูปภาพประกอบหมุนวน (สูงสุด 3 รูป)' : 'Update announcement details and up to 3 images')
+                  : (language === 'th' ? 'สร้างและเผยแพร่ข่าวสารประชาสัมพันธ์ของโรงงาน' : 'Create and publish factory announcements')}
               </p>
             </div>
           </div>
@@ -1084,7 +1185,7 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
             }`}
           >
             <Megaphone className="w-3.5 h-3.5" />
-            <span>แบบฟอร์มเพิ่มข่าว</span>
+            <span>{isEditing ? 'แบบฟอร์มแก้ไขข่าว' : 'แบบฟอร์มเพิ่มข่าว'}</span>
           </button>
 
           <button
@@ -1494,7 +1595,9 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               createdItem.department,
                               createdItem.startDate,
                               createdItem.endDate || '',
-                              createdItem.rawImageUrl || createdItem.imageUrl || '',
+                              createdItem.rawImageUrls?.[0] || createdItem.imageUrls?.[0] || createdItem.rawImageUrl || createdItem.imageUrl || '',
+                              createdItem.rawImageUrls?.[1] || createdItem.imageUrls?.[1] || '',
+                              createdItem.rawImageUrls?.[2] || createdItem.imageUrls?.[2] || '',
                             ].join('\t'))
                           : (lastSubmitResult?.sheetRowTsv || [
                               createdItem.title,
@@ -1502,7 +1605,9 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                               createdItem.department,
                               createdItem.startDate,
                               createdItem.endDate || '',
-                              createdItem.rawImageUrl || createdItem.imageUrl || '',
+                              createdItem.rawImageUrls?.[0] || createdItem.imageUrls?.[0] || createdItem.rawImageUrl || createdItem.imageUrl || '',
+                              createdItem.rawImageUrls?.[1] || createdItem.imageUrls?.[1] || '',
+                              createdItem.rawImageUrls?.[2] || createdItem.imageUrls?.[2] || '',
                             ].join('\t'))}
                       </div>
                     </div>
@@ -2148,12 +2253,12 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                       ) : isSaveSuccess ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 text-white" />
-                          <span>บันทึกเรียบร้อย</span>
+                          <span>{isEditing ? 'แก้ไขข้อมูลเรียบร้อย' : 'บันทึกเรียบร้อย'}</span>
                         </>
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
-                          <span>บันทึกข้อมูล</span>
+                          <span>{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกข้อมูล'}</span>
                         </>
                       )}
                     </button>
@@ -2394,6 +2499,51 @@ export const CreateAnnouncementModal: React.FC<CreateAnnouncementModalProps> = (
                     <ExternalLink className="w-4 h-4" />
                     <span>เปิด Google Form (แบบฟอร์มส่ง)</span>
                   </a>
+                </div>
+              </div>
+
+              {/* 9-Column Specification Card */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    <span>โครงสร้าง 9 คอลัมน์ของ Google Form & Google Sheet (แสดงรูปหมุนวน 3 รูป)</span>
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                    3 รูปภาพหมุนวน
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  ระบบซิงก์ข้อมูลอ่านและแสดงผล 3 รูปภาพหมุนวนโดยอัตโนมัติจากทั้งการส่งผ่าน Google Form หรือการกรอกใน Google Sheet:
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 1 [A]:</span> <span className="text-slate-800">ประทับเวลา</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 2 [B]:</span> <span className="text-slate-800">หัวข้อ</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 3 [C]:</span> <span className="text-slate-800">เนื้อหา</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 4 [D]:</span> <span className="text-slate-800">แผนก / ฝ่าย</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 5 [E]:</span> <span className="text-slate-800">วันเริ่มต้น</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <span className="font-bold text-slate-500">Col 6 [F]:</span> <span className="text-slate-800">วันสิ้นสุด</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200 col-span-2 sm:col-span-1">
+                    <span className="font-bold text-indigo-600">Col 7 [G]:</span> <span className="text-indigo-950 font-bold">รูปภาพประกอบ (1)</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span className="font-bold text-indigo-600">Col 8 [H]:</span> <span className="text-indigo-950 font-bold">รูปภาพประกอบ2 (2)</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span className="font-bold text-indigo-600">Col 9 [I]:</span> <span className="text-indigo-950 font-bold">รูปภาพประกอบ3 (3)</span>
+                  </div>
                 </div>
               </div>
 

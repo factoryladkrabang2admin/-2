@@ -756,12 +756,12 @@ const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
       }`}
     >
       {/* Top Image Preview Banner / 3-Image Rotating Carousel */}
-      <div className="relative w-full min-h-[200px] sm:min-h-[220px] max-h-[320px] bg-slate-900/5 flex items-center justify-center overflow-hidden shrink-0 border-b border-slate-100/80">
+      <div className="relative w-full h-56 sm:h-64 bg-slate-900/5 flex items-center justify-center overflow-hidden shrink-0 border-b border-slate-100/80">
         {displayImages.length > 0 ? (
           <AnnouncementCarousel
             images={displayImages}
             title={item.title}
-            aspectClass="w-full min-h-[200px] sm:min-h-[220px] max-h-[320px]"
+            aspectClass="w-full h-full"
             objectFit="contain"
             showControls={true}
             showIndicators={true}

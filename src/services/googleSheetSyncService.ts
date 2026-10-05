@@ -2792,6 +2792,44 @@ export function saveLocalAnnouncement(announcement: AnnouncementItem): void {
   }
 }
 
+export function updateLocalAnnouncement(announcement: AnnouncementItem): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const list = getLocalAnnouncements();
+    const idx = list.findIndex(item => item.id === announcement.id || item.title === announcement.title);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...announcement };
+    } else {
+      list.unshift(announcement);
+    }
+    localStorage.setItem(LOCAL_ANNOUNCEMENTS_STORAGE_KEY, JSON.stringify(list.slice(0, 100)));
+
+    // Also update cached announcements in localStorage if present
+    try {
+      const cached = localStorage.getItem('proworkflow_announcements_cache_v3');
+      if (cached) {
+        const parsed: AnnouncementItem[] = JSON.parse(cached);
+        const pIdx = parsed.findIndex(item => item.id === announcement.id || item.title === announcement.title);
+        if (pIdx >= 0) {
+          parsed[pIdx] = { ...parsed[pIdx], ...announcement };
+          localStorage.setItem('proworkflow_announcements_cache_v3', JSON.stringify(parsed));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } catch (err) {
+    console.warn('Failed to update local announcement:', err);
+  }
+}
+
+export interface AnnouncementImageAttachment {
+  url?: string;
+  base64?: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
 export interface NewAnnouncementPayload {
   title: string;
   content: string;
@@ -2799,6 +2837,10 @@ export interface NewAnnouncementPayload {
   startDate: string;
   endDate?: string;
   imageUrl?: string;
+  imageUrl2?: string;
+  imageUrl3?: string;
+  imageUrls?: string[];
+  images?: AnnouncementImageAttachment[];
   operatorName?: string;
   webhookUrl?: string;
   imageBase64?: string;
@@ -2851,8 +2893,33 @@ export async function submitAnnouncementRecord(
     };
   }
 
-  const initialImageUrl = payload.imageUrl?.trim() || (payload.imageBase64 ? payload.imageBase64 : '');
-  const imageInfo = extractGoogleDriveDirectImageUrl(initialImageUrl);
+  // Collect all raw and direct image candidates (up to 3)
+  const initialRawImages: string[] = [];
+  if (payload.imageUrls && Array.isArray(payload.imageUrls)) {
+    payload.imageUrls.forEach((u) => {
+      if (u && typeof u === 'string' && u.trim() && !initialRawImages.includes(u.trim())) {
+        initialRawImages.push(u.trim());
+      }
+    });
+  }
+  [payload.imageUrl, payload.imageUrl2, payload.imageUrl3].forEach((u) => {
+    if (u && typeof u === 'string' && u.trim() && !initialRawImages.includes(u.trim())) {
+      initialRawImages.push(u.trim());
+    }
+  });
+  if (initialRawImages.length === 0 && payload.imageBase64) {
+    initialRawImages.push(payload.imageBase64);
+  }
+
+  const initialEmbedImages: string[] = [];
+  initialRawImages.forEach((u) => {
+    const info = extractGoogleDriveDirectImageUrl(u);
+    const resolved = info.previewUrl || u;
+    if (resolved && !initialEmbedImages.includes(resolved)) {
+      initialEmbedImages.push(resolved);
+    }
+  });
+
   const now = new Date();
   const dateStr = payload.startDate?.trim() || `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
   const timestampStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -2860,6 +2927,10 @@ export async function submitAnnouncementRecord(
   const status = calculateAnnouncementStatus(dateStr, payload.endDate);
   const webhookUrl = payload.webhookUrl || getAnnouncementsWebhookUrl();
   const targetDriveFolderId = payload.driveFolderId || ANNOUNCEMENTS_DRIVE_FOLDER_ID;
+
+  const raw1 = initialRawImages[0] || '';
+  const raw2 = initialRawImages[1] || '';
+  const raw3 = initialRawImages[2] || '';
 
   const localItem: AnnouncementItem = {
     id: `ann-local-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -2869,14 +2940,17 @@ export async function submitAnnouncementRecord(
     department: payload.department.trim(),
     startDate: dateStr,
     endDate: payload.endDate?.trim() || undefined,
-    rawImageUrl: initialImageUrl || undefined,
-    imageUrl: imageInfo.previewUrl || initialImageUrl || undefined,
+    rawImageUrl: raw1 || undefined,
+    imageUrl: initialEmbedImages[0] || undefined,
+    rawImageUrls: initialRawImages.slice(0, 3),
+    imageUrls: initialEmbedImages.slice(0, 3),
     category,
     status,
     isPinned: false,
   };
 
-  // 7-Column TSV matching Google Form Response format (Starts with Timestamp, Col B is Title)
+  // 9-Column TSV matching Google Form Response format:
+  // [A] ประทับเวลา, [B] หัวข้อ, [C] เนื้อหา, [D] แผนก / ฝ่าย, [E] วันเริ่มต้น, [F] วันสิ้นสุด, [G] รูปภาพประกอบ, [H] รูปภาพประกอบ2, [I] รูปภาพประกอบ3
   const clientFallbackGoogleFormTsv = [
     timestampStr,
     localItem.title,
@@ -2884,17 +2958,22 @@ export async function submitAnnouncementRecord(
     localItem.department,
     localItem.startDate,
     localItem.endDate || '',
-    localItem.rawImageUrl || localItem.imageUrl || '',
+    raw1,
+    raw2,
+    raw3,
   ].join('\t');
 
-  // 6-Column TSV for manual sheets (Starts with Title)
+  // 8-Column TSV for manual sheets:
+  // [A] หัวข้อ, [B] เนื้อหา, [C] แผนก / ฝ่าย, [D] วันเริ่มต้น, [E] วันสิ้นสุด, [F] รูปภาพประกอบ, [G] รูปภาพประกอบ2, [H] รูปภาพประกอบ3
   const clientFallbackTsv = [
     localItem.title,
     localItem.content.replace(/\n/g, ' '),
     localItem.department,
     localItem.startDate,
     localItem.endDate || '',
-    localItem.rawImageUrl || localItem.imageUrl || '',
+    raw1,
+    raw2,
+    raw3,
   ].join('\t');
 
   try {
@@ -2917,6 +2996,21 @@ export async function submitAnnouncementRecord(
         const driveImageInfo = extractGoogleDriveDirectImageUrl(serverImageUrl);
         localItem.rawImageUrl = serverImageUrl;
         localItem.imageUrl = driveImageInfo.previewUrl || serverImageUrl;
+      }
+      if (data.imageUrls && Array.isArray(data.imageUrls) && data.imageUrls.length > 0) {
+        const serverEmbedList: string[] = [];
+        data.imageUrls.forEach((u: string) => {
+          if (u && typeof u === 'string') {
+            const dInfo = extractGoogleDriveDirectImageUrl(u);
+            serverEmbedList.push(dInfo.previewUrl || u);
+          }
+        });
+        localItem.imageUrls = serverEmbedList.slice(0, 3);
+        localItem.rawImageUrls = data.imageUrls.slice(0, 3);
+        if (localItem.imageUrls.length > 0) {
+          localItem.imageUrl = localItem.imageUrls[0];
+          localItem.rawImageUrl = localItem.rawImageUrls[0];
+        }
       }
       saveLocalAnnouncement(localItem);
 
@@ -2985,9 +3079,41 @@ export interface AnnouncementsSyncResult {
 }
 
 /**
+ * Extract Google Drive file ID from any URL or string
+ */
+export function extractGoogleDriveFileId(driveUrl?: string): string | null {
+  if (!driveUrl) return null;
+  const trimmed = driveUrl.trim();
+  if (!trimmed) return null;
+
+  const matchD = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchD) return matchD[1];
+
+  const matchId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchId) return matchId[1];
+
+  const matchLh3 = trimmed.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchLh3) return matchLh3[1];
+
+  const matchDirect = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchDirect) return matchDirect[1];
+
+  if (/^[a-zA-Z0-9_-]{25,45}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return null;
+}
+
+/**
  * Extracts direct Google Drive preview/thumbnail image URL from a Google Drive share link
  */
-export function extractGoogleDriveDirectImageUrl(driveUrl?: string): { previewUrl?: string; thumbnailLargeUrl?: string; fileId?: string } {
+export function extractGoogleDriveDirectImageUrl(driveUrl?: string): {
+  previewUrl?: string;
+  thumbnailLargeUrl?: string;
+  fallbackUrls?: string[];
+  fileId?: string;
+} {
   if (!driveUrl) return {};
   const trimmed = driveUrl.trim();
   if (!trimmed) return {};
@@ -2997,32 +3123,31 @@ export function extractGoogleDriveDirectImageUrl(driveUrl?: string): { previewUr
     return {
       previewUrl: trimmed,
       thumbnailLargeUrl: trimmed,
+      fallbackUrls: [trimmed],
     };
   }
 
-  // Try extracting file ID from various Google Drive URL formats:
-  // 1. https://drive.google.com/file/d/FILE_ID/view...
-  // 2. https://drive.google.com/open?id=FILE_ID
-  // 3. https://drive.google.com/uc?id=FILE_ID
-  const matchD = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  const matchId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  const matchDirect = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
-
-  const fileId = matchD ? matchD[1] : matchId ? matchId[1] : matchDirect ? matchDirect[1] : null;
+  const fileId = extractGoogleDriveFileId(trimmed);
 
   if (fileId) {
+    const proxyUrl = `/api/drive-image?id=${fileId}`;
+    const directThumb = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
+    const directCdn = `https://lh3.googleusercontent.com/d/${fileId}`;
+    const directUc = `https://drive.google.com/uc?export=view&id=${fileId}`;
     return {
       fileId,
-      previewUrl: `https://lh3.googleusercontent.com/d/${fileId}`,
-      thumbnailLargeUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
+      previewUrl: proxyUrl,
+      thumbnailLargeUrl: proxyUrl,
+      fallbackUrls: [proxyUrl, directThumb, directCdn, directUc],
     };
   }
 
   // If already a direct image link or external URL
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image/')) {
     return {
       previewUrl: trimmed,
       thumbnailLargeUrl: trimmed,
+      fallbackUrls: [trimmed],
     };
   }
 
@@ -3196,42 +3321,45 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
       let hasTimestampCol = false;
       row.forEach((col, colIdx) => {
         const c = col.trim().toLowerCase();
-        if (c.includes('เวลา') || c.includes('timestamp') || c.includes('ประทับ')) {
+        const cleanNoSpace = c.replace(/\s+/g, '');
+        if (cleanNoSpace.includes('เวลา') || cleanNoSpace.includes('timestamp') || cleanNoSpace.includes('ประทับ')) {
           hasTimestampCol = true;
-        } else if (c.includes('หัวข้อ') || c.includes('เรื่อง') || c.includes('title')) {
+        } else if (cleanNoSpace.includes('หัวข้อ') || cleanNoSpace.includes('เรื่อง') || cleanNoSpace.includes('title')) {
           titleIdx = colIdx;
-        } else if (c.includes('เนื้อหา') || c.includes('รายละเอียด') || c.includes('content')) {
+        } else if (cleanNoSpace.includes('เนื้อหา') || cleanNoSpace.includes('รายละเอียด') || cleanNoSpace.includes('detail') || cleanNoSpace.includes('content')) {
           contentIdx = colIdx;
-        } else if (c.includes('แผนก') || c.includes('ฝ่าย') || c.includes('department')) {
+        } else if (cleanNoSpace.includes('แผนก') || cleanNoSpace.includes('ฝ่าย') || cleanNoSpace.includes('department')) {
           deptIdx = colIdx;
-        } else if (c.includes('เริ่มต้น') || c.includes('เริ่ม') || c.includes('start')) {
+        } else if (cleanNoSpace.includes('เริ่มต้น') || cleanNoSpace.includes('เริ่ม') || cleanNoSpace.includes('start')) {
           startIdx = colIdx;
-        } else if (c.includes('สิ้นสุด') || c.includes('จบ') || c.includes('end')) {
+        } else if (cleanNoSpace.includes('สิ้นสุด') || cleanNoSpace.includes('จบ') || cleanNoSpace.includes('end')) {
           endIdx = colIdx;
-        } else if (c.includes('รูปภาพประกอบ3') || c.includes('รูปภาพ3') || c.includes('ภาพ3') || c.includes('image3')) {
+        } else if (cleanNoSpace.includes('รูปภาพประกอบ3') || cleanNoSpace.includes('รูปภาพ3') || cleanNoSpace.includes('ภาพ3') || cleanNoSpace.includes('image3') || /ภาพ.*3|image.*3|รูป.*3/.test(c)) {
           img3Idx = colIdx;
-        } else if (c.includes('รูปภาพประกอบ2') || c.includes('รูปภาพ2') || c.includes('ภาพ2') || c.includes('image2')) {
+        } else if (cleanNoSpace.includes('รูปภาพประกอบ2') || cleanNoSpace.includes('รูปภาพ2') || cleanNoSpace.includes('ภาพ2') || cleanNoSpace.includes('image2') || /ภาพ.*2|image.*2|รูป.*2/.test(c)) {
           img2Idx = colIdx;
-        } else if (c.includes('รูปภาพประกอบ') || c.includes('รูปภาพ1') || c.includes('รูปภาพ') || c.includes('ภาพ') || c.includes('image') || c.includes('ลิงก์') || c.includes('link') || c.includes('drive')) {
+        } else if (cleanNoSpace.includes('รูปภาพประกอบ1') || cleanNoSpace.includes('รูปภาพ1') || cleanNoSpace.includes('ภาพ1') || cleanNoSpace.includes('image1') || /ภาพ.*1|image.*1|รูป.*1/.test(c)) {
+          img1Idx = colIdx;
+        } else if (cleanNoSpace.includes('รูปภาพประกอบ') || cleanNoSpace.includes('รูปภาพ') || cleanNoSpace.includes('ภาพ') || cleanNoSpace.includes('image') || cleanNoSpace.includes('ลิงก์') || cleanNoSpace.includes('link') || cleanNoSpace.includes('drive')) {
           if (img1Idx === 5 || img1Idx === -1) {
             img1Idx = colIdx;
           }
         }
       });
 
-      // If Google Form response sheet (has Timestamp at col 0, but titleIdx was not detected or defaulted to 0):
-      if (hasTimestampCol && titleIdx === 0 && row.length > 1) {
-        titleIdx = 1;
-        if (contentIdx <= 1 && row.length > 2) contentIdx = 2;
-        if (deptIdx <= 2 && row.length > 3) deptIdx = 3;
-        if (startIdx <= 3 && row.length > 4) startIdx = 4;
-        if (endIdx <= 4 && row.length > 5) endIdx = 5;
-        if (img1Idx <= 5 && row.length > 6) img1Idx = 6;
-      }
+      // If Google Form response sheet (has Timestamp at col 0):
+      // Col 0: Timestamp, Col 1: Title, Col 2: Content, Col 3: Department, Col 4: StartDate, Col 5: EndDate, Col 6: Img1, Col 7: Img2, Col 8: Img3
       if (hasTimestampCol) {
+        if (titleIdx === 0 || titleIdx === -1) titleIdx = 1;
+        if (contentIdx <= 1) contentIdx = 2;
+        if (deptIdx <= 2) deptIdx = 3;
+        if (startIdx <= 3) startIdx = 4;
+        if (endIdx <= 4) endIdx = 5;
+        if (img1Idx <= 5 || img1Idx === -1) img1Idx = 6;
         if (img2Idx === -1 && row.length > 7) img2Idx = 7;
         if (img3Idx === -1 && row.length > 8) img3Idx = 8;
       } else {
+        if (img1Idx === -1 && row.length > 5) img1Idx = 5;
         if (img2Idx === -1 && row.length > 6) img2Idx = 6;
         if (img3Idx === -1 && row.length > 7) img3Idx = 7;
       }
@@ -3293,6 +3421,19 @@ export function convertSheetRowsToAnnouncements(csvText: string): AnnouncementIt
     addRawCandidate(rawImg1);
     addRawCandidate(rawImg2);
     addRawCandidate(rawImg3);
+
+    // If fewer than 3 images found, also inspect other remaining columns for any drive or image links
+    if (rawImageUrls.length < 3) {
+      row.forEach((cell, cIdx) => {
+        if (rawImageUrls.length >= 3) return;
+        if (cIdx === titleIdx || cIdx === contentIdx || cIdx === deptIdx || cIdx === startIdx || cIdx === endIdx) return;
+        if (cIdx === img1Idx || cIdx === img2Idx || cIdx === img3Idx) return;
+        const cellStr = (cell || '').trim();
+        if (cellStr.includes('drive.google.com') || cellStr.includes('googleusercontent.com') || /\.(jpg|jpeg|png|webp|gif)/i.test(cellStr)) {
+          addRawCandidate(cellStr);
+        }
+      });
+    }
 
     // Convert to direct embeddable preview URLs
     const imageUrls: string[] = [];
