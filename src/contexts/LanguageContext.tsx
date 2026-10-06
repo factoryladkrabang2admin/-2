@@ -36,6 +36,7 @@ export interface Translations {
   meetingRoomBooking: string;
   maintenanceTracking: string;
   workSchedule: string;
+  activitySchedule: string;
   otCheck: string;
   payslip: string;
   equipmentRequisition: string;
@@ -290,6 +291,7 @@ export const translations: Record<Language, Translations> = {
     meetingRoomBooking: 'ห้องประชุม',
     maintenanceTracking: 'การแจ้งซ่อม',
     workSchedule: 'ตารางทำงาน',
+    activitySchedule: 'ตารางกิจกรรม',
     otCheck: 'ตรวจสอบ OT',
     payslip: 'สลิปเงินเดือน',
     equipmentRequisition: 'เบิกอุปกรณ์',
@@ -542,6 +544,7 @@ export const translations: Record<Language, Translations> = {
     meetingRoomBooking: 'Meeting Rooms',
     maintenanceTracking: 'Maintenance & Repairs',
     workSchedule: 'Work Schedule',
+    activitySchedule: 'Activity Schedule',
     otCheck: 'OT Verification',
     payslip: 'e-Pay Payslip',
     equipmentRequisition: 'Equipment Requisition',

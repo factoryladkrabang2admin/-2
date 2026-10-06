@@ -77,22 +77,6 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
     }
   };
 
-  // 3. นำปุ่ม รีเฟรชข้อมูล ออก แต่ให้อัพเดทข้อมูลเรียลไทม์เบื้องหลัง
-  // และรีเซ็ตเป็นมุมมองปฏิทินทุกครั้งที่เปิด modal
-  useEffect(() => {
-    if (isOpen) {
-      setViewMode('calendar');
-      loadData();
-
-      // Background realtime polling every 15 seconds while modal is open
-      const interval = setInterval(() => {
-        loadData();
-      }, 15000);
-
-      return () => clearInterval(interval);
-    }
-  }, [isOpen]);
-
   // Month options
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -104,6 +88,43 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
     });
     return Array.from(set).sort();
   }, [activities]);
+
+  // Current month key e.g. "10/2026" or "10/2569"
+  const currentMonthKey = useMemo(() => {
+    const now = new Date();
+    const curM = now.getMonth() + 1;
+    const curY_AD = now.getFullYear();
+    const curY_BE = curY_AD + 543;
+
+    return monthOptions.find(opt => {
+      const p = opt.split('/');
+      if (p.length === 2) {
+        const m = parseInt(p[0], 10);
+        const y = parseInt(p[1], 10);
+        return m === curM && (y === curY_AD || y === curY_BE);
+      }
+      return false;
+    }) || null;
+  }, [monthOptions]);
+
+  // 3. นำปุ่ม รีเฟรชข้อมูล ออก แต่ให้อัพเดทข้อมูลเรียลไทม์เบื้องหลัง
+  // และรีเซ็ตเป็นมุมมองปฏิทิน และแสดงข้อมูลเดือนปัจจุบันก่อนทุกครั้งที่เปิด modal
+  useEffect(() => {
+    if (isOpen) {
+      setViewMode('calendar');
+      loadData();
+      if (currentMonthKey) {
+        setSelectedMonth(currentMonthKey);
+      }
+
+      // Background realtime polling every 15 seconds while modal is open
+      const interval = setInterval(() => {
+        loadData();
+      }, 15000);
+
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, currentMonthKey]);
 
   // Filter activities
   const filteredActivities = useMemo(() => {
@@ -347,10 +368,10 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="px-3 py-2 rounded-xl bg-slate-50 border border-emerald-200 text-xs font-semibold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
-                <option value="all">ทุกเดือน</option>
+                <option value="all">ทุกเดือน (ทั้งหมด {activities.length} รายการ)</option>
                 {monthOptions.map((mY) => (
                   <option key={mY} value={mY}>
-                    เดือน {mY}
+                    เดือน {mY} {mY === currentMonthKey ? '(เดือนปัจจุบัน)' : ''}
                   </option>
                 ))}
               </select>

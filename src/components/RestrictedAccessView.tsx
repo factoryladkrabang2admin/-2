@@ -28,6 +28,8 @@ export const RestrictedAccessView: React.FC<RestrictedAccessViewProps> = ({
         return language === 'th' ? 'การแจ้งซ่อมและบำรุงรักษา (Maintenance)' : 'Maintenance Tracking';
       case 'schedule':
         return language === 'th' ? 'ตารางการทำงานพนักงาน (Work Schedule)' : 'Work Schedule';
+      case 'activity_schedule':
+        return language === 'th' ? 'ตารางกิจกรรม (Activity Schedule)' : 'Activity Schedule';
       case 'ot':
         return language === 'th' ? 'ระบบตรวจสอบ OT (OT Check)' : 'OT Verification';
       case 'payslip':

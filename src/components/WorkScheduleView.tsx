@@ -23,7 +23,7 @@ import {
   AlertTriangle,
   Briefcase
 } from 'lucide-react';
-import { DailyWorkSchedule, WorkScheduleStatus } from '../types';
+import { DailyWorkSchedule, WorkScheduleStatus, NavigationTab } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   fetchGoogleSheetWorkSchedule,
@@ -50,11 +50,13 @@ const CARD_ITEMS_PER_PAGE = 6;
 interface WorkScheduleViewProps {
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
+  onSelectTab?: (tab: NavigationTab) => void;
 }
 
 export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
   currentUser,
   isAuthenticated = false,
+  onSelectTab,
 }) => {
   const { language } = useLanguage();
   const [schedules, setSchedules] = useState<DailyWorkSchedule[]>(() => {
@@ -428,7 +430,13 @@ export const WorkScheduleView: React.FC<WorkScheduleViewProps> = ({
             {/* 1.5 ไอคอน ตารางกิจกรรม (วางไว้หน้าไอคอน เปิดดู Google sheet - ปรับให้ฟรุ้งฟริ้งและโดดเด่น) */}
             <button
               type="button"
-              onClick={() => setShowActivityScheduleModal(true)}
+              onClick={() => {
+                if (onSelectTab) {
+                  onSelectTab('activity_schedule');
+                } else {
+                  setShowActivityScheduleModal(true);
+                }
+              }}
               className="relative p-2.5 rounded-xl bg-gradient-to-tr from-amber-400 via-emerald-500 to-teal-500 hover:from-amber-300 hover:via-emerald-400 hover:to-teal-400 text-white border-2 border-amber-200/90 shadow-md shadow-amber-400/30 hover:shadow-lg hover:shadow-emerald-400/40 backdrop-blur-md transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center group"
               title={language === 'th' ? '✨ ตารางกิจกรรม (คลิกเพื่อดู)' : '✨ Activity Schedule'}
               aria-label={language === 'th' ? 'ตารางกิจกรรม' : 'Activity Schedule'}

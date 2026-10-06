@@ -1,4 +1,4 @@
-export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'document_delivery' | 'equipment_inventory' | 'rags_gloves' | 'settings' | 'profile';
+export type NavigationTab = 'dashboard' | 'announcements' | 'projects' | 'team' | 'reports' | 'laundry' | 'meeting_room' | 'maintenance' | 'schedule' | 'activity_schedule' | 'ot' | 'payslip' | 'equipment' | 'chlorine' | 'document_delivery' | 'equipment_inventory' | 'rags_gloves' | 'settings' | 'profile';
 
 export type InventoryCategory = 'all' | 'ppe' | 'headwear' | 'hygiene' | 'uniform' | 'boots';
 

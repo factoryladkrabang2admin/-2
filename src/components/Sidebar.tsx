@@ -8,6 +8,7 @@ import {
   DoorOpen,
   Wrench,
   CalendarDays,
+  CalendarClock,
   Clock,
   CreditCard,
   Megaphone,
@@ -113,6 +114,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <CalendarDays className="w-5 h-5" />,
       breadKind: 'baguette',
       breadName: 'บาแกตต์กรอบนอกนุ่มใน',
+      requiresAuth: true,
+    },
+    {
+      id: 'activity_schedule',
+      label: t.activitySchedule,
+      icon: <CalendarClock className="w-5 h-5" />,
+      breadKind: 'bun',
+      breadName: 'บันนุ่มไส้สังขยา',
       requiresAuth: true,
     },
     {

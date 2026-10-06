@@ -97,6 +97,8 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
         return language === 'th' ? 'ค้นหาเลขที่ใบงาน, แผนก, รายละเอียด, ผู้แจ้ง...' : 'Search work order, department, issues...';
       case 'schedule':
         return language === 'th' ? 'ค้นหาชื่อพนักงาน, วันที่, ฝ่ายงาน, สถานะทำงาน/วันหยุด/ลา...' : 'Search employee, date, department, shift status...';
+      case 'activity_schedule':
+        return language === 'th' ? 'ค้นหาเรื่องกิจกรรม, สถานที่, วันที่, พนักงานผู้เข้าร่วม...' : 'Search activities, locations, dates, participants...';
       case 'ot':
         return language === 'th' ? 'ค้นหารหัสพนักงาน, ชื่อ, ฝ่ายงาน, เอกสาร OT...' : 'Search employee ID, name, department, OT doc...';
       case 'payslip':

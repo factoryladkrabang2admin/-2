@@ -21,6 +21,7 @@ import { ReportsView } from './components/ReportsView';
 import { LaundryView } from './components/LaundryView';
 import { MaintenanceView } from './components/MaintenanceView';
 import { WorkScheduleView } from './components/WorkScheduleView';
+import { ActivityScheduleView } from './components/ActivityScheduleView';
 import { OtView } from './components/OtView';
 import { PayslipView } from './components/PayslipView';
 import { EquipmentView } from './components/EquipmentView';
@@ -654,7 +655,7 @@ export default function App() {
         // 1. Check tab param or hash
         const validTabs: NavigationTab[] = [
           'dashboard', 'announcements', 'projects', 'team', 'reports', 'laundry',
-          'meeting_room', 'maintenance', 'schedule', 'ot', 'payslip', 'equipment',
+          'meeting_room', 'maintenance', 'schedule', 'activity_schedule', 'ot', 'payslip', 'equipment',
           'chlorine', 'document_delivery', 'rags_gloves', 'settings', 'profile'
         ];
         const tabParam = urlParams.get('tab') as NavigationTab | null;
@@ -1092,10 +1093,30 @@ export default function App() {
               <WorkScheduleView
                 currentUser={currentUser}
                 isAuthenticated={isAuthenticated}
+                onSelectTab={setCurrentTab}
               />
             ) : (
               <RestrictedAccessView
                 currentTab="schedule"
+                onOpenLogin={() => setLoginModalOpen(true)}
+                onNavigateToLaundry={() => {
+                  setLaundrySubTab('pipeline');
+                  setCurrentTab('laundry');
+                }}
+                onNavigateToMeetingRoom={() => setCurrentTab('meeting_room')}
+              />
+            )
+          )}
+
+          {currentTab === 'activity_schedule' && (
+            isAuthenticated ? (
+              <ActivityScheduleView
+                currentUser={currentUser}
+                isAuthenticated={isAuthenticated}
+              />
+            ) : (
+              <RestrictedAccessView
+                currentTab="activity_schedule"
                 onOpenLogin={() => setLoginModalOpen(true)}
                 onNavigateToLaundry={() => {
                   setLaundrySubTab('pipeline');

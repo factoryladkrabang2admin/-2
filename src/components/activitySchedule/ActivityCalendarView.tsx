@@ -45,27 +45,10 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({
     return map;
   }, [activities]);
 
-  // Initial year/month from activities or current date
-  const initialYearMonth = useMemo(() => {
-    if (activities.length > 0) {
-      // Find first upcoming or today or first activity
-      const first = activities[0];
-      if (first.rawDate) {
-        const parts = first.rawDate.split('-');
-        if (parts.length === 3) {
-          return {
-            year: parseInt(parts[0], 10),
-            month: parseInt(parts[1], 10) - 1,
-          };
-        }
-      }
-    }
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() };
-  }, [activities]);
-
-  const [currentYear, setCurrentYear] = useState<number>(initialYearMonth.year);
-  const [currentMonth, setCurrentMonth] = useState<number>(initialYearMonth.month);
+  // Always initialize calendar to current real-world year and month
+  // ("เมื่อกดเข้าไปดูให้แสดงข้อมูลเดือนปัจจุบันก่อน")
+  const [currentYear, setCurrentYear] = useState<number>(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => new Date().getMonth());
   const [selectedDayEvents, setSelectedDayEvents] = useState<{
     dateStr: string;
     dayOfWeek: string;
@@ -205,9 +188,16 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({
             <CalendarIcon className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg sm:text-xl font-black text-emerald-950">
-              {monthNamesThai[currentMonth]} {currentYear + 543}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg sm:text-xl font-black text-emerald-950">
+                {monthNamesThai[currentMonth]} {currentYear + 543}
+              </h3>
+              {currentMonth === now.getMonth() && currentYear === now.getFullYear() && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300">
+                  เดือนปัจจุบัน
+                </span>
+              )}
+            </div>
             <p className="text-xs text-emerald-800/70 font-medium">
               แสดงปฏิทินตารางกิจกรรมตามเดือน
             </p>
