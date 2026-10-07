@@ -5370,7 +5370,7 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
     return {
       success: true,
       records: consolidated,
-      rawRecords: parsedRecords.length > 0 ? parsedRecords : merged,
+      rawRecords: merged.length > 0 ? merged : parsedRecords,
       rawRowsCount: parsedRecords.length,
       lastSyncedAt: new Date(),
     };

@@ -69,13 +69,12 @@ export function extractParcelDateTag(input?: string | Date): { yy: string; mm: s
  * Checks if a parcel record was sent or created within the current day (วันปัจจุบัน).
  * Supports Western calendar, Thai Buddhist calendar, and Asia/Bangkok timezone.
  */
-export function isParcelRecordToday(
-  record?: { dateStr?: string; timestamp?: string; sentDateStr?: string; sentTimestamp?: string } | null
-): boolean {
-  if (!record) return false;
-  const target = record.sentDateStr || record.sentTimestamp || record.dateStr || record.timestamp;
+/**
+ * Checks if a date or timestamp string corresponds to "today" (วันปัจจุบัน).
+ * Supports Western calendar, Thai Buddhist calendar, and Asia/Bangkok timezone.
+ */
+export function isParcelDateToday(target?: string | null): boolean {
   if (!target) return false;
-
   const today = new Date();
   const d = today.getDate();
   const m = today.getMonth() + 1;
@@ -107,6 +106,40 @@ export function isParcelRecordToday(
     return (pd === d && pm === m && py === y) || (pd === bkkD && pm === bkkM && py === bkkY);
   }
   return false;
+}
+
+/**
+ * Checks if a parcel record belongs to "today" (วันปัจจุบัน).
+ * - สำหรับรายการรับ ("รับ" หรือ "รับแล้ว"): ตรวจสอบวันที่ทำรายการรับ (dateStr หรือ timestamp) เป็นหลัก
+ *   เพื่อให้แสดงรายการที่ถูกกดรับในวันปัจจุบันอย่างถูกต้อง
+ * - สำหรับรายการส่ง ("ส่ง"): ตรวจสอบวันที่ทำรายการส่ง
+ */
+export function isParcelRecordToday(
+  record?: { dateStr?: string; timestamp?: string; sentDateStr?: string; sentTimestamp?: string; actionType?: string; status?: string } | null
+): boolean {
+  if (!record) return false;
+
+  const isRecv = record.actionType === 'รับ' || record.status === 'รับแล้ว';
+
+  if (isRecv) {
+    // For received items: Check receipt date first (dateStr or timestamp of receive action)
+    if (isParcelDateToday(record.dateStr) || isParcelDateToday(record.timestamp)) {
+      return true;
+    }
+    // Fallback: If dateStr & timestamp are completely absent, check sent date
+    if (!record.dateStr && !record.timestamp) {
+      return isParcelDateToday(record.sentDateStr) || isParcelDateToday(record.sentTimestamp);
+    }
+    return false;
+  }
+
+  // For outgoing items ("ส่ง"): Check send date
+  return (
+    isParcelDateToday(record.dateStr) ||
+    isParcelDateToday(record.timestamp) ||
+    isParcelDateToday(record.sentDateStr) ||
+    isParcelDateToday(record.sentTimestamp)
+  );
 }
 
 /**
@@ -354,11 +387,35 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
         }
         receivedByCode.set(normCode, convertedRec);
       } else {
+        let recvTs = '';
+        if (typeof window !== 'undefined') {
+          try {
+            const timeStored = localStorage.getItem('proworkflow_received_timestamps_v1');
+            if (timeStored) {
+              const timeMap = JSON.parse(timeStored) || {};
+              recvTs = timeMap[normCode] || '';
+            }
+          } catch {}
+        }
+        if (!recvTs) {
+          const now = new Date();
+          const d = now.getDate();
+          const m = now.getMonth() + 1;
+          const y = now.getFullYear();
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const ss = String(now.getSeconds()).padStart(2, '0');
+          recvTs = `${d}/${m}/${y}, ${hh}:${mm}:${ss}`;
+        }
+        const [dStr, tStr] = recvTs.split(/,\s*/);
         const convertedRec: ParcelDeliveryRecord = {
           ...sendRec,
           id: `rec-converted-${sendRec.id}`,
           actionType: 'รับ',
           status: 'รับแล้ว',
+          timestamp: recvTs,
+          dateStr: dStr || sendRec.dateStr,
+          timeStr: tStr || sendRec.timeStr,
           sentTimestamp: sendRec.timestamp,
           sentDateStr: sendRec.dateStr,
           sentTimeStr: sendRec.timeStr,
@@ -554,6 +611,25 @@ export function markTrackingCodeAsReceivedLocally(trackingCode?: string) {
     }
 
     localStorage.setItem('proworkflow_received_tracking_codes_v1', JSON.stringify(arr));
+
+    // Also persist the receipt timestamp for current day matching
+    try {
+      const timeStored = localStorage.getItem('proworkflow_received_timestamps_v1');
+      let timeMap: Record<string, string> = {};
+      if (timeStored) {
+        timeMap = JSON.parse(timeStored) || {};
+      }
+      const now = new Date();
+      const d = now.getDate();
+      const m = now.getMonth() + 1;
+      const y = now.getFullYear();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      timeMap[norm] = `${d}/${m}/${y}, ${hh}:${mm}:${ss}`;
+      localStorage.setItem('proworkflow_received_timestamps_v1', JSON.stringify(timeMap));
+    } catch {}
+
     // Trigger storage event for live reactive updates across components
     window.dispatchEvent(new Event('parcel_received_updated'));
   } catch {}

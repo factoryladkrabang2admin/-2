@@ -659,11 +659,12 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
 
   // Click on a KPI Box toggles that filter and displays the corresponding records from Google Sheet
   const handleBoxClick = (targetFilter: 'all_today' | 'ส่ง_today' | 'รับ_today' | 'all' | 'ส่ง' | 'รับ') => {
-    if (targetFilter === 'all') {
-      setQuickFilter('all');
-    } else {
-      setQuickFilter(prev => prev === targetFilter ? 'all' : targetFilter);
-    }
+    setQuickFilter(prev => {
+      if (prev === targetFilter) {
+        return prev.includes('_today') ? 'all_today' : 'all';
+      }
+      return targetFilter;
+    });
     const anchor = document.getElementById('parcel-records-view-anchor');
     if (anchor && typeof window !== 'undefined' && window.innerWidth < 768) {
       anchor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -898,7 +899,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           {/* Card 1: Total Records (ข้อมูลจาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'all_today' : 'all')}
+            onClick={() => handleBoxClick('all_today')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
               quickFilter === 'all' || quickFilter === 'all_today' || quickFilter === 'today'
                 ? 'bg-pink-100/90 dark:bg-pink-950/60 border-pink-500 shadow-md ring-2 ring-pink-500/50 scale-[1.01]'
@@ -962,7 +963,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           {/* Card 2: Sent (ข้อมูลส่ง จาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'ส่ง_today' : 'ส่ง')}
+            onClick={() => handleBoxClick('ส่ง_today')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
               quickFilter === 'ส่ง' || quickFilter === 'ส่ง_today'
                 ? 'bg-rose-100/90 dark:bg-rose-950/60 border-rose-500 shadow-md ring-2 ring-rose-500/50 scale-[1.01]'
@@ -1018,7 +1019,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
           {/* Card 3: Received (ข้อมูลรับ จาก Google Sheet) */}
           <button
             type="button"
-            onClick={() => handleBoxClick(quickFilter === 'all_today' || quickFilter === 'today' || quickFilter === 'ส่ง_today' || quickFilter === 'รับ_today' ? 'รับ_today' : 'รับ')}
+            onClick={() => handleBoxClick('รับ_today')}
             className={`text-left backdrop-blur-md rounded-2xl p-4 border transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden ${
               quickFilter === 'รับ' || quickFilter === 'รับ_today'
                 ? 'bg-emerald-100/90 dark:bg-emerald-950/60 border-emerald-500 shadow-md ring-2 ring-emerald-500/50 scale-[1.01]'
