@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Warehouse, 
   Search, 
@@ -63,6 +63,13 @@ import {
   EQUIPMENT_INVENTORY_APPS_SCRIPT,
   resetEquipmentInventory 
 } from '../services/equipmentInventoryService';
+import { 
+  EquipmentFilterModal, 
+  EquipmentFilterState, 
+  DEFAULT_EQUIPMENT_FILTERS, 
+  applyEquipmentFilters, 
+  countActiveFilters 
+} from './EquipmentFilterModal';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canAccessEquipmentInventory } from '../data/mockData';
 
@@ -185,6 +192,49 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'matrix'>('grid');
   const [activeMainTab, setActiveMainTab] = useState<'inventory' | 'pos' | 'history'>('inventory');
+
+  // Equipment Filter Modal State (หน้าต่างตัวกรองคลังอุปกรณ์)
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [equipmentFilters, setEquipmentFilters] = useState<EquipmentFilterState>(DEFAULT_EQUIPMENT_FILTERS);
+
+  // Sync inline controls with equipmentFilters
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setEquipmentFilters((prev) => ({ ...prev, searchQuery: val }));
+  };
+
+  const handleCategoryChange = (cat: InventoryCategory) => {
+    setSelectedCategory(cat);
+    setEquipmentFilters((prev) => ({ ...prev, category: cat }));
+  };
+
+  const handleStockStatusChange = (status: any) => {
+    setStockStatusFilter(status);
+    setEquipmentFilters((prev) => ({ ...prev, stockStatus: status }));
+  };
+
+  const handleApplyFilterModal = (newFilters: EquipmentFilterState) => {
+    setEquipmentFilters(newFilters);
+    setSelectedCategory(newFilters.category);
+    setSearchQuery(newFilters.searchQuery);
+    if (['all', 'in_stock', 'low_stock', 'out_of_stock'].includes(newFilters.stockStatus)) {
+      setStockStatusFilter(newFilters.stockStatus as any);
+    } else {
+      setStockStatusFilter('all');
+    }
+    setActiveMainTab('inventory');
+  };
+
+  const handleResetFilters = () => {
+    setEquipmentFilters(DEFAULT_EQUIPMENT_FILTERS);
+    setSelectedCategory('all');
+    setSearchQuery('');
+    setStockStatusFilter('all');
+  };
+
+  const totalActiveFilterCount = useMemo(() => {
+    return countActiveFilters(equipmentFilters);
+  }, [equipmentFilters]);
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -744,32 +794,10 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     }
   };
 
-  // Filtered Products
+  // Filtered Products (ใช้ applyEquipmentFilters ครอบคลุมทั้งวันที่ รายการ สต็อก ราคา และการเรียงลำดับ)
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      // Category Filter
-      if (selectedCategory !== 'all' && p.category !== selectedCategory) {
-        return false;
-      }
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchName = p.name.toLowerCase().includes(q);
-        const matchCat = p.categoryName.toLowerCase().includes(q);
-        const matchUnit = p.unit.toLowerCase().includes(q);
-        if (!matchName && !matchCat && !matchUnit) return false;
-      }
-      // Stock Status Filter
-      if (stockStatusFilter === 'in_stock') {
-        if (p.currentStock <= 0) return false;
-      } else if (stockStatusFilter === 'low_stock') {
-        if (p.currentStock > 15 || p.currentStock <= 0) return false;
-      } else if (stockStatusFilter === 'out_of_stock') {
-        if (p.currentStock > 0) return false;
-      }
-      return true;
-    });
-  }, [products, selectedCategory, searchQuery, stockStatusFilter]);
+    return applyEquipmentFilters(products, equipmentFilters, transactions);
+  }, [products, equipmentFilters, transactions]);
 
   // Overall Warehouse Metrics
   const metrics = useMemo(() => {
@@ -997,6 +1025,28 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
             {/* Bottom Row: Placed underneath the table view mode (บรรทัดล่างใต้ มุมมองตาราง) */}
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
+              {/* 0. ตัวกรองคลังอุปกรณ์ (Icon Only - ไว้หน้าไอคอน เพิ่มสต็อก, ราคาขาย - เมื่อกดจะเปิดหน้าต่างตัวกรอง) */}
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center group relative active:scale-95 ${
+                  totalActiveFilterCount > 0
+                    ? 'bg-amber-900 text-white dark:bg-amber-500 dark:text-stone-950 shadow-md shadow-amber-950/25 ring-2 ring-amber-400/50'
+                    : 'bg-white/40 hover:bg-white/60 dark:bg-white/10 dark:hover:bg-white/20 text-amber-950 dark:text-white border border-amber-900/15 dark:border-white/20 backdrop-blur-md shadow-xs'
+                }`}
+                title={isEn ? "Filter Equipment Inventory (Open Filter Window)" : "ตัวกรองคลังอุปกรณ์ (เปิดหน้าต่างเลือกข้อมูลกรอง เช่น วันที่ รายการ สต็อก ฯลฯ)"}
+                aria-label={isEn ? "Filter Equipment Inventory" : "ตัวกรองคลังอุปกรณ์"}
+              >
+                <Filter className={`w-4 h-4 transition-transform group-hover:scale-110 ${
+                  totalActiveFilterCount > 0 ? 'text-amber-200 dark:text-stone-950' : 'text-amber-950 dark:text-white'
+                }`} />
+                {totalActiveFilterCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-xs ring-2 ring-white dark:ring-stone-900 animate-in zoom-in">
+                    {totalActiveFilterCount}
+                  </span>
+                )}
+              </button>
+
               {/* 1. แก้ไขแถว (Icon Only) */}
               <button
                 onClick={() => handleOpenBatchRowEdit('both')}
@@ -1217,7 +1267,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
+                    onClick={() => handleCategoryChange(cat.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
@@ -1239,20 +1289,21 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
               })}
             </div>
 
-            {/* Search Input & Stock Filter */}
+            {/* Search Input, Stock Filter & Filter Window Button */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1 md:w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   placeholder={isEn ? "Search equipment, code, category..." : "ค้นหาชื่ออุปกรณ์, รหัส, หมวด..."}
                   className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
                 />
                 {searchQuery && (
                   <button
-                    onClick={() => setSearchQuery('')}
+                    type="button"
+                    onClick={() => handleSearchChange('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1263,7 +1314,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
               {/* Status Select */}
               <select
                 value={stockStatusFilter}
-                onChange={(e: any) => setStockStatusFilter(e.target.value)}
+                onChange={(e: any) => handleStockStatusChange(e.target.value)}
                 className="px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer font-bold"
               >
                 <option value="all">{isEn ? 'Status: All' : 'สถานะ: ทั้งหมด'}</option>
@@ -1271,8 +1322,213 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 <option value="low_stock">{isEn ? 'Low Stock (≤ 15)' : 'สต็อกต่ำ (≤ 15 ชิ้น)'}</option>
                 <option value="out_of_stock">{isEn ? 'Out of Stock (0)' : 'หมดสต็อก (0)'}</option>
               </select>
+
+              {/* Filter Window Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                  totalActiveFilterCount > 0
+                    ? 'bg-amber-900 text-white dark:bg-amber-500 dark:text-stone-950 border-amber-900 dark:border-amber-500 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                }`}
+                title={isEn ? "Open Filter Window" : "เปิดหน้าต่างตัวกรองข้อมูล (วันที่, รายการ, สต็อก, ราคา)"}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{isEn ? 'Filter' : 'ตัวกรอง'}</span>
+                {totalActiveFilterCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                    {totalActiveFilterCount}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
+
+          {/* Active Filter Chips Bar (แสดงเมื่อมีการเลือกเงื่อนไขตัวกรอง) */}
+          {totalActiveFilterCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 text-xs animate-in fade-in">
+              <div className="flex items-center gap-1.5 font-bold text-amber-950 dark:text-amber-300 pr-1 shrink-0">
+                <Filter className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                <span>{isEn ? 'Active Filters:' : 'ตัวกรองที่เลือก:'}</span>
+              </div>
+
+              {/* Date chip */}
+              {equipmentFilters.datePreset !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    📅 {equipmentFilters.datePreset === 'today'
+                      ? (isEn ? 'Today' : 'วันนี้')
+                      : equipmentFilters.datePreset === 'this_week'
+                      ? (isEn ? 'This Week' : 'สัปดาห์นี้')
+                      : equipmentFilters.datePreset === 'this_month'
+                      ? (isEn ? 'This Month' : 'เดือนนี้')
+                      : `${equipmentFilters.startDate || '...'} ถึง ${equipmentFilters.endDate || '...'}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquipmentFilters((p) => ({
+                        ...p,
+                        datePreset: 'all',
+                        startDate: '',
+                        endDate: '',
+                      }))
+                    }
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Specific Items chip */}
+              {equipmentFilters.selectedProductIds.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    📦 {equipmentFilters.selectedProductIds.length} {isEn ? 'items selected' : 'รายการที่เลือก'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquipmentFilters((p) => ({ ...p, selectedProductIds: [] }))
+                    }
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Category chip */}
+              {equipmentFilters.category !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    🏷️ {INVENTORY_CATEGORIES.find((c) => c.id === equipmentFilters.category)?.nameTh || equipmentFilters.category}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCategoryChange('all')}
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Stock status chip */}
+              {equipmentFilters.stockStatus !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    📊 {equipmentFilters.stockStatus === 'in_stock'
+                      ? (isEn ? 'In Stock' : 'พร้อมขาย')
+                      : equipmentFilters.stockStatus === 'low_stock'
+                      ? (isEn ? 'Low Stock (≤15)' : 'สต็อกต่ำ (≤15)')
+                      : equipmentFilters.stockStatus === 'out_of_stock'
+                      ? (isEn ? 'Out of Stock (0)' : 'หมดสต็อก (0)')
+                      : equipmentFilters.stockStatus === 'has_sales'
+                      ? (isEn ? 'Sold items' : 'มีการขาย/เบิก')
+                      : (isEn ? 'Restocked' : 'มีการเติมสต็อก')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleStockStatusChange('all')}
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Price range chip */}
+              {(equipmentFilters.minPrice || equipmentFilters.maxPrice) && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    💰 ราคา {equipmentFilters.minPrice || '0'} - {equipmentFilters.maxPrice || '∞'} ฿
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquipmentFilters((p) => ({ ...p, minPrice: '', maxPrice: '' }))
+                    }
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Stock range chip */}
+              {(equipmentFilters.minStock || equipmentFilters.maxStock) && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    📦 สต็อก {equipmentFilters.minStock || '0'} - {equipmentFilters.maxStock || '∞'} ชิ้น
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquipmentFilters((p) => ({ ...p, minStock: '', maxStock: '' }))
+                    }
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Sort chip */}
+              {equipmentFilters.sortBy !== 'default' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-amber-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-semibold shadow-2xs">
+                  <span>
+                    ↕️ {equipmentFilters.sortBy === 'recent_date'
+                      ? 'อัปเดตล่าสุด'
+                      : equipmentFilters.sortBy === 'name_asc'
+                      ? 'ชื่อ ก-ฮ'
+                      : equipmentFilters.sortBy === 'stock_asc'
+                      ? 'สต็อกน้อย->มาก'
+                      : equipmentFilters.sortBy === 'stock_desc'
+                      ? 'สต็อกมาก->น้อย'
+                      : equipmentFilters.sortBy === 'price_asc'
+                      ? 'ราคาต่ำ->สูง'
+                      : equipmentFilters.sortBy === 'price_desc'
+                      ? 'ราคาสูง->ต่ำ'
+                      : equipmentFilters.sortBy === 'sold_desc'
+                      ? 'ขายสูงสุด'
+                      : equipmentFilters.sortBy}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquipmentFilters((p) => ({ ...p, sortBy: 'default' }))
+                    }
+                    className="p-0.5 hover:text-rose-500 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+
+              {/* Edit Filter button */}
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className="ml-auto px-2.5 py-1 rounded-xl text-[11px] font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer flex items-center gap-1 transition-colors"
+              >
+                <Filter className="w-3 h-3" />
+                <span>{isEn ? 'Edit Filters' : 'ปรับแต่งตัวกรอง'}</span>
+              </button>
+
+              {/* Reset all button */}
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="px-2.5 py-1 rounded-xl text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer flex items-center gap-1 transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>{isEn ? 'Clear All' : 'ล้างทั้งหมด'}</span>
+              </button>
+            </div>
+          )}
 
           {/* VIEW MODE: GRID CARDS */}
           {viewMode === 'grid' && (
@@ -3430,6 +3686,16 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
           </div>
         </div>
       )}
+      {/* MODAL: EQUIPMENT FILTER WINDOW (หน้าต่างตัวกรองคลังอุปกรณ์) */}
+      <EquipmentFilterModal
+        isOpen={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        filters={equipmentFilters}
+        onApply={handleApplyFilterModal}
+        products={products}
+        transactions={transactions}
+        isEn={isEn}
+      />
     </div>
   );
 };
