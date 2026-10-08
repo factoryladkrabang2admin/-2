@@ -15,6 +15,7 @@ export type RealtimeEventType =
   | 'USER_REGISTERED'
   | 'ACTIVITY_ADDED'
   | 'SIMULATE_AUTO_TICK'
+  | 'EQUIPMENT_INVENTORY_UPDATED'
   | 'PING';
 
 export interface RealtimeMessage {

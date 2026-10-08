@@ -26,6 +26,7 @@ const ANNOUNCEMENT_WEBHOOK_FILE = path.join(DATA_DIR, "announcement_webhook.json
 const EQUIPMENT_INVENTORY_DATA_FILE = path.join(DATA_DIR, "equipment_inventory_submissions.json");
 const EQUIPMENT_INVENTORY_WEBHOOK_FILE = path.join(DATA_DIR, "equipment_inventory_webhook.json");
 const EQUIPMENT_INVENTORY_RESET_FILE = path.join(DATA_DIR, "equipment_inventory_reset.json");
+const EQUIPMENT_INVENTORY_PRODUCTS_FILE = path.join(DATA_DIR, "equipment_inventory_products.json");
 
 let equipmentInventoryResetState: {
   isReset: boolean;
@@ -71,6 +72,83 @@ try {
   }
 } catch (e) {
   console.warn("Could not load equipment inventory webhook from file:", e);
+}
+
+const DEFAULT_SERVER_INVENTORY_PRODUCTS = [
+  { id: 'item-1', name: 'เอี๊ยมขอบสีแดง', category: 'ppe', categoryName: 'ชุดป้องกัน & เอี๊ยม', unit: 'ผืน', initialStock: 50, stockIn: 0, price: 53, soldCount: 0, currentStock: 50, stockValue: 2650, lastUpdatedDate: '23/09/2026', description: 'เอี๊ยมกันเปื้อนสำหรับไลน์ผลิต ขอบกุ๊นสีแดง' },
+  { id: 'item-2', name: 'เอี๊ยมขอบสีน้ำเงิน', category: 'ppe', categoryName: 'ชุดป้องกัน & เอี๊ยม', unit: 'ผืน', initialStock: 5, stockIn: 0, price: 53, soldCount: 0, currentStock: 5, stockValue: 265, lastUpdatedDate: '23/09/2026', description: 'เอี๊ยมกันเปื้อนสำหรับไลน์ผลิต ขอบกุ๊นสีน้ำเงิน' },
+  { id: 'item-3', name: 'หมวกกระดาษ', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 500, stockIn: 0, price: 1, soldCount: 0, currentStock: 500, stockValue: 500, lastUpdatedDate: '23/09/2026', description: 'หมวกกระดาษแบบใช้แล้วทิ้ง สำหรับผู้เยี่ยมชมและพนักงาน' },
+  { id: 'item-4', name: 'หมวกเน็ตคลุมผม', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 10, stockIn: 0, price: 14, soldCount: 0, currentStock: 10, stockValue: 140, lastUpdatedDate: '23/09/2026', description: 'หมวกตาข่ายคลุมผมเนื้อนุ่ม ระบายอากาศดี' },
+  { id: 'item-5', name: 'ผ้าปิดจมูกใยสังเคราะห์', category: 'hygiene', categoryName: 'หน้ากาก & สุขอนามัย', unit: 'ชิ้น', initialStock: 300, stockIn: 0, price: 1, soldCount: 100, currentStock: 200, stockValue: 200, lastUpdatedDate: '08/10/2026', description: 'หน้ากากอนามัยใยสังเคราะห์ ป้องกันฝุ่นละอองและสารคัดหลั่ง' },
+  { id: 'item-6', name: 'ถุงครอบเท้า', category: 'hygiene', categoryName: 'หน้ากาก & สุขอนามัย', unit: 'คู่', initialStock: 20, stockIn: 0, price: 2, soldCount: 0, currentStock: 20, stockValue: 40, lastUpdatedDate: '23/09/2026', description: 'ถุงสวมครอบรองเท้าแบบใช้แล้วทิ้ง กันสิ่งปนเปื้อนในพื้นที่ควบคุม' },
+  { id: 'item-7', name: 'หมวกสีขาว SIZE M', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 48, soldCount: 0, currentStock: 5, stockValue: 240, lastUpdatedDate: '23/09/2026', description: 'หมวกผ้าสีขาว มาตรฐานฝ่ายผลิต ขนาด M' },
+  { id: 'item-8', name: 'หมวกสีขาว SIZE L', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 48, soldCount: 0, currentStock: 5, stockValue: 240, lastUpdatedDate: '23/09/2026', description: 'หมวกผ้าสีขาว มาตรฐานฝ่ายผลิต ขนาด L' },
+  { id: 'item-9', name: 'หมวกสีขาวคลุมบ่า SIZE M', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 102, soldCount: 0, currentStock: 5, stockValue: 510, lastUpdatedDate: '23/09/2026', description: 'หมวกคลุมบ่าสีขาว ป้องกันเส้นผมหลุดร่วง ขนาด M' },
+  { id: 'item-10', name: 'หมวกสีขาวคลุมบ่า SIZE L', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 102, soldCount: 0, currentStock: 5, stockValue: 510, lastUpdatedDate: '23/09/2026', description: 'หมวกคลุมบ่าสีขาว ป้องกันเส้นผมหลุดร่วง ขนาด L' },
+  { id: 'item-11', name: 'หมวกสีขาวคลุมบ่าคาดแดง SIZE M', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 107, soldCount: 0, currentStock: 5, stockValue: 535, lastUpdatedDate: '23/09/2026', description: 'หมวกคลุมบ่าแถบคาดแดงสำหรับหัวหน้างาน/QC ขนาด M' },
+  { id: 'item-12', name: 'หมวกสีขาวคลุมบ่าคาดแดง SIZE L', category: 'headwear', categoryName: 'หมวก & คลุมผม', unit: 'ใบ', initialStock: 5, stockIn: 0, price: 107, soldCount: 0, currentStock: 5, stockValue: 535, lastUpdatedDate: '23/09/2026', description: 'หมวกคลุมบ่าแถบคาดแดงสำหรับหัวหน้างาน/QC ขนาด L' },
+  { id: 'item-13', name: 'แถบเสื้อสีชมพู', category: 'uniform', categoryName: 'ป้าย/บัตร & แถบเสื้อ', unit: 'แถบ', initialStock: 10, stockIn: 0, price: 5, soldCount: 0, currentStock: 10, stockValue: 50, lastUpdatedDate: '23/09/2026', description: 'แถบตีนตุ๊กแกสีชมพูสำหรับติดยูนิฟอร์มระบุฝ่าย/กะ' },
+  { id: 'item-14', name: 'แถบเสื้อสีทอง', category: 'uniform', categoryName: 'ป้าย/บัตร & แถบเสื้อ', unit: 'แถบ', initialStock: 0, stockIn: 0, price: 4, soldCount: 0, currentStock: 0, stockValue: 0, lastUpdatedDate: '23/09/2026', description: 'แถบตีนตุ๊กแกสีทองสำหรับระดับหัวหน้าแผนก' },
+  { id: 'item-15', name: 'สายคล้องบัตร', category: 'uniform', categoryName: 'ป้าย/บัตร & แถบเสื้อ', unit: 'เส้น', initialStock: 20, stockIn: 0, price: 15, soldCount: 0, currentStock: 20, stockValue: 300, lastUpdatedDate: '23/09/2026', description: 'สายคล้องบัตรพนักงานโรงงานลาดกระบัง 2 มีตัวปลดล็อกนิรภัย' },
+  { id: 'item-16', name: 'กรอบใส่บัตรพนักงาน', category: 'uniform', categoryName: 'ป้าย/บัตร & แถบเสื้อ', unit: 'อัน', initialStock: 20, stockIn: 0, price: 7, soldCount: 0, currentStock: 20, stockValue: 140, lastUpdatedDate: '23/09/2026', description: 'กรอบพลาสติกแข็งแบบใสใส่บัตรพนักงาน RFID' },
+  { id: 'item-17', name: 'ผ้ากันเปื้อน PVC', category: 'ppe', categoryName: 'ชุดป้องกัน & เอี๊ยม', unit: 'ผืน', initialStock: 10, stockIn: 0, price: 144, soldCount: 0, currentStock: 10, stockValue: 1440, lastUpdatedDate: '23/09/2026', description: 'ผ้ากันเปื้อน PVC กันน้ำและสารเคมีชนิดหนาพิเศษ' },
+  { id: 'item-18', name: 'ชุดตรวจ ATK', category: 'hygiene', categoryName: 'หน้ากาก & สุขอนามัย', unit: 'ชุด', initialStock: 0, stockIn: 0, price: 9, soldCount: 0, currentStock: 0, stockValue: 0, lastUpdatedDate: '23/09/2026', description: 'ชุดตรวจคัดกรองโควิด-19 ชนิดแยงจมูก รับรองมาตรฐาน อย.' },
+  { id: 'item-19', name: 'รองเท้าบูท NO. 10', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 5, stockIn: 0, price: 127, soldCount: 0, currentStock: 5, stockValue: 635, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทยางกันลื่น พื้นเสริมเหล็ก เบอร์ 10' },
+  { id: 'item-20', name: 'รองเท้าบูท NO. 10.5', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 5, stockIn: 0, price: 127, soldCount: 0, currentStock: 5, stockValue: 635, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทยางกันลื่น พื้นเสริมเหล็ก เบอร์ 10.5' },
+  { id: 'item-21', name: 'รองเท้าบูท NO. 11', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 5, stockIn: 0, price: 127, soldCount: 0, currentStock: 5, stockValue: 635, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทยางกันลื่น พื้นเสริมเหล็ก เบอร์ 11' },
+  { id: 'item-22', name: 'รองเท้าบูท NO. 11.5', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 5, stockIn: 0, price: 127, soldCount: 0, currentStock: 5, stockValue: 635, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทยางกันลื่น พื้นเสริมเหล็ก เบอร์ 11.5' },
+  { id: 'item-23', name: 'รองเท้าบูท NO. 12', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 127, soldCount: 0, currentStock: 3, stockValue: 381, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทยางกันลื่น พื้นเสริมเหล็ก เบอร์ 12' },
+  { id: 'item-24', name: 'รองเท้าบูท EVA NO. 9.5', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 204, soldCount: 0, currentStock: 3, stockValue: 612, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทน้ำหนักเบาพิเศษ โฟม EVA นุ่มสบาย เบอร์ 9.5' },
+  { id: 'item-25', name: 'รองเท้าบูท EVA NO. 10', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 204, soldCount: 0, currentStock: 3, stockValue: 612, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทน้ำหนักเบาพิเศษ โฟม EVA นุ่มสบาย เบอร์ 10' },
+  { id: 'item-26', name: 'รองเท้าบูท EVA NO. 10.5', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 204, soldCount: 0, currentStock: 3, stockValue: 612, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทน้ำหนักเบาพิเศษ โฟม EVA นุ่มสบาย เบอร์ 10.5' },
+  { id: 'item-27', name: 'รองเท้าบูท EVA NO. 11', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 204, soldCount: 0, currentStock: 3, stockValue: 612, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทน้ำหนักเบาพิเศษ โฟม EVA นุ่มสบาย เบอร์ 11' },
+  { id: 'item-28', name: 'รองเท้าบูท EVA NO. 11.5', category: 'boots', categoryName: 'รองเท้าบูท', unit: 'คู่', initialStock: 3, stockIn: 0, price: 204, soldCount: 0, currentStock: 3, stockValue: 612, lastUpdatedDate: '23/09/2026', description: 'รองเท้าบูทน้ำหนักเบาพิเศษ โฟม EVA นุ่มสบาย เบอร์ 11.5' },
+];
+
+let inMemoryInventoryProducts: any[] = [];
+try {
+  if (fs.existsSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE)) {
+    const raw = fs.readFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      inMemoryInventoryProducts = parsed;
+    }
+  }
+} catch (e) {
+  console.warn("Could not load equipment inventory products from file:", e);
+}
+if (!inMemoryInventoryProducts || inMemoryInventoryProducts.length === 0) {
+  inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS;
+  try {
+    fs.writeFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, JSON.stringify(inMemoryInventoryProducts, null, 2), "utf-8");
+  } catch {}
+}
+
+function saveEquipmentInventoryProducts() {
+  try {
+    fs.writeFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, JSON.stringify(inMemoryInventoryProducts, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Could not save equipment inventory products to disk:", err);
+  }
+}
+
+let equipmentInventoryVersion = Date.now();
+const equipmentInventorySseClients = new Set<express.Response>();
+
+function broadcastEquipmentInventoryUpdate(payload: any) {
+  equipmentInventoryVersion = Date.now();
+  const data = JSON.stringify({
+    ...payload,
+    version: equipmentInventoryVersion,
+    timestamp: Date.now(),
+  });
+  for (const client of Array.from(equipmentInventorySseClients)) {
+    try {
+      client.write(`data: ${data}\n\n`);
+    } catch {
+      equipmentInventorySseClients.delete(client);
+    }
+  }
 }
 
 let inMemoryInventoryTransactions: any[] = [];
@@ -3220,6 +3298,74 @@ async function startServer() {
     });
   });
 
+  // Get shared Equipment Inventory live data (products, transactions, reset state, version)
+  app.get("/api/equipment-inventory-data", (_req, res) => {
+    res.json({
+      success: true,
+      products: inMemoryInventoryProducts,
+      transactions: inMemoryInventoryTransactions,
+      resetState: equipmentInventoryResetState,
+      version: equipmentInventoryVersion,
+      lastUpdated: new Date().toISOString(),
+    });
+  });
+
+  // Save updated equipment inventory products (batch row edits, price adjustments, inline changes)
+  app.post("/api/equipment-inventory-products", (req, res) => {
+    try {
+      const payload = req.body || {};
+      const newProducts = payload.products;
+      if (Array.isArray(newProducts) && newProducts.length > 0) {
+        inMemoryInventoryProducts = newProducts;
+        saveEquipmentInventoryProducts();
+        broadcastEquipmentInventoryUpdate({
+          type: "PRODUCTS_UPDATED",
+          products: inMemoryInventoryProducts,
+          transactions: inMemoryInventoryTransactions,
+          resetState: equipmentInventoryResetState,
+          operator: payload.operator || "ผู้ใช้",
+        });
+        return res.json({
+          success: true,
+          count: inMemoryInventoryProducts.length,
+          version: equipmentInventoryVersion,
+        });
+      }
+      return res.status(400).json({ success: false, error: "Invalid products array" });
+    } catch (err: any) {
+      console.error("Error in /api/equipment-inventory-products:", err);
+      return res.status(500).json({ success: false, error: err.message || "Failed to save products" });
+    }
+  });
+
+  // Server-Sent Events (SSE) for Real-Time Equipment Inventory sync across all users & tabs
+  app.get("/api/equipment-inventory-sse", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof (res as any).flushHeaders === "function") {
+      (res as any).flushHeaders();
+    }
+
+    // Immediately push current authoritative state on connection
+    const initialPayload = JSON.stringify({
+      type: "INITIAL_STATE",
+      products: inMemoryInventoryProducts,
+      transactions: inMemoryInventoryTransactions,
+      resetState: equipmentInventoryResetState,
+      version: equipmentInventoryVersion,
+      timestamp: Date.now(),
+    });
+    res.write(`data: ${initialPayload}\n\n`);
+
+    equipmentInventorySseClients.add(res);
+
+    req.on("close", () => {
+      equipmentInventorySseClients.delete(res);
+    });
+  });
+
   app.post("/api/equipment-inventory-submit", async (req, res) => {
     try {
       const payload = req.body || {};
@@ -3264,6 +3410,38 @@ async function startServer() {
           console.warn("Could not save equipment inventory submissions:", err);
         }
       }
+
+      // Update server-side inMemoryInventoryProducts so all users see current stock & sold counts immediately
+      if (Array.isArray(payload.products) && payload.products.length > 0) {
+        inMemoryInventoryProducts = payload.products;
+        saveEquipmentInventoryProducts();
+      } else if (tx && tx.productId) {
+        const pIdx = inMemoryInventoryProducts.findIndex((p: any) => p.id === tx.productId);
+        if (pIdx !== -1) {
+          const prod = { ...inMemoryInventoryProducts[pIdx] };
+          const qty = Math.abs(tx.quantity || 1);
+          if (tx.type === "sale") {
+            prod.soldCount = (prod.soldCount || 0) + qty;
+            prod.currentStock = Math.max(0, (prod.initialStock || 0) + (prod.stockIn || 0) - prod.soldCount);
+          } else if (tx.type === "restock") {
+            prod.stockIn = (prod.stockIn || 0) + qty;
+            prod.currentStock = Math.max(0, (prod.initialStock || 0) + prod.stockIn - (prod.soldCount || 0));
+          }
+          prod.stockValue = prod.currentStock * prod.price;
+          inMemoryInventoryProducts[pIdx] = prod;
+          saveEquipmentInventoryProducts();
+        }
+      }
+
+      // Broadcast real-time update to all connected clients & devices
+      broadcastEquipmentInventoryUpdate({
+        type: "TRANSACTION_ADDED",
+        transaction: tx,
+        products: inMemoryInventoryProducts,
+        transactions: inMemoryInventoryTransactions,
+        resetState: equipmentInventoryResetState,
+        operator: tx?.operatorName || "ผู้ใช้",
+      });
 
       let googleSheetSynced = false;
       let webhookErrorDetails: string | null = null;
@@ -3603,6 +3781,29 @@ async function startServer() {
       } catch (err) {
         console.warn("Could not clear equipment inventory submissions file:", err);
       }
+
+      // Reset server-side products
+      if (Array.isArray(payload.products) && payload.products.length > 0) {
+        inMemoryInventoryProducts = payload.products;
+        saveEquipmentInventoryProducts();
+      } else {
+        inMemoryInventoryProducts = inMemoryInventoryProducts.map((p: any) => ({
+          ...p,
+          soldCount: 0,
+          stockIn: 0,
+          currentStock: p.initialStock,
+          stockValue: p.initialStock * p.price,
+        }));
+        saveEquipmentInventoryProducts();
+      }
+
+      broadcastEquipmentInventoryUpdate({
+        type: "RESET_COMPLETED",
+        products: inMemoryInventoryProducts,
+        transactions: inMemoryInventoryTransactions,
+        resetState: equipmentInventoryResetState,
+        operator: operator || "ผู้ดูแลระบบ",
+      });
 
       // 2. Forward reset action to Google Sheet Webhook if available
       let googleSheetSynced = false;

@@ -1,4 +1,5 @@
 import { InventoryCategory, InventoryProduct, InventoryTransaction } from '../types';
+import { realtimeHub } from './realtimeService';
 
 export const EQUIPMENT_INVENTORY_SHEET_ID = '1HEs4tRSU9c0crWYlPbk_PTHEdTmUKwWXbWl6N7hlaFA';
 export const EQUIPMENT_INVENTORY_SHEET_GID = '172141710';
@@ -668,6 +669,234 @@ export function saveLocalInventoryTransactions(transactions: InventoryTransactio
 }
 
 /**
+ * Fetch shared live Equipment Inventory data from backend Express server
+ * (products, transactions, resetState, version)
+ */
+export async function fetchSharedInventoryData(): Promise<{
+  success: boolean;
+  products: InventoryProduct[];
+  transactions: InventoryTransaction[];
+  resetState?: EquipmentResetState | null;
+  version?: number;
+}> {
+  try {
+    const res = await fetch(`/api/equipment-inventory-data?_t=${Date.now()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          saveLocalInventoryProducts(data.products);
+        }
+        if (Array.isArray(data.transactions)) {
+          saveLocalInventoryTransactions(data.transactions);
+        }
+        if (data.resetState && typeof data.resetState.isReset === 'boolean') {
+          saveLocalEquipmentResetState(data.resetState);
+        }
+        return {
+          success: true,
+          products: getLocalInventoryProducts(),
+          transactions: getLocalInventoryTransactions(),
+          resetState: getLocalEquipmentResetState(),
+          version: data.version,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch shared equipment inventory data:', e);
+  }
+  return {
+    success: false,
+    products: getLocalInventoryProducts(),
+    transactions: getLocalInventoryTransactions(),
+    resetState: getLocalEquipmentResetState(),
+  };
+}
+
+/**
+ * Save shared equipment inventory products to localStorage, broadcast via RealtimeHub,
+ * and persist to server backend so ALL users across all devices are immediately updated.
+ */
+export async function saveSharedInventoryProducts(
+  products: InventoryProduct[],
+  operator: string = 'ผู้ใช้'
+): Promise<void> {
+  // 1. Save locally in client localStorage
+  saveLocalInventoryProducts(products);
+
+  // 2. Broadcast via BroadcastChannel / RealtimeHub for immediate same-browser tabs sync
+  realtimeHub.broadcast('EQUIPMENT_INVENTORY_UPDATED', {
+    type: 'PRODUCTS_UPDATED',
+    products,
+    operator,
+    timestamp: Date.now(),
+  });
+
+  // 3. Post to backend Express server so all other devices and users receive it
+  try {
+    await fetch('/api/equipment-inventory-products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        products,
+        operator,
+      }),
+    });
+  } catch (err) {
+    console.warn('Could not save products to server:', err);
+  }
+}
+
+/**
+ * Subscribe to real-time Equipment Inventory updates via SSE, BroadcastChannel,
+ * and high-reliability polling fallback so any user's modification updates all users instantly.
+ */
+export function subscribeEquipmentInventoryRealtime(
+  callback: (data: {
+    products: InventoryProduct[];
+    transactions: InventoryTransaction[];
+    resetState?: EquipmentResetState | null;
+    version?: number;
+    operator?: string;
+    type?: string;
+  }) => void
+): () => void {
+  let isMounted = true;
+  let lastSeenVersion = 0;
+
+  // 1. EventSource / SSE connection for true multi-client push
+  let eventSource: EventSource | null = null;
+  try {
+    if (typeof window !== 'undefined' && 'EventSource' in window) {
+      eventSource = new EventSource('/api/equipment-inventory-sse');
+      eventSource.onmessage = (event) => {
+        if (!isMounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.products) {
+            if (Array.isArray(data.products) && data.products.length > 0) {
+              saveLocalInventoryProducts(data.products);
+            }
+            if (Array.isArray(data.transactions)) {
+              saveLocalInventoryTransactions(data.transactions);
+            }
+            if (data.resetState) {
+              saveLocalEquipmentResetState(data.resetState);
+            }
+            if (data.version) {
+              lastSeenVersion = data.version;
+            }
+            callback({
+              products: getLocalInventoryProducts(),
+              transactions: getLocalInventoryTransactions(),
+              resetState: getLocalEquipmentResetState(),
+              version: data.version,
+              operator: data.operator,
+              type: data.type,
+            });
+          }
+        } catch {
+          // ignore parse error
+        }
+      };
+      eventSource.onerror = () => {
+        // SSE will automatically attempt reconnection
+      };
+    }
+  } catch (sseErr) {
+    console.warn('SSE not supported or failed to connect:', sseErr);
+  }
+
+  // 2. RealtimeHub listener (BroadcastChannel for zero-latency local tabs)
+  const unsubHub = realtimeHub.subscribe((msg) => {
+    if (!isMounted) return;
+    if (msg.type === 'EQUIPMENT_INVENTORY_UPDATED' || msg.type === 'SYNC_ALL') {
+      const prods = getLocalInventoryProducts();
+      const txs = getLocalInventoryTransactions();
+      const reset = getLocalEquipmentResetState();
+      callback({
+        products: prods,
+        transactions: txs,
+        resetState: reset,
+        operator: msg.payload?.operator,
+        type: msg.payload?.type || 'REALTIME_BROADCAST',
+      });
+    }
+  });
+
+  // 3. Fallback background poll every 4 seconds to guarantee sync even across proxy firewalls
+  const pollInterval = setInterval(async () => {
+    if (!isMounted) return;
+    try {
+      const res = await fetch(`/api/equipment-inventory-data?_t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.version && data.version !== lastSeenVersion) {
+          lastSeenVersion = data.version;
+          if (Array.isArray(data.products) && data.products.length > 0) {
+            saveLocalInventoryProducts(data.products);
+          }
+          if (Array.isArray(data.transactions)) {
+            saveLocalInventoryTransactions(data.transactions);
+          }
+          if (data.resetState) {
+            saveLocalEquipmentResetState(data.resetState);
+          }
+          callback({
+            products: getLocalInventoryProducts(),
+            transactions: getLocalInventoryTransactions(),
+            resetState: getLocalEquipmentResetState(),
+            version: data.version,
+            type: 'POLL_SYNC',
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, 4000);
+
+  // 4. Tab visibility change & focus listener: immediately re-sync on refocus
+  const handleFocus = async () => {
+    if (!isMounted) return;
+    try {
+      const data = await fetchSharedInventoryData();
+      if (data.success) {
+        callback({
+          products: data.products,
+          transactions: data.transactions,
+          resetState: data.resetState,
+          version: data.version,
+          type: 'FOCUS_REFRESH',
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    });
+  }
+
+  // Cleanup
+  return () => {
+    isMounted = false;
+    if (eventSource) {
+      eventSource.close();
+    }
+    unsubHub();
+    clearInterval(pollInterval);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleFocus);
+    }
+  };
+}
+
+/**
  * Reset inventory products and optionally clear transactions for weekly/monthly cycles,
  * with automatic deletion and reset of Google Sheet rows via Webhook.
  */
@@ -1102,7 +1331,7 @@ export function updateBatchStockAndPrice(
     };
   });
 
-  saveLocalInventoryProducts(updated);
+  saveSharedInventoryProducts(updated);
   return updated;
 }
 
@@ -1224,6 +1453,15 @@ export async function executeInventoryTransaction(
     console.warn("Sync error:", syncErr);
   }
 
+  // Broadcast real-time update to all open tabs & users
+  realtimeHub.broadcast('EQUIPMENT_INVENTORY_UPDATED', {
+    type: 'TRANSACTION_ADDED',
+    transaction: newTx,
+    product: prod,
+    products,
+    operator: payload.operatorName || 'ผู้ใช้',
+  });
+
   return {
     success: true,
     product: prod,
@@ -1261,7 +1499,7 @@ export function updateProductDetails(
 
   prod.stockValue = prod.currentStock * prod.price;
   products[index] = prod;
-  saveLocalInventoryProducts(products);
+  saveSharedInventoryProducts(products);
 
   return prod;
 }
@@ -1314,6 +1552,7 @@ async function syncTransactionToBackend(
   const payload = {
     transaction,
     product,
+    products: allProducts,
     txId,
     allProductsSummary: allProducts.map((p) => ({
       name: p.name,

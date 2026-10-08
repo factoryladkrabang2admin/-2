@@ -50,6 +50,8 @@ import {
   syncInventoryFromGoogleSheet, 
   getLocalInventoryProducts, 
   getLocalInventoryTransactions, 
+  fetchSharedInventoryData,
+  subscribeEquipmentInventoryRealtime,
   executeInventoryTransaction, 
   updateProductDetails, 
   updateBatchStockAndPrice,
@@ -368,8 +370,9 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     }
   };
 
-  // Initial live sync from Google Sheet on mount & sync server webhook URL
+  // Initial live sync from backend shared storage & SSE real-time subscription & Google Sheet
   useEffect(() => {
+    // 1. Sync server webhook URL
     fetch('/api/equipment-inventory-webhook')
       .then((r) => r.json())
       .then((d) => {
@@ -380,7 +383,35 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       })
       .catch(() => {});
 
+    // 2. Fetch authoritative shared live data from server backend immediately
+    fetchSharedInventoryData().then((shared) => {
+      if (shared.products && shared.products.length > 0) {
+        setProducts(shared.products);
+      }
+      if (shared.transactions) {
+        setTransactions(shared.transactions);
+      }
+    });
+
+    // 3. Subscribe to real-time updates (SSE + BroadcastChannel + background sync)
+    const unsubscribe = subscribeEquipmentInventoryRealtime((data) => {
+      if (data.products && data.products.length > 0) {
+        setProducts(data.products);
+      }
+      if (data.transactions) {
+        setTransactions(data.transactions);
+      }
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      setLastSyncTime(`อัปเดตข้อมูลสดแล้ว (${timeStr})`);
+    });
+
+    // 4. Initial Google Sheet sync if live sheet is configured
     handleSyncGoogleSheet(true);
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Update sale product price when selection changes
@@ -804,17 +835,48 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     const totalCount = products.length;
     const totalStockUnits = products.reduce((acc, p) => acc + p.currentStock, 0);
     const totalValue = products.reduce((acc, p) => acc + p.stockValue, 0);
-    const productSoldUnits = products.reduce((acc, p) => acc + (p.soldCount || 0), 0);
-    const txSoldUnits = transactions
-      .filter((t) => t.type === 'sale')
-      .reduce((acc, t) => acc + Math.abs(t.quantity || 0), 0);
-    const totalSoldUnits = Math.max(productSoldUnits, txSoldUnits);
 
-    const productSalesTotal = products.reduce((acc, p) => acc + ((p.soldCount || 0) * (p.price || 0)), 0);
-    const txSalesTotal = transactions
-      .filter((t) => t.type === 'sale')
-      .reduce((acc, t) => acc + (t.totalAmount ?? (Math.abs(t.quantity || 0) * (t.unitPrice || 0))), 0);
-    const totalSalesRevenue = Math.max(productSalesTotal, txSalesTotal);
+    const txSoldByProduct = new Map<string, number>();
+    const txSalesByProduct = new Map<string, number>();
+    transactions.forEach((t) => {
+      if (t.type === 'sale') {
+        const qty = Math.abs(t.quantity || 0);
+        const amount = t.totalAmount ?? (qty * (t.unitPrice || 0));
+        if (t.productId) {
+          txSoldByProduct.set(t.productId, (txSoldByProduct.get(t.productId) || 0) + qty);
+          txSalesByProduct.set(t.productId, (txSalesByProduct.get(t.productId) || 0) + amount);
+        }
+        if (t.productName) {
+          const nameKey = t.productName.trim();
+          txSoldByProduct.set(nameKey, (txSoldByProduct.get(nameKey) || 0) + qty);
+          txSalesByProduct.set(nameKey, (txSalesByProduct.get(nameKey) || 0) + amount);
+        }
+      }
+    });
+
+    let computedSoldUnits = 0;
+    let computedSalesRevenue = 0;
+
+    products.forEach((p) => {
+      const pSold = p.soldCount || 0;
+      const txSoldById = txSoldByProduct.get(p.id) || 0;
+      const txSoldByName = txSoldByProduct.get(p.name.trim()) || 0;
+      const effectiveSold = Math.max(pSold, txSoldById, txSoldByName);
+      computedSoldUnits += effectiveSold;
+
+      const pRev = effectiveSold * (p.price || 0);
+      const txRevById = txSalesByProduct.get(p.id) || 0;
+      const txRevByName = txSalesByProduct.get(p.name.trim()) || 0;
+      computedSalesRevenue += Math.max(pRev, txRevById, txRevByName);
+    });
+
+    const rawTxSold = transactions.filter((t) => t.type === 'sale').reduce((sum, t) => sum + Math.abs(t.quantity || 0), 0);
+    const rawTxRevenue = transactions.filter((t) => t.type === 'sale').reduce((sum, t) => sum + (t.totalAmount ?? (Math.abs(t.quantity || 0) * (t.unitPrice || 0))), 0);
+    const rawProductSold = products.reduce((acc, p) => acc + (p.soldCount || 0), 0);
+    const rawProductRev = products.reduce((acc, p) => acc + ((p.soldCount || 0) * (p.price || 0)), 0);
+
+    const totalSoldUnits = Math.max(computedSoldUnits, rawTxSold, rawProductSold);
+    const totalSalesRevenue = Math.max(computedSalesRevenue, rawTxRevenue, rawProductRev);
     const lowStockCount = products.filter((p) => p.currentStock > 0 && p.currentStock <= 15).length;
     const outOfStockCount = products.filter((p) => p.currentStock <= 0).length;
 
@@ -1180,7 +1242,11 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
             <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400">
               {metrics.totalSoldUnits.toLocaleString()} <span className="text-xs font-normal text-slate-400">{isEn ? 'units' : 'ชิ้น'}</span>
             </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">{isEn ? 'Deducted from warehouse' : 'ตัดยอดออกไปแล้ว'}</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {metrics.totalSalesRevenue > 0
+                ? (isEn ? `Revenue: ฿${Math.round(metrics.totalSalesRevenue).toLocaleString()}` : `คิดเป็นเงิน ฿${Math.round(metrics.totalSalesRevenue).toLocaleString()}`)
+                : (isEn ? 'Deducted from warehouse' : 'ตัดยอดออกไปแล้ว')}
+            </div>
           </div>
         </div>
 
