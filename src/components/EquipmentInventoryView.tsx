@@ -805,6 +805,11 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     const totalStockUnits = products.reduce((acc, p) => acc + p.currentStock, 0);
     const totalValue = products.reduce((acc, p) => acc + p.stockValue, 0);
     const totalSoldUnits = products.reduce((acc, p) => acc + p.soldCount, 0);
+    const productSalesTotal = products.reduce((acc, p) => acc + (p.soldCount * p.price), 0);
+    const txSalesTotal = transactions
+      .filter((t) => t.type === 'sale')
+      .reduce((acc, t) => acc + (t.totalAmount ?? (Math.abs(t.quantity) * (t.unitPrice || 0))), 0);
+    const totalSalesRevenue = Math.max(productSalesTotal, txSalesTotal);
     const lowStockCount = products.filter((p) => p.currentStock > 0 && p.currentStock <= 15).length;
     const outOfStockCount = products.filter((p) => p.currentStock <= 0).length;
 
@@ -813,10 +818,11 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       totalStockUnits,
       totalValue,
       totalSoldUnits,
+      totalSalesRevenue,
       lowStockCount,
       outOfStockCount,
     };
-  }, [products]);
+  }, [products, transactions]);
 
   if (!canManage) {
     return (
@@ -892,9 +898,6 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-amber-950 dark:text-stone-100">
                 {isEn ? 'Equipment Warehouse' : 'คลังอุปกรณ์'}
               </h1>
-              <span className="text-xs sm:text-sm font-bold px-3 py-1 rounded-xl bg-amber-950/15 dark:bg-white/15 text-amber-950 dark:text-amber-100 border border-amber-900/20 dark:border-white/20 backdrop-blur-md shadow-xs">
-                {isEn ? `${products.length} Items` : `${products.length} รายการสินค้า`}
-              </span>
             </div>
           </div>
 
@@ -1176,22 +1179,20 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
           </div>
         </div>
 
-        {/* Low Stock Alerts */}
+        {/* Total Sales Amount (จำนวนเงินที่ขาย) */}
         <div className="col-span-2 sm:col-span-1 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-            <span className="text-xs font-bold">{isEn ? 'Low Stock Alert' : 'จุดเตือนสต็อกต่ำ'}</span>
+            <span className="text-xs font-bold">{isEn ? 'Total Sales Revenue' : 'จำนวนเงินที่ขาย'}</span>
             <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4" />
+              <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400">
-              {metrics.lowStockCount + metrics.outOfStockCount} <span className="text-xs font-normal text-slate-400">{isEn ? 'items' : 'รายการ'}</span>
+              ฿{Math.round(metrics.totalSalesRevenue).toLocaleString()}
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">
-              {metrics.outOfStockCount > 0 
-                ? (isEn ? `Out of stock: ${metrics.outOfStockCount}` : `หมดสต็อก ${metrics.outOfStockCount} รายการ`) 
-                : (isEn ? 'Stock Ready' : 'สต็อกพร้อมใช้งาน')}
+              {isEn ? 'Total sales / dispatch revenue' : 'ยอดเงินจากการขาย/เบิก'}
             </div>
           </div>
         </div>
