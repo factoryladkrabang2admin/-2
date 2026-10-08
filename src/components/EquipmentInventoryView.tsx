@@ -804,11 +804,16 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
     const totalCount = products.length;
     const totalStockUnits = products.reduce((acc, p) => acc + p.currentStock, 0);
     const totalValue = products.reduce((acc, p) => acc + p.stockValue, 0);
-    const totalSoldUnits = products.reduce((acc, p) => acc + p.soldCount, 0);
-    const productSalesTotal = products.reduce((acc, p) => acc + (p.soldCount * p.price), 0);
+    const productSoldUnits = products.reduce((acc, p) => acc + (p.soldCount || 0), 0);
+    const txSoldUnits = transactions
+      .filter((t) => t.type === 'sale')
+      .reduce((acc, t) => acc + Math.abs(t.quantity || 0), 0);
+    const totalSoldUnits = Math.max(productSoldUnits, txSoldUnits);
+
+    const productSalesTotal = products.reduce((acc, p) => acc + ((p.soldCount || 0) * (p.price || 0)), 0);
     const txSalesTotal = transactions
       .filter((t) => t.type === 'sale')
-      .reduce((acc, t) => acc + (t.totalAmount ?? (Math.abs(t.quantity) * (t.unitPrice || 0))), 0);
+      .reduce((acc, t) => acc + (t.totalAmount ?? (Math.abs(t.quantity || 0) * (t.unitPrice || 0))), 0);
     const totalSalesRevenue = Math.max(productSalesTotal, txSalesTotal);
     const lowStockCount = products.filter((p) => p.currentStock > 0 && p.currentStock <= 15).length;
     const outOfStockCount = products.filter((p) => p.currentStock <= 0).length;

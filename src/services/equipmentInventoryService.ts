@@ -91,10 +91,10 @@ export const INITIAL_INVENTORY_PRODUCTS: InventoryProduct[] = [
     initialStock: 300,
     stockIn: 0,
     price: 1,
-    soldCount: 0,
-    currentStock: 300,
-    stockValue: 300 * 1,
-    lastUpdatedDate: '23/09/2026',
+    soldCount: 100,
+    currentStock: 200,
+    stockValue: 200 * 1,
+    lastUpdatedDate: '08/10/2026',
     description: 'หน้ากากอนามัยใยสังเคราะห์ ป้องกันฝุ่นละอองและสารคัดหลั่ง',
   },
   {
@@ -565,6 +565,28 @@ export async function fetchServerEquipmentWebhookUrl(): Promise<string> {
 }
 
 /**
+ * Initial sample transactions matching the live Google Sheet state
+ */
+export const INITIAL_INVENTORY_TRANSACTIONS: InventoryTransaction[] = [
+  {
+    id: 'tx-sheet-item-5',
+    timestamp: '08/10/2026, 08:30:00',
+    dateStr: '08/10/2026',
+    type: 'sale',
+    productId: 'item-5',
+    productName: 'ผ้าปิดจมูกใยสังเคราะห์',
+    quantity: -100,
+    unitPrice: 1,
+    totalAmount: 100,
+    customerName: 'ฝ่ายผลิต',
+    department: 'ฝ่ายผลิต',
+    operatorName: 'เจ้าหน้าที่คลัง',
+    note: 'เบิกจ่ายประจำวัน (ตามยอดชีต)',
+    googleSheetSynced: true,
+  },
+];
+
+/**
  * Load saved products or fallback to default
  */
 export function getLocalInventoryProducts(): InventoryProduct[] {
@@ -574,7 +596,22 @@ export function getLocalInventoryProducts(): InventoryProduct[] {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Reconcile with INITIAL_INVENTORY_PRODUCTS to ensure valid sold count
+          const initialMap = new Map(INITIAL_INVENTORY_PRODUCTS.map((p) => [p.id, p]));
+          return parsed.map((p: InventoryProduct) => {
+            const init = initialMap.get(p.id);
+            if (init && (p.soldCount === undefined || p.soldCount === 0) && init.soldCount > 0) {
+              const newSold = init.soldCount;
+              const newStock = Math.max(0, p.initialStock + (p.stockIn || 0) - newSold);
+              return {
+                ...p,
+                soldCount: newSold,
+                currentStock: newStock,
+                stockValue: newStock * p.price,
+              };
+            }
+            return p;
+          });
         }
       }
     }
@@ -606,7 +643,7 @@ export function getLocalInventoryTransactions(): InventoryTransaction[] {
       const saved = localStorage.getItem(LOCAL_STORAGE_TRANSACTIONS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       }
@@ -614,7 +651,7 @@ export function getLocalInventoryTransactions(): InventoryTransaction[] {
   } catch {
     // ignore
   }
-  return [];
+  return INITIAL_INVENTORY_TRANSACTIONS;
 }
 
 /**
@@ -909,30 +946,31 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
       ? parseFloat(rowPrice[col])
       : baseItem.price;
 
+    const sheetSold = rowSold[col] && rowSold[col].trim() !== '' && !isNaN(parseFloat(rowSold[col]))
+      ? parseFloat(rowSold[col])
+      : 0;
+    const sheetRestock = rowRestock[col] && rowRestock[col].trim() !== '' && !isNaN(parseFloat(rowRestock[col]))
+      ? parseFloat(rowRestock[col])
+      : 0;
+
     let effectiveSold = 0;
     let effectiveRestock = 0;
     let effectiveDate = '';
 
     if (isResetActive && resetState) {
-      // System was reset! Purge old pre-reset numbers completely so they never come back.
-      // Only include post-reset transactions.
-      effectiveSold = postResetSalesMap.get(itemName) || 0;
-      effectiveRestock = postResetRestockMap.get(itemName) || 0;
+      // If the sheet itself has live numbers, or post-reset local transactions
+      const postSold = postResetSalesMap.get(itemName) || 0;
+      const postRestock = postResetRestockMap.get(itemName) || 0;
+      effectiveSold = Math.max(sheetSold, postSold);
+      effectiveRestock = Math.max(sheetRestock, postRestock);
       effectiveDate = (effectiveSold > 0 || effectiveRestock > 0)
-        ? (baseItem.lastUpdatedDate || resetState.resetDate)
+        ? (rowDate[col]?.trim() || baseItem.lastUpdatedDate || resetState.resetDate)
         : resetState.resetDate;
     } else {
-      const restock = rowRestock[col] && rowRestock[col].trim() !== '' && !isNaN(parseFloat(rowRestock[col]))
-        ? parseFloat(rowRestock[col])
-        : 0;
-      const sold = rowSold[col] && rowSold[col].trim() !== '' && !isNaN(parseFloat(rowSold[col]))
-        ? parseFloat(rowSold[col])
-        : (baseItem.soldCount || 0);
-
       const localSoldCount = baseItem.soldCount || 0;
-      effectiveSold = Math.max(sold, localSoldCount);
+      effectiveSold = Math.max(sheetSold, localSoldCount);
       const localStockIn = baseItem.stockIn || 0;
-      effectiveRestock = Math.max(restock, localStockIn);
+      effectiveRestock = Math.max(sheetRestock, localStockIn);
       effectiveDate = rowDate[col]?.trim() || baseItem.lastUpdatedDate;
     }
 
