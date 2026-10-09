@@ -1158,7 +1158,7 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
     for (const tx of localTxs) {
       const pName = (tx.productName || '').trim();
       if (!pName) continue;
-      const txTime = parseThaiDateToTimestamp(tx.createdAt || tx.timestamp);
+      const txTime = parseThaiDateToTimestamp((tx as any).createdAt || tx.timestamp);
       // Only include transactions made at or after the reset timestamp
       if (isNaN(txTime) || txTime === 0 || txTime >= resetState.resetTime) {
         if (tx.type === 'sale') {

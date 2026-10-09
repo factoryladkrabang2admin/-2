@@ -5112,7 +5112,7 @@ export function getParcelWebhookUrl(): string {
   } catch (err) {
     console.warn('Could not read parcel webhook from localStorage:', err);
   }
-  return '';
+  return PARCEL_FORM_APP_URL;
 }
 
 export function setParcelWebhookUrl(url: string): void {
@@ -5131,9 +5131,30 @@ export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): Parce
   if (!records || !Array.isArray(records)) return [];
   const seenKeys = new Set<string>();
   const seenIds = new Set<string>();
+  const seenCodes = new Map<string, ParcelDeliveryRecord>();
+  const seenContents = new Map<string, ParcelDeliveryRecord>();
   const unique: ParcelDeliveryRecord[] = [];
 
   const normStr = (s?: string | null) => (s || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+
+  const extractDateOnly = (dStr?: string, ts?: string) => {
+    const raw = (dStr || (ts ? ts.split(/[\s,]+/)[0] : '')).trim().replace(/^["']+|["']+$/g, '');
+    const clean = raw.split(/[T\s,]+/)[0];
+    const parts = clean.split(/[-/.]/);
+    if (parts.length === 3) {
+      let d = parseInt(parts[0], 10);
+      let m = parseInt(parts[1], 10);
+      let y = parseInt(parts[2], 10);
+      if (d > 1000) {
+        y = d;
+        d = parseInt(parts[2], 10);
+      }
+      if (y > 2400) y -= 543;
+      if (y < 100) y += 2000;
+      return `${d}-${m}-${y}`;
+    }
+    return normStr(clean);
+  };
 
   for (const item of records) {
     if (!item) continue;
@@ -5148,20 +5169,55 @@ export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): Parce
     const normTitle = normStr(rec.itemTitle);
     const normSender = normStr(rec.senderName);
     const normRecipient = normStr(rec.recipientName);
-    const dateKey = (rec.dateStr || (rec.timestamp ? rec.timestamp.split(/[\s,]+/)[0] : '')).trim();
+    const dateKey = extractDateOnly(rec.dateStr, rec.timestamp);
 
-    let dedupKey = '';
+    // Check if this record matches an already seen code
     if (normCode) {
-      dedupKey = `code:${normCode}:${normType}`;
-    } else {
-      dedupKey = `content:${normType}:${normTitle}:${normSender}:${normRecipient}:${dateKey}`;
+      const codeKey = `code:${normCode}:${normType}`;
+      if (seenKeys.has(codeKey)) {
+        continue;
+      }
+      seenKeys.add(codeKey);
+      seenCodes.set(normCode, rec);
     }
 
-    if (seenKeys.has(dedupKey)) {
+    // Precise content key
+    const contentKey = `content:${normType}:${normTitle}:${normSender}:${normRecipient}:${dateKey}`;
+    if (seenKeys.has(contentKey)) {
+      // If the earlier record had no tracking code but this one does, enrich the earlier one
+      const existing = seenContents.get(contentKey);
+      if (existing && !existing.trackingCode && rec.trackingCode) {
+        existing.trackingCode = rec.trackingCode;
+      }
       continue;
     }
 
-    seenKeys.add(dedupKey);
+    // Loose content key for 'รับ' records on the same day with same title:
+    // Prevents duplicate receive rows when 1 receive is clicked (e.g. 1 sheet row + 1 local row)
+    if (normType === 'รับ' && normTitle && normTitle !== '-') {
+      const looseReceiveKey = `loose-recv:${normTitle}:${dateKey}`;
+      if (seenKeys.has(looseReceiveKey)) {
+        const existing = seenContents.get(looseReceiveKey);
+        if (existing) {
+          // Merge metadata so no information is lost
+          if (!existing.trackingCode && rec.trackingCode) {
+            existing.trackingCode = rec.trackingCode;
+          }
+          if ((!existing.recipientName || existing.recipientName === '-') && rec.recipientName && rec.recipientName !== '-') {
+            existing.recipientName = rec.recipientName;
+          }
+          if ((!existing.recipientDepartment || existing.recipientDepartment === '-') && rec.recipientDepartment && rec.recipientDepartment !== '-') {
+            existing.recipientDepartment = rec.recipientDepartment;
+          }
+        }
+        continue;
+      }
+      seenKeys.add(looseReceiveKey);
+      seenContents.set(looseReceiveKey, rec);
+    }
+
+    seenKeys.add(contentKey);
+    seenContents.set(contentKey, rec);
     if (rec.id) seenIds.add(rec.id);
     unique.push(rec);
   }
@@ -5169,6 +5225,200 @@ export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): Parce
 }
 
 const PARCEL_SUBMISSIONS_STORAGE_KEY = 'proworkflow_submitted_parcel_items_v2';
+const PARCEL_DELETED_STORAGE_KEY = 'proworkflow_parcel_deleted_keys_v1';
+const PARCEL_OVERRIDES_STORAGE_KEY = 'proworkflow_parcel_overrides_v1';
+
+export function getDeletedParcelKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(PARCEL_DELETED_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveDeletedParcelKey(key: string): void {
+  try {
+    if (!key) return;
+    const cleanKey = key.trim().toLowerCase();
+    const existing = getDeletedParcelKeys();
+    if (!existing.includes(cleanKey)) {
+      const updated = [...existing, cleanKey];
+      localStorage.setItem(PARCEL_DELETED_STORAGE_KEY, JSON.stringify(updated));
+    }
+  } catch {}
+}
+
+export function getParcelOverrides(): Record<string, ParcelDeliveryRecord> {
+  try {
+    const raw = localStorage.getItem(PARCEL_OVERRIDES_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+export function saveParcelOverride(record: ParcelDeliveryRecord): void {
+  try {
+    if (!record || !record.id) return;
+    const overrides = getParcelOverrides();
+    overrides[record.id] = record;
+    if (record.trackingCode) {
+      const normCode = record.trackingCode.trim().toLowerCase().replace(/[\s\-_]/g, '');
+      if (normCode) overrides[normCode] = record;
+    }
+    localStorage.setItem(PARCEL_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
+  } catch {}
+}
+
+export async function deleteParcelDeliveryRecord(
+  record: ParcelDeliveryRecord
+): Promise<{ success: boolean; message?: string }> {
+  if (!record) return { success: false, message: 'Invalid record' };
+
+  const normStr = (s?: string | null) => (s || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+  const idKey = record.id ? record.id.trim().toLowerCase() : '';
+  const codeKey = record.trackingCode ? normStr(record.trackingCode) : '';
+  const titleKey = normStr(record.itemTitle);
+  const typeKey = (record.actionType || '').trim();
+  const dateKey = (record.dateStr || (record.timestamp ? record.timestamp.split(/[\s,]+/)[0] : '')).trim();
+  const sigKey = `sig:${typeKey}:${titleKey}:${dateKey}`.toLowerCase();
+
+  // 1. Save locally in deleted keys
+  if (idKey) saveDeletedParcelKey(idKey);
+  if (codeKey) saveDeletedParcelKey(codeKey);
+  if (sigKey) saveDeletedParcelKey(sigKey);
+
+  // 2. Remove from local submitted storage if present
+  try {
+    const locals = getLocalParcelRecords();
+    const filteredLocals = locals.filter(r => {
+      if (r.id === record.id) return false;
+      if (codeKey && r.trackingCode && normStr(r.trackingCode) === codeKey) return false;
+      return true;
+    });
+    localStorage.setItem(PARCEL_SUBMISSIONS_STORAGE_KEY, JSON.stringify(filteredLocals));
+  } catch {}
+
+  // 3. Clean up override if existed
+  try {
+    const overrides = getParcelOverrides();
+    let changed = false;
+    if (record.id && overrides[record.id]) {
+      delete overrides[record.id];
+      changed = true;
+    }
+    if (codeKey && overrides[codeKey]) {
+      delete overrides[codeKey];
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem(PARCEL_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
+    }
+  } catch {}
+
+  // 4. Invalidate in-flight promise
+  inFlightParcelPromise = null;
+
+  // 5. Send delete request to backend proxy (which filters CSV and triggers Apps Script)
+  let backendMessage = 'ลบรายการและลบข้อมูลใน Google Sheet เรียบร้อยแล้ว';
+  try {
+    const res = await fetch('/api/parcel-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: record.id,
+        trackingCode: record.trackingCode,
+        signature: sigKey,
+        itemTitle: record.itemTitle,
+        senderName: record.senderName,
+        recipientName: record.recipientName,
+        actionType: record.actionType,
+        timestamp: record.timestamp,
+        dateStr: record.dateStr,
+        webhookUrl: getParcelWebhookUrl(),
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.message) {
+        backendMessage = data.message;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not call /api/parcel-delete:', err);
+  }
+
+  // 6. Also attempt direct client-side call to Google Apps Script Webhook
+  const webhookUrl = getParcelWebhookUrl();
+  if (webhookUrl && webhookUrl.startsWith('http')) {
+    try {
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          sheetId: '1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330',
+          gid: '1955620947',
+          id: record.id,
+          trackingCode: record.trackingCode,
+          itemTitle: record.itemTitle,
+          senderName: record.senderName,
+          recipientName: record.recipientName,
+          actionType: record.actionType,
+          timestamp: record.timestamp,
+          dateStr: record.dateStr,
+        }),
+        mode: 'no-cors',
+      }).catch(() => {});
+    } catch {}
+  }
+
+  return { success: true, message: backendMessage };
+}
+
+export async function updateParcelDeliveryRecord(
+  updatedRecord: ParcelDeliveryRecord
+): Promise<{ success: boolean; record: ParcelDeliveryRecord; message?: string }> {
+  if (!updatedRecord || !updatedRecord.id) {
+    return { success: false, record: updatedRecord, message: 'Invalid record' };
+  }
+
+  // 1. Save override locally
+  saveParcelOverride(updatedRecord);
+
+  // 2. If present in local submitted storage, update it there too
+  try {
+    const locals = getLocalParcelRecords();
+    const idx = locals.findIndex(r => r.id === updatedRecord.id);
+    if (idx !== -1) {
+      locals[idx] = { ...locals[idx], ...updatedRecord };
+      localStorage.setItem(PARCEL_SUBMISSIONS_STORAGE_KEY, JSON.stringify(locals));
+    }
+  } catch {}
+
+  // 3. Invalidate in-flight promise
+  inFlightParcelPromise = null;
+
+  // 4. Send update request to backend proxy
+  try {
+    await fetch('/api/parcel-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: updatedRecord.id,
+        trackingCode: updatedRecord.trackingCode,
+        record: updatedRecord,
+      }),
+    });
+  } catch (err) {
+    console.warn('Could not call /api/parcel-update:', err);
+  }
+
+  return { success: true, record: updatedRecord, message: 'บันทึกการแก้ไขเรียบร้อยแล้ว' };
+}
 
 export function getLocalParcelRecords(): ParcelDeliveryRecord[] {
   try {
@@ -5247,20 +5497,33 @@ export function mergeParcelRecords(
       const shCode = normStr(sh.trackingCode);
       const shType = (sh.actionType || '').trim();
       if (locCode && shCode) {
-        return locCode === shCode && locType === shType;
+        if (locCode === shCode && locType === shType) return true;
       }
       const shTitle = normStr(sh.itemTitle);
       const shSender = normStr(sh.senderName);
       const shRecipient = normStr(sh.recipientName);
       const shDate = (sh.dateStr || (sh.timestamp ? sh.timestamp.split(/[\s,]+/)[0] : '')).trim();
 
-      const sameContent = locType === shType && locTitle === shTitle && locSender === shSender && locRecipient === shRecipient;
-      if (!sameContent) return false;
+      // If action type matches and title matches
+      if (locType === shType && locTitle === shTitle && locTitle !== '') {
+        // Same sender or recipient
+        if (locSender === shSender || locRecipient === shRecipient) {
+          if (locDate === shDate) return true;
+          const tLoc = parseTs(loc.timestamp);
+          const tSh = parseTs(sh.timestamp);
+          if (tLoc > 0 && tSh > 0 && Math.abs(tLoc - tSh) < 600000) return true; // 10 minutes
+        }
+        // Timestamp within 5 minutes on same day
+        const tLoc = parseTs(loc.timestamp);
+        const tSh = parseTs(sh.timestamp);
+        if (tLoc > 0 && tSh > 0 && Math.abs(tLoc - tSh) < 300000) return true;
+      }
 
-      if (locDate === shDate) return true;
-      const tLoc = parseTs(loc.timestamp);
-      const tSh = parseTs(sh.timestamp);
-      if (tLoc > 0 && tSh > 0 && Math.abs(tLoc - tSh) < 180000) return true;
+      // If 'รับ' and on the same day with same title
+      if (locType === 'รับ' && shType === 'รับ' && locTitle === shTitle && locDate === shDate && locTitle !== '') {
+        return true;
+      }
+
       return false;
     });
 
@@ -5460,8 +5723,89 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
       `${PARCEL_SHEET_CSV_URL}&_t=${now}`,
     ];
     const csv = await fetchSheetCsvWithFallback(urls, 'proworkflow_parcel_delivery_csv_v3');
-    const parsedRecords = csv ? convertSheetRowsToParcelRecords(csv) : [];
-    const localRecords = getLocalParcelRecords();
+    let parsedRecords = csv ? convertSheetRowsToParcelRecords(csv) : [];
+
+    // Load deleted keys from local and server
+    const localDeleted = getDeletedParcelKeys();
+    const serverDeleted: string[] = [];
+    try {
+      const delRes = await fetch('/api/parcel-deleted-keys');
+      if (delRes.ok) {
+        const delData = await delRes.json();
+        if (Array.isArray(delData.deletedKeys)) {
+          serverDeleted.push(...delData.deletedKeys);
+        }
+      }
+    } catch {}
+    const allDeletedSet = new Set<string>([...localDeleted, ...serverDeleted].map(k => String(k).trim().toLowerCase()));
+
+    // Load overrides from local and server
+    const localOverrides = getParcelOverrides();
+    let serverOverrides: Record<string, ParcelDeliveryRecord> = {};
+    try {
+      const ovRes = await fetch('/api/parcel-overrides');
+      if (ovRes.ok) {
+        const ovData = await ovRes.json();
+        if (ovData.overrides) {
+          serverOverrides = ovData.overrides;
+        }
+      }
+    } catch {}
+    const allOverrides = { ...localOverrides, ...serverOverrides };
+
+    const normStr = (s?: string | null) => (s || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+
+    // Filter out deleted records and apply overrides to parsed sheet records
+    parsedRecords = parsedRecords
+      .filter(r => {
+        const idKey = r.id ? r.id.toLowerCase() : '';
+        const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+        const titleKey = normStr(r.itemTitle);
+        const typeKey = (r.actionType || '').trim();
+        const dateKey = (r.dateStr || (r.timestamp ? r.timestamp.split(/[\s,]+/)[0] : '')).trim();
+        const sigKey = `sig:${typeKey}:${titleKey}:${dateKey}`.toLowerCase();
+
+        if (idKey && allDeletedSet.has(idKey)) return false;
+        if (codeKey && allDeletedSet.has(codeKey)) return false;
+        if (sigKey && allDeletedSet.has(sigKey)) return false;
+        return true;
+      })
+      .map(r => {
+        const idKey = r.id ? r.id : '';
+        const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+        const override = allOverrides[idKey] || (codeKey ? allOverrides[codeKey] : undefined);
+        if (override) {
+          return { ...r, ...override };
+        }
+        return r;
+      });
+
+    // Load and filter local submissions
+    let localRecords = getLocalParcelRecords();
+    localRecords = localRecords
+      .filter(r => {
+        const idKey = r.id ? r.id.toLowerCase() : '';
+        const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+        const titleKey = normStr(r.itemTitle);
+        const typeKey = (r.actionType || '').trim();
+        const dateKey = (r.dateStr || (r.timestamp ? r.timestamp.split(/[\s,]+/)[0] : '')).trim();
+        const sigKey = `sig:${typeKey}:${titleKey}:${dateKey}`.toLowerCase();
+
+        if (idKey && allDeletedSet.has(idKey)) return false;
+        if (codeKey && allDeletedSet.has(codeKey)) return false;
+        if (sigKey && allDeletedSet.has(sigKey)) return false;
+        return true;
+      })
+      .map(r => {
+        const idKey = r.id ? r.id : '';
+        const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+        const override = allOverrides[idKey] || (codeKey ? allOverrides[codeKey] : undefined);
+        if (override) {
+          return { ...r, ...override };
+        }
+        return r;
+      });
+
     const merged = mergeParcelRecords(parsedRecords, localRecords);
     const consolidated = consolidateParcelRecords(merged);
 

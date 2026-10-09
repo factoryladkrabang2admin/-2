@@ -27,6 +27,44 @@ const EQUIPMENT_INVENTORY_DATA_FILE = path.join(DATA_DIR, "equipment_inventory_s
 const EQUIPMENT_INVENTORY_WEBHOOK_FILE = path.join(DATA_DIR, "equipment_inventory_webhook.json");
 const EQUIPMENT_INVENTORY_RESET_FILE = path.join(DATA_DIR, "equipment_inventory_reset.json");
 const EQUIPMENT_INVENTORY_PRODUCTS_FILE = path.join(DATA_DIR, "equipment_inventory_products.json");
+const PARCEL_OVERRIDES_FILE = path.join(DATA_DIR, "parcel_overrides.json");
+const PARCEL_DELETED_FILE = path.join(DATA_DIR, "parcel_deleted.json");
+const PARCEL_WEBHOOK_FILE = path.join(DATA_DIR, "parcel_webhook.json");
+const DEFAULT_PARCEL_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwAFd2MCDiWydPz3ycfRuWC6Jv3IKtGpn-tnhm4mNbHkJn4W2AyJ9hlVydURxGdGhh9gw/exec";
+
+let inMemoryParcelOverrides: Record<string, any> = {};
+try {
+  if (fs.existsSync(PARCEL_OVERRIDES_FILE)) {
+    const raw = fs.readFileSync(PARCEL_OVERRIDES_FILE, "utf-8");
+    inMemoryParcelOverrides = JSON.parse(raw) || {};
+  }
+} catch (e) {
+  console.warn("Could not load parcel overrides from file:", e);
+}
+
+let inMemoryParcelDeletedKeys: string[] = [];
+try {
+  if (fs.existsSync(PARCEL_DELETED_FILE)) {
+    const raw = fs.readFileSync(PARCEL_DELETED_FILE, "utf-8");
+    inMemoryParcelDeletedKeys = JSON.parse(raw) || [];
+  }
+} catch (e) {
+  console.warn("Could not load parcel deleted keys from file:", e);
+}
+
+let serverParcelWebhookUrl: string = process.env.PARCEL_WEBHOOK_URL || DEFAULT_PARCEL_WEBHOOK_URL;
+try {
+  if (fs.existsSync(PARCEL_WEBHOOK_FILE)) {
+    const raw = fs.readFileSync(PARCEL_WEBHOOK_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
+      serverParcelWebhookUrl = parsed.webhookUrl.trim();
+      console.log("Loaded server-side parcel webhook URL from file");
+    }
+  }
+} catch (e) {
+  console.warn("Could not load parcel webhook from file:", e);
+}
 
 let equipmentInventoryResetState: {
   isReset: boolean;
@@ -1176,9 +1214,9 @@ async function startServer() {
         sheetId === "1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330" ||
         (sheetName && sheetName.includes("พัสดุ"));
 
-      if (isParcelSheet && inMemorySubmissions.length > 0) {
+      if (isParcelSheet) {
         try {
-          const rows = parseCsv(csvText);
+          let rows = parseCsv(csvText);
           if (rows.length > 1) {
             const header = rows[0].map((h) => h.trim().toLowerCase());
             let titleColIdx = header.findIndex(
@@ -1212,46 +1250,88 @@ async function startServer() {
               }
             }
 
-            for (let i = 1; i < rows.length; i++) {
-              const row = rows[i];
-              if (!row || row.length === 0) continue;
+            if (inMemorySubmissions.length > 0) {
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
 
-              const currentTitle = titleColIdx >= 0 ? (row[titleColIdx] || "").trim() : "";
-              const currentTracking = trackingColIdx >= 0 ? (row[trackingColIdx] || "").trim() : "";
+                const currentTitle = titleColIdx >= 0 ? (row[titleColIdx] || "").trim() : "";
+                const currentTracking = trackingColIdx >= 0 ? (row[trackingColIdx] || "").trim() : "";
 
-              if (!currentTitle || !currentTracking) {
-                const sName = senderColIdx >= 0 ? normalizeText(row[senderColIdx]) : "";
-                const rName = recipientColIdx >= 0 ? normalizeText(row[recipientColIdx]) : "";
-                const aType = actionColIdx >= 0 ? normalizeText(row[actionColIdx]) : "";
+                if (!currentTitle || !currentTracking) {
+                  const sName = senderColIdx >= 0 ? normalizeText(row[senderColIdx]) : "";
+                  const rName = recipientColIdx >= 0 ? normalizeText(row[recipientColIdx]) : "";
+                  const aType = actionColIdx >= 0 ? normalizeText(row[actionColIdx]) : "";
 
-                // Find best matching saved submission
-                const match = inMemorySubmissions.find((sub) => {
-                  const matchSender = !sName || normalizeText(sub.senderName) === sName;
-                  const matchRecipient = !rName || normalizeText(sub.recipientName) === rName;
-                  const matchAction = !aType || normalizeText(sub.actionType) === aType;
-                  return matchSender && matchRecipient && matchAction;
-                });
+                  // Find best matching saved submission
+                  const match = inMemorySubmissions.find((sub) => {
+                    const matchSender = !sName || normalizeText(sub.senderName) === sName;
+                    const matchRecipient = !rName || normalizeText(sub.recipientName) === rName;
+                    const matchAction = !aType || normalizeText(sub.actionType) === aType;
+                    return matchSender && matchRecipient && matchAction;
+                  });
 
-                if (match) {
-                  if (!currentTitle && match.itemTitle && titleColIdx >= 0) {
-                    while (row.length <= titleColIdx) {
-                      row.push("");
+                  if (match) {
+                    if (!currentTitle && match.itemTitle && titleColIdx >= 0) {
+                      while (row.length <= titleColIdx) {
+                        row.push("");
+                      }
+                      row[titleColIdx] = match.itemTitle;
                     }
-                    row[titleColIdx] = match.itemTitle;
-                  }
-                  if (!currentTracking && match.trackingCode && trackingColIdx >= 0) {
-                    while (row.length <= trackingColIdx) {
-                      row.push("");
+                    if (!currentTracking && match.trackingCode && trackingColIdx >= 0) {
+                      while (row.length <= trackingColIdx) {
+                        row.push("");
+                      }
+                      row[trackingColIdx] = match.trackingCode;
                     }
-                    row[trackingColIdx] = match.trackingCode;
                   }
                 }
               }
             }
+
+            // CRITICAL: Filter out any rows that were deleted in the system
+            if (inMemoryParcelDeletedKeys.length > 0) {
+              const deletedSet = new Set(inMemoryParcelDeletedKeys.map((k) => k.toLowerCase()));
+              const headerRow = rows[0];
+              const remainingRows: string[][] = [headerRow];
+
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
+
+                const rowTime = (row[0] || "").trim().toLowerCase();
+                const rowAct = normalizeText(row[1] || "");
+                const rowSender = normalizeText(row[2] || "");
+                const rowRecipient = normalizeText(row[4] || "");
+                const rowTitle = normalizeText(row[6] || "");
+                const rowTrk = (row[7] || "").replace(/[\s\-_]/g, "").toLowerCase();
+
+                let isRowDeleted = false;
+
+                if (rowTrk && deletedSet.has(rowTrk)) {
+                  isRowDeleted = true;
+                } else if (rowTime && deletedSet.has(rowTime)) {
+                  isRowDeleted = true;
+                } else if (rowTitle && (deletedSet.has(rowTitle) || deletedSet.has(`sig:${rowAct}:${rowTitle}`))) {
+                  if (rowSender && deletedSet.has(`sig:${rowSender}:${rowRecipient}:${rowTitle}`)) {
+                    isRowDeleted = true;
+                  } else if (deletedSet.has(`sig:${rowAct}:${rowTitle}`)) {
+                    isRowDeleted = true;
+                  }
+                }
+
+                if (!isRowDeleted) {
+                  remainingRows.push(row);
+                }
+              }
+
+              rows = remainingRows;
+            }
+
             csvText = stringifyCsv(rows);
           }
         } catch (enrichErr) {
-          console.warn("Could not enrich parcel CSV:", enrichErr);
+          console.warn("Could not enrich or filter parcel CSV:", enrichErr);
         }
       }
 
@@ -1684,6 +1764,233 @@ async function startServer() {
       submissions: inMemorySubmissions,
       count: inMemorySubmissions.length,
     });
+  });
+
+  // Get deleted parcel keys
+  app.get("/api/parcel-deleted-keys", (_req, res) => {
+    res.json({
+      success: true,
+      deletedKeys: inMemoryParcelDeletedKeys,
+    });
+  });
+
+  // Get and set parcel webhook URL
+  app.get("/api/parcel-webhook", (_req, res) => {
+    const effectiveUrl = serverParcelWebhookUrl || process.env.PARCEL_WEBHOOK_URL || DEFAULT_PARCEL_WEBHOOK_URL;
+    res.json({
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+    });
+  });
+
+  app.post("/api/parcel-webhook", (req, res) => {
+    const { webhookUrl } = req.body || {};
+    if (typeof webhookUrl === "string") {
+      serverParcelWebhookUrl = webhookUrl.trim() || DEFAULT_PARCEL_WEBHOOK_URL;
+      try {
+        fs.writeFileSync(
+          PARCEL_WEBHOOK_FILE,
+          JSON.stringify({ webhookUrl: serverParcelWebhookUrl }, null, 2),
+          "utf-8"
+        );
+      } catch (err) {
+        console.warn("Could not persist parcel webhook to disk:", err);
+      }
+    }
+    const effectiveUrl = serverParcelWebhookUrl || process.env.PARCEL_WEBHOOK_URL || DEFAULT_PARCEL_WEBHOOK_URL;
+    res.json({
+      success: true,
+      webhookUrl: effectiveUrl,
+      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+    });
+  });
+
+  // Delete parcel record endpoint (and delete from Google Sheet via webhook)
+  app.post("/api/parcel-delete", async (req, res) => {
+    try {
+      const { 
+        id, 
+        trackingCode, 
+        signature,
+        itemTitle,
+        senderName,
+        recipientName,
+        actionType,
+        timestamp,
+        dateStr,
+        webhookUrl: clientWebhookUrl,
+      } = req.body || {};
+
+      const keysToAdd: string[] = [];
+      if (id && typeof id === "string") keysToAdd.push(id.trim().toLowerCase());
+      if (trackingCode && typeof trackingCode === "string") {
+        keysToAdd.push(trackingCode.trim().toLowerCase().replace(/[\s\-_]/g, ""));
+      }
+      if (timestamp && typeof timestamp === "string") {
+        keysToAdd.push(timestamp.trim().toLowerCase());
+      }
+      if (itemTitle && typeof itemTitle === "string") {
+        keysToAdd.push(normalizeText(itemTitle));
+      }
+      if (signature && typeof signature === "string") {
+        keysToAdd.push(signature.trim().toLowerCase());
+      }
+      if (senderName && recipientName && itemTitle) {
+        keysToAdd.push(`sig:${normalizeText(senderName)}:${normalizeText(recipientName)}:${normalizeText(itemTitle)}`.toLowerCase());
+      }
+      if (actionType && itemTitle) {
+        keysToAdd.push(`sig:${normalizeText(actionType)}:${normalizeText(itemTitle)}`.toLowerCase());
+      }
+
+      for (const k of keysToAdd) {
+        if (k && !inMemoryParcelDeletedKeys.includes(k)) {
+          inMemoryParcelDeletedKeys.push(k);
+        }
+      }
+
+      try {
+        fs.writeFileSync(PARCEL_DELETED_FILE, JSON.stringify(inMemoryParcelDeletedKeys, null, 2), "utf-8");
+      } catch (err) {
+        console.warn("Could not save parcel deleted file:", err);
+      }
+
+      // Also remove from inMemorySubmissions if present
+      if (id || trackingCode || itemTitle) {
+        const normCode = trackingCode ? trackingCode.trim().toLowerCase().replace(/[\s\-_]/g, "") : "";
+        const normTitle = itemTitle ? normalizeText(itemTitle) : "";
+        inMemorySubmissions = inMemorySubmissions.filter((s) => {
+          if (id && s.id === id) return false;
+          if (normCode && s.trackingCode) {
+            const sCode = s.trackingCode.trim().toLowerCase().replace(/[\s\-_]/g, "");
+            if (sCode === normCode) return false;
+          }
+          if (normTitle && s.itemTitle && normalizeText(s.itemTitle) === normTitle) {
+            if (senderName && normalizeText(s.senderName) === normalizeText(senderName)) {
+              return false;
+            }
+          }
+          return true;
+        });
+        try {
+          fs.writeFileSync(PARCEL_DATA_FILE, JSON.stringify(inMemorySubmissions, null, 2), "utf-8");
+        } catch {}
+      }
+
+      // Clean up override if existed
+      if (id && inMemoryParcelOverrides[id]) {
+        delete inMemoryParcelOverrides[id];
+        try {
+          fs.writeFileSync(PARCEL_OVERRIDES_FILE, JSON.stringify(inMemoryParcelOverrides, null, 2), "utf-8");
+        } catch {}
+      }
+
+      // Forward delete action to Google Apps Script Webhook
+      let effectiveWebhook = (clientWebhookUrl || serverParcelWebhookUrl || process.env.PARCEL_WEBHOOK_URL || DEFAULT_PARCEL_WEBHOOK_URL).trim();
+      let sheetDeleteSuccess = false;
+      let sheetDeleteMessage = "";
+
+      if (effectiveWebhook && effectiveWebhook.startsWith("http")) {
+        try {
+          const webhookResp = await fetch(effectiveWebhook, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "delete",
+              sheetId: "1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330",
+              gid: "1955620947",
+              id,
+              trackingCode,
+              itemTitle,
+              senderName,
+              recipientName,
+              actionType,
+              timestamp,
+              dateStr,
+            }),
+          });
+          if (webhookResp.ok) {
+            sheetDeleteSuccess = true;
+            sheetDeleteMessage = "ส่งคำสั่งลบข้อมูลไปยัง Google Sheet เรียบร้อยแล้ว";
+          }
+        } catch (webhookErr: any) {
+          console.warn("Could not send delete to Google Sheet webhook:", webhookErr);
+          sheetDeleteMessage = webhookErr.message || "Failed to notify Google Sheet webhook";
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "ลบรายการและลบข้อมูลใน Google Sheet เรียบร้อยแล้ว",
+        deletedKeys: keysToAdd,
+        sheetDeleted: sheetDeleteSuccess,
+        sheetMessage: sheetDeleteMessage,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/parcel-delete:", err);
+      return res.status(500).json({ success: false, error: err.message || "Failed to delete parcel" });
+    }
+  });
+
+  // Get parcel overrides
+  app.get("/api/parcel-overrides", (_req, res) => {
+    res.json({
+      success: true,
+      overrides: inMemoryParcelOverrides,
+    });
+  });
+
+  // Update parcel record endpoint (edit details)
+  app.post("/api/parcel-update", (req, res) => {
+    try {
+      const payload = req.body || {};
+      const { id, trackingCode, record } = payload;
+      const targetRecord = record || payload;
+
+      const recordId = id || targetRecord.id;
+      if (!recordId) {
+        return res.status(400).json({ success: false, error: "Missing record id" });
+      }
+
+      // Store in memory overrides
+      inMemoryParcelOverrides[recordId] = targetRecord;
+      if (trackingCode || targetRecord.trackingCode) {
+        const codeKey = (trackingCode || targetRecord.trackingCode).trim().toLowerCase().replace(/[\s\-_]/g, "");
+        if (codeKey) {
+          inMemoryParcelOverrides[codeKey] = targetRecord;
+        }
+      }
+
+      try {
+        fs.writeFileSync(PARCEL_OVERRIDES_FILE, JSON.stringify(inMemoryParcelOverrides, null, 2), "utf-8");
+      } catch (err) {
+        console.warn("Could not save parcel overrides file:", err);
+      }
+
+      // If present in inMemorySubmissions, update it directly
+      const subIdx = inMemorySubmissions.findIndex((s) => s.id === recordId);
+      if (subIdx !== -1) {
+        inMemorySubmissions[subIdx] = { ...inMemorySubmissions[subIdx], ...targetRecord };
+        try {
+          fs.writeFileSync(PARCEL_DATA_FILE, JSON.stringify(inMemorySubmissions, null, 2), "utf-8");
+        } catch {}
+      }
+
+      // Remove from deleted keys if it was somehow marked deleted
+      const normId = recordId.trim().toLowerCase();
+      inMemoryParcelDeletedKeys = inMemoryParcelDeletedKeys.filter((k) => k !== normId);
+      try {
+        fs.writeFileSync(PARCEL_DELETED_FILE, JSON.stringify(inMemoryParcelDeletedKeys, null, 2), "utf-8");
+      } catch {}
+
+      return res.json({
+        success: true,
+        message: "บันทึกการแก้ไขเรียบร้อยแล้ว",
+        record: targetRecord,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/parcel-update:", err);
+      return res.status(500).json({ success: false, error: err.message || "Failed to update parcel" });
+    }
   });
 
   // Check Google Form status for Parcel Delivery
