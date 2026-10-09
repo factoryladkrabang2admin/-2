@@ -11,8 +11,7 @@ import {
   Sparkles, 
   FileText, 
   ArrowRight, 
-  CheckCircle2,
-  Trash2
+  CheckCircle2
 } from 'lucide-react';
 import { ParcelDeliveryRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -26,7 +25,6 @@ interface ParcelDetailModalProps {
   currentUser?: AdminUserAccount | null;
   isAuthenticated?: boolean;
   onQuickReceive?: (parcel: ParcelDeliveryRecord) => void;
-  onDelete?: (parcel: ParcelDeliveryRecord) => void;
   allRecords?: ParcelDeliveryRecord[];
 }
 
@@ -37,7 +35,6 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
   currentUser,
   isAuthenticated,
   onQuickReceive,
-  onDelete,
   allRecords,
 }) => {
   const { language } = useLanguage();
@@ -279,34 +276,6 @@ export const ParcelDetailModal: React.FC<ParcelDetailModalProps> = ({
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            {onEdit && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onEdit(parcel);
-                }}
-                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                title={language === 'th' ? 'แก้ไขข้อมูลนี้' : 'Edit this record'}
-              >
-                <Pencil className="w-4 h-4" />
-                <span>{language === 'th' ? 'แก้ไขข้อมูล' : 'Edit'}</span>
-              </button>
-            )}
-            {onDelete && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onDelete(parcel);
-                }}
-                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                title={language === 'th' ? 'ลบรายการนี้' : 'Delete this record'}
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>{language === 'th' ? 'ลบรายการ' : 'Delete'}</span>
-              </button>
-            )}
             {isSending && (
               isConfirmedReceived ? (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs">

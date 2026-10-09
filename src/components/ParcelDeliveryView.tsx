@@ -30,7 +30,6 @@ import {
   Copy,
   Check,
   Download,
-  Pencil,
   Trash2,
   AlertTriangle
 } from 'lucide-react';
@@ -1443,22 +1442,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                           )}
                           <button
                             type="button"
-                            onClick={() => handleOpenEdit(record)}
-                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:border-amber-400 transition-colors cursor-pointer"
-                            title={language === 'th' ? 'แก้ไขข้อมูล' : 'Edit'}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDelete(record)}
-                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:border-rose-400 transition-colors cursor-pointer"
-                            title={language === 'th' ? 'ลบรายการ' : 'Delete'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => handleOpenDetail(record)}
                             className="p-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 hover:border-pink-400 transition-colors cursor-pointer"
                             title={language === 'th' ? 'ดูรายละเอียด' : 'Details'}
@@ -1570,22 +1553,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                             </span>
                           )
                         )}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(record)}
-                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:border-amber-400 transition-colors cursor-pointer"
-                          title={language === 'th' ? 'แก้ไขข้อมูล' : 'Edit'}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDelete(record)}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:border-rose-400 transition-colors cursor-pointer"
-                          title={language === 'th' ? 'ลบรายการ' : 'Delete'}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                     </div>
 
@@ -1746,24 +1713,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                         ) : <span />}
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
-                          <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(record)}
-                              className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60 transition-colors cursor-pointer"
-                              title={language === 'th' ? 'แก้ไขข้อมูล' : 'Edit'}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDelete(record)}
-                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                              title={language === 'th' ? 'ลบรายการ' : 'Delete'}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
                         </div>
                       </div>
 
@@ -1863,24 +1812,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
                       )}
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-slate-400">{record.timeStr || record.timestamp}</span>
-                        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(record)}
-                            className="p-1 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60 transition-colors cursor-pointer"
-                            title={language === 'th' ? 'แก้ไขข้อมูล' : 'Edit'}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDelete(record)}
-                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                            title={language === 'th' ? 'ลบรายการ' : 'Delete'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
                       </div>
                     </div>
 
@@ -1924,8 +1855,6 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         isAuthenticated={isAuthenticated}
         onClose={handleCloseDetailModal}
         onQuickReceive={handleQuickReceive}
-        onEdit={handleOpenEdit}
-        onDelete={handleOpenDelete}
       />
 
       {/* Edit Record Modal */}
