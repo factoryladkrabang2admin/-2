@@ -1094,6 +1094,32 @@ export async function syncInventoryFromGoogleSheet(): Promise<{
   };
 }
 
+function parseThaiDateToTimestamp(str?: string | number): number {
+  if (!str) return 0;
+  if (typeof str === 'number') return str;
+  try {
+    const parts = String(str).trim().split(/[\s,]+/);
+    const dParts = parts[0].split(/[\/\-.]/);
+    if (dParts.length === 3) {
+      let d = parseInt(dParts[0], 10);
+      let m = parseInt(dParts[1], 10);
+      let y = parseInt(dParts[2], 10);
+      if (dParts[0].length === 4) {
+        y = parseInt(dParts[0], 10);
+        d = parseInt(dParts[2], 10);
+      }
+      if (y > 2400) y -= 543;
+      if (y < 100) y += 2000;
+      const tParts = (parts[1] || '00:00:00').split(':');
+      const hh = parseInt(tParts[0] || '0', 10);
+      const mm = parseInt(tParts[1] || '0', 10);
+      const ss = parseInt(tParts[2] || '0', 10);
+      return new Date(y, m - 1, d, hh, mm, ss).getTime();
+    }
+  } catch {}
+  return 0;
+}
+
 /**
  * Parse CSV text from the 7-row matrix Google Sheet format
  */
@@ -1132,9 +1158,9 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
     for (const tx of localTxs) {
       const pName = (tx.productName || '').trim();
       if (!pName) continue;
-      const txTime = new Date(tx.timestamp || '').getTime();
+      const txTime = parseThaiDateToTimestamp(tx.createdAt || tx.timestamp);
       // Only include transactions made at or after the reset timestamp
-      if (isNaN(txTime) || txTime >= resetState.resetTime) {
+      if (isNaN(txTime) || txTime === 0 || txTime >= resetState.resetTime) {
         if (tx.type === 'sale') {
           postResetSalesMap.set(pName, (postResetSalesMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
         } else if (tx.type === 'restock') {
@@ -1190,8 +1216,9 @@ export function parseInventorySheetCsv(csv: string): InventoryProduct[] {
       // If the sheet itself has live numbers, or post-reset local transactions
       const postSold = postResetSalesMap.get(itemName) || 0;
       const postRestock = postResetRestockMap.get(itemName) || 0;
-      effectiveSold = Math.max(sheetSold, postSold);
-      effectiveRestock = Math.max(sheetRestock, postRestock);
+      const localSold = baseItem.soldCount || 0;
+      effectiveSold = Math.max(sheetSold, postSold, localSold);
+      effectiveRestock = Math.max(sheetRestock, postRestock, baseItem.stockIn || 0);
       effectiveDate = (effectiveSold > 0 || effectiveRestock > 0)
         ? (rowDate[col]?.trim() || baseItem.lastUpdatedDate || resetState.resetDate)
         : resetState.resetDate;

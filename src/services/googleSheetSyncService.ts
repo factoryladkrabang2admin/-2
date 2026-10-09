@@ -5129,23 +5129,41 @@ export function setParcelWebhookUrl(url: string): void {
 
 export function deduplicateParcelRecords(records: ParcelDeliveryRecord[]): ParcelDeliveryRecord[] {
   if (!records || !Array.isArray(records)) return [];
+  const seenKeys = new Set<string>();
   const seenIds = new Set<string>();
   const unique: ParcelDeliveryRecord[] = [];
 
+  const normStr = (s?: string | null) => (s || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+
   for (const item of records) {
     if (!item) continue;
-    // Clone shallowly to avoid mutating originals
     const rec = { ...item };
-    
-    // Ensure id is present and unique
-    if (!rec.id || seenIds.has(rec.id)) {
-      rec.id = `parcel-${rec.seq || Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    if (rec.id && seenIds.has(rec.id)) {
+      continue;
     }
 
-    if (!seenIds.has(rec.id)) {
-      seenIds.add(rec.id);
-      unique.push(rec);
+    const normCode = normStr(rec.trackingCode);
+    const normType = (rec.actionType || '').trim();
+    const normTitle = normStr(rec.itemTitle);
+    const normSender = normStr(rec.senderName);
+    const normRecipient = normStr(rec.recipientName);
+    const dateKey = (rec.dateStr || (rec.timestamp ? rec.timestamp.split(/[\s,]+/)[0] : '')).trim();
+
+    let dedupKey = '';
+    if (normCode) {
+      dedupKey = `code:${normCode}:${normType}`;
+    } else {
+      dedupKey = `content:${normType}:${normTitle}:${normSender}:${normRecipient}:${dateKey}`;
     }
+
+    if (seenKeys.has(dedupKey)) {
+      continue;
+    }
+
+    seenKeys.add(dedupKey);
+    if (rec.id) seenIds.add(rec.id);
+    unique.push(rec);
   }
   return unique;
 }
@@ -5178,7 +5196,87 @@ export function mergeParcelRecords(
   localRecords?: ParcelDeliveryRecord[]
 ): ParcelDeliveryRecord[] {
   const locals = localRecords || getLocalParcelRecords();
-  const combined = [...(Array.isArray(sheetRecords) ? sheetRecords : []), ...locals];
+  const sheets = Array.isArray(sheetRecords) ? sheetRecords : [];
+
+  if (sheets.length === 0) {
+    return deduplicateParcelRecords(locals);
+  }
+  if (!locals || locals.length === 0) {
+    return deduplicateParcelRecords(sheets);
+  }
+
+  const normStr = (s?: string | null) => (s || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+
+  const parseTs = (ts?: string) => {
+    if (!ts) return 0;
+    try {
+      const parts = ts.split(/[\s,]+/);
+      const dSub = (parts[0] || '').split(/[\/\-.]/);
+      if (dSub.length === 3) {
+        let d = parseInt(dSub[0], 10);
+        let m = parseInt(dSub[1], 10);
+        let y = parseInt(dSub[2], 10);
+        if (dSub[0].length === 4) {
+          y = parseInt(dSub[0], 10);
+          d = parseInt(dSub[2], 10);
+        }
+        if (y < 100) y += 2000;
+        if (y > 2400) y -= 543;
+        const tSub = (parts[1] || '00:00:00').split(':');
+        const hh = parseInt(tSub[0] || '0', 10);
+        const mm = parseInt(tSub[1] || '0', 10);
+        const ss = parseInt(tSub[2] || '0', 10);
+        return new Date(y, m - 1, d, hh, mm, ss).getTime();
+      }
+    } catch {}
+    return 0;
+  };
+
+  const unsyncedLocals: ParcelDeliveryRecord[] = [];
+  const remainingLocalsToStore: ParcelDeliveryRecord[] = [];
+
+  for (const loc of locals) {
+    const locCode = normStr(loc.trackingCode);
+    const locType = (loc.actionType || '').trim();
+    const locTitle = normStr(loc.itemTitle);
+    const locSender = normStr(loc.senderName);
+    const locRecipient = normStr(loc.recipientName);
+    const locDate = (loc.dateStr || (loc.timestamp ? loc.timestamp.split(/[\s,]+/)[0] : '')).trim();
+
+    const alreadyInSheet = sheets.some((sh) => {
+      const shCode = normStr(sh.trackingCode);
+      const shType = (sh.actionType || '').trim();
+      if (locCode && shCode) {
+        return locCode === shCode && locType === shType;
+      }
+      const shTitle = normStr(sh.itemTitle);
+      const shSender = normStr(sh.senderName);
+      const shRecipient = normStr(sh.recipientName);
+      const shDate = (sh.dateStr || (sh.timestamp ? sh.timestamp.split(/[\s,]+/)[0] : '')).trim();
+
+      const sameContent = locType === shType && locTitle === shTitle && locSender === shSender && locRecipient === shRecipient;
+      if (!sameContent) return false;
+
+      if (locDate === shDate) return true;
+      const tLoc = parseTs(loc.timestamp);
+      const tSh = parseTs(sh.timestamp);
+      if (tLoc > 0 && tSh > 0 && Math.abs(tLoc - tSh) < 180000) return true;
+      return false;
+    });
+
+    if (!alreadyInSheet) {
+      unsyncedLocals.push(loc);
+      remainingLocalsToStore.push(loc);
+    }
+  }
+
+  if (remainingLocalsToStore.length !== locals.length) {
+    try {
+      localStorage.setItem(PARCEL_SUBMISSIONS_STORAGE_KEY, JSON.stringify(remainingLocalsToStore));
+    } catch {}
+  }
+
+  const combined = [...sheets, ...unsyncedLocals];
   return deduplicateParcelRecords(combined);
 }
 
@@ -5370,7 +5468,7 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
     return {
       success: true,
       records: consolidated,
-      rawRecords: merged.length > 0 ? merged : parsedRecords,
+      rawRecords: deduplicateParcelRecords(merged.length > 0 ? merged : parsedRecords),
       rawRowsCount: parsedRecords.length,
       lastSyncedAt: new Date(),
     };

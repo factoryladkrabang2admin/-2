@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "id": "tx-sheet-item-5",
+    "timestamp": "08/10/2026, 08:30:00",
+    "dateStr": "08/10/2026",
+    "type": "sale",
+    "productId": "item-5",
+    "productName": "ผ้าปิดจมูกใยสังเคราะห์",
+    "quantity": -100,
+    "unitPrice": 1,
+    "totalAmount": 100,
+    "customerName": "ฝ่ายผลิต",
+    "department": "ฝ่ายผลิต",
+    "operatorName": "เจ้าหน้าที่คลัง",
+    "note": "เบิกจ่ายประจำวัน (ตามยอดชีต)",
+    "googleSheetSynced": true,
+    "createdAt": 1791448200000
+  }
+]

@@ -278,7 +278,30 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
           }
         }
       } else {
-        receiveRecordsWithoutCode.push(rec);
+        const recTitle = (rec.itemTitle || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const recSender = (rec.senderName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const recRecip = (rec.recipientName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const recDate = (rec.dateStr || (rec.timestamp ? rec.timestamp.split(/[\s,]+/)[0] : '')).trim();
+
+        const isDuplicate = receiveRecordsWithoutCode.some((existing) => {
+          const exTitle = (existing.itemTitle || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const exSender = (existing.senderName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const exRecip = (existing.recipientName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const exDate = (existing.dateStr || (existing.timestamp ? existing.timestamp.split(/[\s,]+/)[0] : '')).trim();
+          if (recTitle === exTitle && recSender === exSender && recRecip === exRecip && recDate === exDate) {
+            return true;
+          }
+          const tNew = parseParcelTimestamp(rec.timestamp);
+          const tEx = parseParcelTimestamp(existing.timestamp);
+          if (recTitle === exTitle && recSender === exSender && recRecip === exRecip && tNew > 0 && tEx > 0 && Math.abs(tNew - tEx) < 180000) {
+            return true;
+          }
+          return false;
+        });
+
+        if (!isDuplicate) {
+          receiveRecordsWithoutCode.push(rec);
+        }
       }
     } else {
       sendRecords.push(rec);
@@ -292,16 +315,38 @@ export function consolidateParcelRecords(records: ParcelDeliveryRecord[]): Parce
   } catch {}
 
   for (const localRec of localSubs) {
-    if (!localRec || !localRec.trackingCode) continue;
+    if (!localRec) continue;
     const norm = normalizeParcelTrackingCode(localRec.trackingCode);
-    if (!norm) continue;
 
     if (localRec.actionType === 'รับ' || localRec.status === 'รับแล้ว') {
-      if (!receivedByCode.has(norm)) {
-        receivedByCode.set(norm, { ...localRec, actionType: 'รับ', status: 'รับแล้ว' });
+      if (norm) {
+        if (!receivedByCode.has(norm)) {
+          receivedByCode.set(norm, { ...localRec, actionType: 'รับ', status: 'รับแล้ว' });
+        }
+      } else {
+        const locTitle = (localRec.itemTitle || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const locSender = (localRec.senderName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const locRecip = (localRec.recipientName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        const locDate = (localRec.dateStr || (localRec.timestamp ? localRec.timestamp.split(/[\s,]+/)[0] : '')).trim();
+
+        const existsInRecv = receiveRecordsWithoutCode.some((r) => {
+          const rTitle = (r.itemTitle || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const rSender = (r.senderName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const rRecip = (r.recipientName || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+          const rDate = (r.dateStr || (r.timestamp ? r.timestamp.split(/[\s,]+/)[0] : '')).trim();
+          return locTitle === rTitle && locSender === rSender && locRecip === rRecip && locDate === rDate;
+        });
+
+        if (!existsInRecv) {
+          receiveRecordsWithoutCode.push({ ...localRec, actionType: 'รับ', status: 'รับแล้ว' });
+        }
       }
     } else if (localRec.actionType === 'ส่ง') {
-      if (!receivedByCode.has(norm) && !sendRecords.some(r => normalizeParcelTrackingCode(r.trackingCode) === norm)) {
+      if (norm) {
+        if (!receivedByCode.has(norm) && !sendRecords.some(r => normalizeParcelTrackingCode(r.trackingCode) === norm)) {
+          sendRecords.push({ ...localRec, actionType: 'ส่ง', status: 'รอรับ' });
+        }
+      } else {
         sendRecords.push({ ...localRec, actionType: 'ส่ง', status: 'รอรับ' });
       }
     }

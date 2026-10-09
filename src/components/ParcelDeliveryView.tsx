@@ -398,7 +398,7 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
   // KPI Metrics Calculation: Exactly and truthfully from Google Sheet raw data for the 3 specified boxes
   // (เฉพาะกล่องรายการทั้งหมด, รายการส่ง, รายการรับ ให้แสดงข้อมูลจาก Google Sheet โดยแสดงข้อมูลตามจริง แต่รายละเอียดที่แสดงให้ตามเดิม)
   const metrics = useMemo(() => {
-    const rawList = rawRecords.length > 0 ? rawRecords : records;
+    const rawList = deduplicateParcelRecords(rawRecords.length > 0 ? rawRecords : records);
 
     const sheetSentRecords = rawList.filter(r => r.actionType === 'ส่ง');
     const sheetReceivedRecords = rawList.filter(r => r.actionType === 'รับ');
@@ -1835,8 +1835,8 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
         initialRecordToReceive={recordToReceive}
         onRecordCreated={(newRecord) => {
           if (newRecord) {
-            setRecords((prev) => consolidateParcelRecords([newRecord, ...prev]));
-            setRawRecords((prev) => [newRecord, ...prev]);
+            setRecords((prev) => consolidateParcelRecords(deduplicateParcelRecords([newRecord, ...prev])));
+            setRawRecords((prev) => deduplicateParcelRecords([newRecord, ...prev]));
           }
           // Immediately reload from Google Sheet, and reload again after short delay for Sheet synchronization
           loadData(true, false);

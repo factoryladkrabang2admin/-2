@@ -151,20 +151,51 @@ function broadcastEquipmentInventoryUpdate(payload: any) {
   }
 }
 
+const DEFAULT_SERVER_INVENTORY_TRANSACTIONS = [
+  {
+    id: "tx-sheet-item-5",
+    timestamp: "08/10/2026, 08:30:00",
+    dateStr: "08/10/2026",
+    type: "sale",
+    productId: "item-5",
+    productName: "ผ้าปิดจมูกใยสังเคราะห์",
+    quantity: -100,
+    unitPrice: 1,
+    totalAmount: 100,
+    customerName: "ฝ่ายผลิต",
+    department: "ฝ่ายผลิต",
+    operatorName: "เจ้าหน้าที่คลัง",
+    note: "เบิกจ่ายประจำวัน (ตามยอดชีต)",
+    googleSheetSynced: true,
+    createdAt: 1791448200000,
+  },
+];
+
 let inMemoryInventoryTransactions: any[] = [];
 const forwardedInventoryTxIds = new Set<string>();
 try {
   if (fs.existsSync(EQUIPMENT_INVENTORY_DATA_FILE)) {
     const raw = fs.readFileSync(EQUIPMENT_INVENTORY_DATA_FILE, "utf-8");
-    inMemoryInventoryTransactions = JSON.parse(raw);
-    for (const item of inMemoryInventoryTransactions) {
-      if (item && item.id) {
-        forwardedInventoryTxIds.add(item.id);
-      }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      inMemoryInventoryTransactions = parsed;
     }
   }
 } catch (e) {
   console.warn("Could not load equipment inventory submissions from file:", e);
+}
+
+if (!inMemoryInventoryTransactions || inMemoryInventoryTransactions.length === 0) {
+  inMemoryInventoryTransactions = [...DEFAULT_SERVER_INVENTORY_TRANSACTIONS];
+  try {
+    fs.writeFileSync(EQUIPMENT_INVENTORY_DATA_FILE, JSON.stringify(inMemoryInventoryTransactions, null, 2), "utf-8");
+  } catch {}
+}
+
+for (const item of inMemoryInventoryTransactions) {
+  if (item && item.id) {
+    forwardedInventoryTxIds.add(item.id);
+  }
 }
 const GOWN_DATA_FILE = path.join(DATA_DIR, "gown_submissions.json");
 
@@ -1291,6 +1322,16 @@ async function startServer() {
                 salesMap.set(pName, (salesMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
               } else if (tx.type === "restock") {
                 restockMap.set(pName, (restockMap.get(pName) || 0) + Math.abs(tx.quantity || 1));
+              }
+            }
+
+            for (const prod of inMemoryInventoryProducts) {
+              const pName = (prod.name || "").trim();
+              if (pName && prod.soldCount > 0) {
+                salesMap.set(pName, Math.max(salesMap.get(pName) || 0, prod.soldCount));
+              }
+              if (pName && prod.stockIn > 0) {
+                restockMap.set(pName, Math.max(restockMap.get(pName) || 0, prod.stockIn));
               }
             }
 
