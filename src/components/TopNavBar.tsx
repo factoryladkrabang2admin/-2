@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { CURRENT_USER_AVATAR } from '../data/mockData';
 import { 
   Search, 
-  Bell, 
   Menu, 
   ChevronDown, 
   Check, 
@@ -480,21 +479,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           ) : (
             <span className="text-xs font-medium hidden sm:inline text-slate-700 dark:text-slate-300">
               {language === 'th' ? 'สภาพอากาศ' : 'Weather'}
-            </span>
-          )}
-        </button>
-
-        {/* Notifications Button */}
-        <button
-          onClick={onToggleNotifications}
-          className="relative p-2 text-[#43474e] hover:text-[#002045] hover:bg-[#f3f3f4] rounded-full transition-colors cursor-pointer"
-          aria-label={t.notifications}
-          title={t.notifications}
-        >
-          <Bell className="w-5 h-5" />
-          {unreadNotificationsCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-[#ba1a1a] text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white shadow-xs">
-              {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
             </span>
           )}
         </button>

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Bell, 
   Settings, 
   User, 
   LogOut, 
@@ -294,13 +293,6 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-2xs border border-slate-200 flex items-center justify-center overflow-hidden pointer-events-none scale-90">
                 <FlagIcon code={currentLang.code} size="sm" />
               </div>
-
-              {/* Notification Badge (Top-Right) */}
-              {unreadNotificationsCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-[#ba1a1a] text-white text-[8px] font-black rounded-full flex items-center justify-center ring-1 ring-white shadow-xs pointer-events-none">
-                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-                </span>
-              )}
             </div>
           )}
         </div>
@@ -458,63 +450,31 @@ export const FloatingMobileMenu: React.FC<FloatingMobileMenuProps> = ({
                   )}
                 </div>
 
-                {/* 2. Actions: Notifications & Settings (Settings restricted to Admin / Supervisor) */}
-                <div className={canAccessServices ? "grid grid-cols-2 gap-2" : "space-y-2"}>
-                  {/* Notifications Action */}
+                {/* 2. Actions: Settings (Restricted to Admin / Supervisor) */}
+                {canAccessServices && (
                   <button
                     type="button"
                     onClick={() => {
                       setIsOpen(false);
-                      onToggleNotifications();
+                      onOpenSettings();
                     }}
                     className="w-full p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer shadow-2xs text-left"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-700 shrink-0">
-                        <Bell className="w-4 h-4" />
-                        {unreadNotificationsCount > 0 && (
-                          <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 bg-[#ba1a1a] text-white text-[9px] font-black rounded-full flex items-center justify-center">
-                            {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-                          </span>
-                        )}
+                      <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/80 flex items-center justify-center text-[#0061a5] shrink-0">
+                        <Settings className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-800 truncate">
-                          {language === 'th' ? 'แจ้งเตือน' : 'Notifications'}
+                          {language === 'th' ? 'ตั้งค่าระบบ' : 'Settings'}
                         </p>
-                        <p className="text-[10px] text-slate-500">
-                          {unreadNotificationsCount > 0 ? `${unreadNotificationsCount} ${language === 'th' ? 'ใหม่' : 'new'}` : (language === 'th' ? 'ไม่มีใหม่' : 'All read')}
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {language === 'th' ? 'จัดการระบบ' : 'Workspace'}
                         </p>
                       </div>
                     </div>
                   </button>
-
-                  {/* Settings Action (Restricted to Admin / Supervisor) */}
-                  {canAccessServices && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsOpen(false);
-                        onOpenSettings();
-                      }}
-                      className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer shadow-2xs text-left"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/80 flex items-center justify-center text-[#0061a5] shrink-0">
-                          <Settings className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">
-                            {language === 'th' ? 'ตั้งค่าระบบ' : 'Settings'}
-                          </p>
-                          <p className="text-[10px] text-slate-500 truncate">
-                            {language === 'th' ? 'จัดการระบบ' : 'Workspace'}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                </div>
+                )}
 
                 {/* 3. Language Selector Toggle */}
                 <button
