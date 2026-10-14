@@ -159,16 +159,17 @@ export function generateParcelTrackingCode(
   let maxSeq = 0;
 
   const inspectRecord = (rec: { trackingCode?: string; actionType?: string }) => {
-    if (!rec.trackingCode) return;
-    // Only 'ส่ง' (Send) records establish the consecutive outgoing tracking code sequence
-    if (rec.actionType && rec.actionType !== 'ส่ง') return;
+    if (!rec || !rec.trackingCode) return;
 
     const normalized = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
     if (normalized.startsWith(targetTag)) {
-      const seqStr = normalized.slice(targetTag.length);
-      const parsed = parseInt(seqStr, 10);
-      if (!isNaN(parsed) && parsed > maxSeq) {
-        maxSeq = parsed;
+      const rest = normalized.slice(targetTag.length);
+      const match = rest.match(/^(\d+)/);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > maxSeq) {
+          maxSeq = parsed;
+        }
       }
     }
   };
@@ -185,6 +186,18 @@ export function generateParcelTrackingCode(
     const localRecords = getLocalParcelRecords();
     for (const rec of localRecords) {
       inspectRecord(rec);
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Check persistent cached max sequence from server across devices
+  try {
+    if (typeof window !== 'undefined') {
+      const cachedMax = parseInt(localStorage.getItem(`proworkflow_last_known_max_seq_${dateTag}`) || '0', 10);
+      if (!isNaN(cachedMax) && cachedMax > maxSeq) {
+        maxSeq = cachedMax;
+      }
     }
   } catch {
     // ignore

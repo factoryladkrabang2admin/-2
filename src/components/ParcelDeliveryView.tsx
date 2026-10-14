@@ -211,12 +211,52 @@ export const ParcelDeliveryView: React.FC<ParcelDeliveryViewProps> = ({
     } catch {}
     loadData();
 
-    // Periodic auto-refresh every 3 seconds for real-time tracking
+    // 1. Server-Sent Events (SSE) for instantaneous sub-second sync across all devices
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/parcel-sse');
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && (data.type === 'PARCEL_SUBMITTED' || data.type === 'PARCEL_UPDATED' || data.type === 'PARCEL_DELETED')) {
+            loadData(false, true);
+            setLocalReceivedVer((v) => v + 1);
+            window.dispatchEvent(new CustomEvent('parcel_submitted_realtime', { detail: data }));
+          }
+        } catch {}
+      };
+      eventSource.onerror = () => {
+        // Silently handles reconnects
+      };
+    } catch (err) {
+      console.warn('SSE connection warning:', err);
+    }
+
+    // 2. Periodic background refresh fallback every 5 seconds
     const interval = setInterval(() => {
       loadData(false, true);
-    }, 3000);
+    }, 5000);
 
-    return () => clearInterval(interval);
+    // 3. Tab visibility / device wake sync
+    const handleFocus = () => {
+      loadData(false, true);
+    };
+    window.addEventListener('focus', handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData(false, true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      if (eventSource) {
+        eventSource.close();
+      }
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [loadData]);
 
   // Function to search and match a parcel by tracking code or ID strictly from Google Sheet records

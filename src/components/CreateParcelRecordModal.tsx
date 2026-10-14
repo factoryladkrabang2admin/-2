@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   X,
   Package,
@@ -30,12 +30,14 @@ import {
   checkParcelFormStatus,
   ParcelFormStatusResult,
   ParcelSubmitResult,
+  fetchServerNextParcelTrackingCode,
 } from '../services/googleSheetSyncService';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   generateParcelTrackingCode,
   markTrackingCodeAsReceivedLocally,
   checkParcelAlreadyReceived,
+  extractParcelDateTag,
 } from '../utils/parcelTrackingUtils';
 import { SuggestiveInput } from './SuggestiveInput';
 import {
@@ -128,10 +130,69 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
   const [searchTrackingCode, setSearchTrackingCode] = useState<string>('');
   const [matchedParcel, setMatchedParcel] = useState<ParcelDeliveryRecord | null>(null);
 
-  // Projected tracking code for live preview when sending
-  const projectedTrackingCode = actionType === 'ส่ง' 
-    ? generateParcelTrackingCode(timestamp || new Date(), existingRecords)
-    : '';
+  // Server-authoritative tracking code state (synchronized across all devices in real time)
+  const [serverLiveTrackingCode, setServerLiveTrackingCode] = useState<string>('');
+  const [isLoadingTrackingCode, setIsLoadingTrackingCode] = useState<boolean>(false);
+
+  // Sync latest next tracking code from server across all devices
+  const refreshLiveTrackingCode = useCallback(async (customTs?: string) => {
+    setIsLoadingTrackingCode(true);
+    try {
+      const code = await fetchServerNextParcelTrackingCode(customTs || timestamp || new Date(), existingRecords);
+      if (code) {
+        setServerLiveTrackingCode(code);
+      }
+    } catch {
+      // fallback
+    } finally {
+      setIsLoadingTrackingCode(false);
+    }
+  }, [timestamp, existingRecords]);
+
+  // Projected tracking code for live preview when sending (picks the highest authoritative sequence)
+  const projectedTrackingCode = useMemo(() => {
+    if (actionType !== 'ส่ง') return '';
+    const local = generateParcelTrackingCode(timestamp || new Date(), existingRecords);
+    if (!serverLiveTrackingCode) return local;
+
+    const { dateTag } = extractParcelDateTag(timestamp || new Date());
+    const targetTag = `LKB2${dateTag}`.toUpperCase();
+    const cleanLocal = local.replace(/[\s\-_]/g, '').toUpperCase();
+    const cleanServer = serverLiveTrackingCode.replace(/[\s\-_]/g, '').toUpperCase();
+    let lSeq = 0;
+    let sSeq = 0;
+    if (cleanLocal.startsWith(targetTag)) {
+      lSeq = parseInt(cleanLocal.slice(targetTag.length), 10) || 0;
+    }
+    if (cleanServer.startsWith(targetTag)) {
+      sSeq = parseInt(cleanServer.slice(targetTag.length), 10) || 0;
+    }
+    return sSeq >= lSeq ? serverLiveTrackingCode : local;
+  }, [actionType, timestamp, existingRecords, serverLiveTrackingCode]);
+
+  useEffect(() => {
+    if (isOpen && actionType === 'ส่ง') {
+      refreshLiveTrackingCode();
+      const interval = setInterval(() => {
+        refreshLiveTrackingCode();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, actionType, timestamp, refreshLiveTrackingCode]);
+
+  useEffect(() => {
+    const handleSync = () => {
+      if (isOpen && actionType === 'ส่ง') {
+        refreshLiveTrackingCode();
+      }
+    };
+    window.addEventListener('parcel_received_updated', handleSync);
+    window.addEventListener('parcel_submitted_realtime', handleSync);
+    return () => {
+      window.removeEventListener('parcel_received_updated', handleSync);
+      window.removeEventListener('parcel_submitted_realtime', handleSync);
+    };
+  }, [isOpen, actionType, refreshLiveTrackingCode]);
 
   // Effective tracking code preview when receiving ('รับ')
   // เงื่อนไข: ให้เฉพาะหมายเลขรหัสติดตามที่ตรงกันกับรหัสส่งเท่านั้น (หากไม่มีจากส่งหรือไม่มีรหัสติดตาม ก็สามารถรับได้เช่นกัน)
@@ -372,7 +433,7 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
 
     const currentTs = timestamp || formatCurrentThaiParcelTimestamp(new Date());
     const effectiveTrackingCode = actionType === 'ส่ง'
-      ? generateParcelTrackingCode(currentTs, existingRecords)
+      ? (serverLiveTrackingCode || generateParcelTrackingCode(currentTs, existingRecords))
       : (matchedParcel?.trackingCode || undefined);
 
     // ตรวจสอบการทำรายการซ้ำ (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้วไม่สามารถทำรายการซ้ำได้)
@@ -818,14 +879,37 @@ export const CreateParcelRecordModal: React.FC<CreateParcelRecordModalProps> = (
               </div>
 
               {/* Live Tracking Code Preview for Send */}
-              {actionType === 'ส่ง' && projectedTrackingCode && (
-                <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
-                    <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
-                      {language === 'th' ? 'รหัสติดตามสถานะ:' : 'Tracking Code:'} <span className="font-mono font-bold text-pink-700 dark:text-pink-300 text-xs">{projectedTrackingCode}</span>
+              {actionType === 'ส่ง' && (
+                <div className="mt-3 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-rose-50/80 via-pink-50/60 to-slate-50 dark:from-rose-950/30 dark:via-pink-950/20 dark:to-slate-800/60 border border-rose-200/80 dark:border-rose-900/60 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 shadow-2xs">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                          {language === 'th' ? 'รหัสติดตามสถานะ (รันต่ออัตโนมัติ):' : 'Next Tracking Code:'}
+                        </span>
+                        <span className="font-mono font-black text-rose-700 dark:text-rose-300 text-xs tracking-wider bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60 shadow-2xs">
+                          {projectedTrackingCode || 'กำลังซิงค์เลข...'}
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {language === 'th' ? 'อัพเดทตรงกันทุกอุปกรณ์' : 'All Devices Synced'}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => refreshLiveTrackingCode()}
+                    className={`p-1.5 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-white dark:hover:bg-slate-700 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all cursor-pointer shrink-0 ${
+                      isLoadingTrackingCode ? 'animate-spin text-rose-600' : ''
+                    }`}
+                    title={language === 'th' ? 'รีเฟรชเลขรันล่าสุดจากเซิร์ฟเวอร์' : 'Refresh sequence from server'}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
 

@@ -21,7 +21,8 @@ import { INITIAL_RAGS_GLOVES_DATA } from '../data/mockRagsGlovesData';
 import { 
   assignTrackingCodesToParcels, 
   generateParcelTrackingCode,
-  consolidateParcelRecords
+  consolidateParcelRecords,
+  extractParcelDateTag
 } from '../utils/parcelTrackingUtils';
 
 export const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1V2QAI3dRg8n5DXUGGBOGjpgsriSVUCZtySmLUQcqfpI/edit?gid=1327805432#gid=1327805432';
@@ -5441,6 +5442,87 @@ export function saveLocalParcelRecord(record: ParcelDeliveryRecord): void {
   }
 }
 
+/**
+ * Fetches the next authoritative parcel tracking code from the server,
+ * ensuring all devices stay completely in sync with consecutive running numbers.
+ */
+export async function fetchServerNextParcelTrackingCode(
+  dateOrTimestamp?: string | Date,
+  existingRecords: ParcelDeliveryRecord[] = []
+): Promise<string> {
+  const { dateTag: localTag } = extractParcelDateTag(dateOrTimestamp);
+  const tag = `LKB2${localTag}`.toUpperCase();
+  let clientMaxSeq = 0;
+
+  const inspectRecord = (rec?: { trackingCode?: string }) => {
+    if (!rec || !rec.trackingCode) return;
+    const clean = rec.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
+    if (clean.startsWith(tag)) {
+      const rest = clean.slice(tag.length);
+      const match = rest.match(/^(\d+)/);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > clientMaxSeq) {
+          clientMaxSeq = parsed;
+        }
+      }
+    }
+  };
+
+  if (existingRecords && existingRecords.length > 0) {
+    existingRecords.forEach(inspectRecord);
+  }
+  try {
+    getLocalParcelRecords().forEach(inspectRecord);
+  } catch {}
+
+  try {
+    if (typeof window !== 'undefined') {
+      const cachedMax = parseInt(localStorage.getItem(`proworkflow_last_known_max_seq_${localTag}`) || '0', 10);
+      if (!isNaN(cachedMax) && cachedMax > clientMaxSeq) {
+        clientMaxSeq = cachedMax;
+      }
+    }
+  } catch {}
+
+  const localCandidate = `LKB2 - ${localTag}${String(clientMaxSeq + 1).padStart(2, '0')}`;
+
+  try {
+    let dateParam = '';
+    if (dateOrTimestamp instanceof Date) {
+      dateParam = dateOrTimestamp.toISOString();
+    } else if (typeof dateOrTimestamp === 'string') {
+      dateParam = dateOrTimestamp;
+    }
+    const res = await fetch(`/api/parcel-next-tracking-code?timestamp=${encodeURIComponent(dateParam)}&clientMaxSeq=${clientMaxSeq}&_t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.trackingCode) {
+        const serverCode = String(data.trackingCode);
+        const normServer = serverCode.replace(/[\s\-_]/g, '').toUpperCase();
+        let sSeq = 0;
+        if (normServer.startsWith(tag)) {
+          sSeq = parseInt(normServer.slice(tag.length), 10) || 0;
+        }
+        const effectiveMax = Math.max(clientMaxSeq, (data.currentMaxSeq || (sSeq - 1)), 0);
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`proworkflow_last_known_max_seq_${localTag}`, String(effectiveMax));
+          }
+        } catch {}
+
+        const finalSeq = Math.max(sSeq, clientMaxSeq + 1);
+        return `LKB2 - ${localTag}${String(finalSeq).padStart(2, '0')}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[Parcel Tracking] Error fetching server tracking code, using local candidate:', err);
+  }
+  return localCandidate;
+}
+
 export function mergeParcelRecords(
   sheetRecords: ParcelDeliveryRecord[],
   localRecords?: ParcelDeliveryRecord[]
@@ -5780,6 +5862,61 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
         return r;
       });
 
+    // Load active server submissions across all devices
+    let serverSubmissions: ParcelDeliveryRecord[] = [];
+    try {
+      const subRes = await fetch(`/api/parcel-submissions?_t=${now}`);
+      if (subRes.ok) {
+        const subData = await subRes.json();
+        if (Array.isArray(subData.submissions)) {
+          serverSubmissions = subData.submissions
+            .map((s: any) => ({
+              id: s.id || `sub-${s.createdAt || Date.now()}`,
+              seq: s.createdAt || Date.now(),
+              timestamp: s.timestamp || '',
+              dateStr: s.timestamp ? s.timestamp.split(/[\s,]+/)[0] : '',
+              timeStr: s.timestamp && s.timestamp.includes(',') ? s.timestamp.split(/,\s*/)[1] : '',
+              actionType: (s.actionType || 'รับ') as 'รับ' | 'ส่ง',
+              senderName: s.senderName || '',
+              senderDepartment: s.senderDepartment || '',
+              recipientName: s.recipientName || '',
+              recipientDepartment: s.recipientDepartment || '',
+              itemTitle: s.itemTitle || '',
+              operatorName: s.operatorName || 'เจม',
+              operatorDepartment: s.operatorDepartment || 'ธุรการลาดกระบัง 2',
+              trackingCode: s.trackingCode || '',
+              status: s.actionType === 'รับ' ? 'รับแล้ว' : 'รอรับ',
+              googleSheetSynced: true,
+              createdAt: s.createdAt || Date.now(),
+            }))
+            .filter((r: ParcelDeliveryRecord) => {
+              const idKey = r.id ? r.id.toLowerCase() : '';
+              const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+              const titleKey = normStr(r.itemTitle);
+              const typeKey = (r.actionType || '').trim();
+              const dateKey = (r.dateStr || (r.timestamp ? r.timestamp.split(/[\s,]+/)[0] : '')).trim();
+              const sigKey = `sig:${typeKey}:${titleKey}:${dateKey}`.toLowerCase();
+
+              if (idKey && allDeletedSet.has(idKey)) return false;
+              if (codeKey && allDeletedSet.has(codeKey)) return false;
+              if (sigKey && allDeletedSet.has(sigKey)) return false;
+              return true;
+            })
+            .map((r: ParcelDeliveryRecord) => {
+              const idKey = r.id ? r.id : '';
+              const codeKey = r.trackingCode ? normStr(r.trackingCode) : '';
+              const override = allOverrides[idKey] || (codeKey ? allOverrides[codeKey] : undefined);
+              if (override) {
+                return { ...r, ...override };
+              }
+              return r;
+            });
+        }
+      }
+    } catch (subErr) {
+      console.warn('Could not fetch server parcel submissions:', subErr);
+    }
+
     // Load and filter local submissions
     let localRecords = getLocalParcelRecords();
     localRecords = localRecords
@@ -5806,8 +5943,19 @@ export async function fetchGoogleSheetParcelRecords(): Promise<ParcelSyncResult>
         return r;
       });
 
-    const merged = mergeParcelRecords(parsedRecords, localRecords);
+    // Merge server submissions, sheet records, and local records
+    const mergedWithServer = mergeParcelRecords(parsedRecords, serverSubmissions);
+    const merged = mergeParcelRecords(mergedWithServer, localRecords);
     const consolidated = consolidateParcelRecords(merged);
+
+    // Keep local cache synchronized with all known submissions from any device
+    if (serverSubmissions.length > 0) {
+      try {
+        const currentLocals = getLocalParcelRecords();
+        const combinedLocals = mergeParcelRecords(serverSubmissions, currentLocals).slice(0, 300);
+        localStorage.setItem(PARCEL_SUBMISSIONS_STORAGE_KEY, JSON.stringify(combinedLocals));
+      } catch {}
+    }
 
     return {
       success: true,

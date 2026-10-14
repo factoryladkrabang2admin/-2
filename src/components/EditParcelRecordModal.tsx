@@ -24,6 +24,7 @@ import {
 import {
   formatCurrentThaiParcelTimestamp,
   updateParcelDeliveryRecord,
+  fetchServerNextParcelTrackingCode,
 } from '../services/googleSheetSyncService';
 import {
   getRememberedSenders,
@@ -136,9 +137,14 @@ export const EditParcelRecordModal: React.FC<EditParcelRecordModalProps> = ({
 
   if (!isOpen || !parcel) return null;
 
-  const handleGenerateTrackingCode = () => {
-    const newCode = generateParcelTrackingCode(timestamp || new Date(), existingRecords);
-    setTrackingCode(newCode);
+  const handleGenerateTrackingCode = async () => {
+    try {
+      const newCode = await fetchServerNextParcelTrackingCode(timestamp || new Date(), existingRecords);
+      setTrackingCode(newCode);
+    } catch {
+      const fallbackCode = generateParcelTrackingCode(timestamp || new Date(), existingRecords);
+      setTrackingCode(fallbackCode);
+    }
   };
 
   const handleResetTimestamp = () => {

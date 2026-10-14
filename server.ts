@@ -237,19 +237,46 @@ for (const item of inMemoryInventoryTransactions) {
 }
 const GOWN_DATA_FILE = path.join(DATA_DIR, "gown_submissions.json");
 
-// Helper to generate running tracking code identical to Laundry QR code
+// Helper to extract date tag (YYMMDD) supporting all calendar formats and Asia/Bangkok time
 function extractServerDateTag(input?: string): string {
+  if (input && /^\d{6}$/.test(input.trim())) {
+    return input.trim();
+  }
   const now = new Date();
-  let yy = String(now.getFullYear()).slice(-2);
-  let mm = String(now.getMonth() + 1).padStart(2, '0');
-  let dd = String(now.getDate()).padStart(2, '0');
+  let yy = '26';
+  let mm = '10';
+  let dd = '14';
+  try {
+    const bkk = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok' }).format(now).split('/');
+    if (bkk.length === 3) {
+      dd = bkk[0].padStart(2, '0');
+      mm = bkk[1].padStart(2, '0');
+      let y = parseInt(bkk[2], 10);
+      if (y > 2400) y -= 543;
+      yy = String(y).slice(-2);
+    }
+  } catch {
+    yy = String(now.getFullYear()).slice(-2);
+    mm = String(now.getMonth() + 1).padStart(2, '0');
+    dd = String(now.getDate()).padStart(2, '0');
+  }
+
   if (input) {
-    const clean = input.split(/[\s,]+/)[0];
+    const clean = input.split(/[\s,T]+/)[0].trim();
+    if (/^\d{6}$/.test(clean)) {
+      return clean;
+    }
     const parts = clean.split(/[-/.]/);
     if (parts.length === 3) {
       let y = parseInt(clean.includes('-') ? parts[0] : parts[2], 10);
       let m = parseInt(parts[1], 10);
       let d = parseInt(clean.includes('-') ? parts[2] : parts[0], 10);
+      if (clean.includes('/') && parts[2].length <= 2) {
+        // e.g. 14/10/26 -> d=14, m=10, y=26
+        d = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10);
+        y = parseInt(parts[2], 10);
+      }
       if (y > 2400) y -= 543;
       if (y < 100) y += 2000;
       yy = String(y).slice(-2);
@@ -258,23 +285,6 @@ function extractServerDateTag(input?: string): string {
     }
   }
   return `${yy}${mm}${dd}`;
-}
-
-function generateServerParcelTrackingCode(timestamp?: string): string {
-  const dateTag = extractServerDateTag(timestamp);
-  const targetTag = `LKB2${dateTag}`.toUpperCase();
-  let maxSeq = 0;
-  for (const s of inMemorySubmissions) {
-    if (!s.trackingCode || (s.actionType && s.actionType !== "ส่ง")) continue;
-    const norm = s.trackingCode.replace(/[\s\-_]/g, '').toUpperCase();
-    if (norm.startsWith(targetTag)) {
-      const seqStr = norm.slice(targetTag.length);
-      const parsed = parseInt(seqStr, 10);
-      if (!isNaN(parsed) && parsed > maxSeq) maxSeq = parsed;
-    }
-  }
-  const nextSeq = String(maxSeq + 1).padStart(2, '0');
-  return `LKB2 - ${dateTag}${nextSeq}`;
 }
 
 // Ensure data directory exists
@@ -308,7 +318,150 @@ function saveSubmission(record: ParcelSubmissionRecord) {
   try {
     fs.writeFileSync(PARCEL_DATA_FILE, JSON.stringify(inMemorySubmissions, null, 2), "utf-8");
   } catch (err) {
-    console.warn("Could not persist parcel submission to disk:", err);
+    console.warn("Could not save parcel submission to file:", err);
+  }
+}
+
+// Cached Google Sheet Tracking Codes for real-time multi-device synchronization
+let cachedSheetParcelTrackingCodes: string[] = [];
+let lastParcelSheetFetchTime = 0;
+let isFetchingParcelSheet = false;
+
+const PARCEL_SHEET_SYNC_URL = "https://docs.google.com/spreadsheets/d/1IvTSJ9R1HeRtB89cvp3_zP776pfpOsaqAzAES1Pv330/gviz/tq?tqx=out:csv&gid=1955620947";
+
+async function syncParcelSheetTrackingCodes(force: boolean = false): Promise<string[]> {
+  const now = Date.now();
+  if (!force && cachedSheetParcelTrackingCodes.length > 0 && now - lastParcelSheetFetchTime < 6000) {
+    return cachedSheetParcelTrackingCodes;
+  }
+  if (isFetchingParcelSheet) {
+    return cachedSheetParcelTrackingCodes;
+  }
+  isFetchingParcelSheet = true;
+  try {
+    const fetchUrl = `${PARCEL_SHEET_SYNC_URL}&_t=${now}`;
+    const response = await fetch(fetchUrl, {
+      headers: {
+        Accept: "text/csv, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
+    if (response.ok) {
+      const csvText = await response.text();
+      const foundCodes: string[] = [];
+      const regex = /LKB2\s*-\s*\d{8}/gi;
+      let match;
+      while ((match = regex.exec(csvText)) !== null) {
+        foundCodes.push(match[0].trim());
+      }
+      cachedSheetParcelTrackingCodes = foundCodes;
+      lastParcelSheetFetchTime = Date.now();
+      console.log(`[Parcel Tracking Sync] Synchronized ${foundCodes.length} tracking codes from Google Sheet`);
+    }
+  } catch (err) {
+    console.warn("[Parcel Tracking Sync] Failed to fetch Google Sheet CSV:", err);
+  } finally {
+    isFetchingParcelSheet = false;
+  }
+  return cachedSheetParcelTrackingCodes;
+}
+
+// Authoritative multi-device Parcel Tracking Number Generator
+function getAuthoritativeServerParcelTrackingCode(
+  rawDateOrTimestamp?: string,
+  clientCandidateSeq: number = 0
+): { dateTag: string; trackingCode: string; nextSeq: number; currentMaxSeq: number; prefix: string } {
+  const dateTag = extractServerDateTag(rawDateOrTimestamp);
+  const prefix = `LKB2 - ${dateTag}`;
+  const targetTag = `LKB2${dateTag}`.toUpperCase();
+
+  let maxSeq = Math.max(0, clientCandidateSeq);
+
+  const inspectCode = (code?: string) => {
+    if (!code || typeof code !== 'string') return;
+    const clean = code.replace(/[\s\-_]/g, '').toUpperCase();
+    if (clean.startsWith(targetTag)) {
+      const rest = clean.slice(targetTag.length);
+      const match = rest.match(/^(\d+)/);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (!isNaN(parsed) && parsed > maxSeq) {
+          maxSeq = parsed;
+        }
+      }
+    }
+  };
+
+  // 1. Inspect inMemorySubmissions (authoritative active submissions)
+  for (const s of inMemorySubmissions) {
+    if (s && s.trackingCode) {
+      inspectCode(s.trackingCode);
+    }
+  }
+
+  // 2. Also inspect disk file in case it was written
+  try {
+    if (fs.existsSync(PARCEL_DATA_FILE)) {
+      const raw = fs.readFileSync(PARCEL_DATA_FILE, 'utf-8');
+      const diskList = JSON.parse(raw);
+      if (Array.isArray(diskList)) {
+        for (const s of diskList) {
+          if (s && s.trackingCode) inspectCode(s.trackingCode);
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Inspect overrides
+  if (inMemoryParcelOverrides) {
+    for (const ov of Object.values(inMemoryParcelOverrides)) {
+      if (ov && (ov as any).trackingCode) {
+        inspectCode((ov as any).trackingCode);
+      }
+    }
+  }
+
+  // 4. Inspect Google Sheet tracking codes across all devices
+  for (const code of cachedSheetParcelTrackingCodes) {
+    inspectCode(code);
+  }
+
+  const nextSeq = maxSeq + 1;
+  const seqStr = String(nextSeq).padStart(2, '0');
+  const trackingCode = `${prefix}${seqStr}`;
+
+  return {
+    dateTag,
+    trackingCode,
+    nextSeq,
+    currentMaxSeq: maxSeq,
+    prefix,
+  };
+}
+
+function generateServerParcelTrackingCode(timestamp?: string): string {
+  return getAuthoritativeServerParcelTrackingCode(timestamp).trackingCode;
+}
+
+let parcelVersion = Date.now();
+const parcelSseClients = new Set<express.Response>();
+
+function broadcastParcelUpdate(payload: any) {
+  parcelVersion = Date.now();
+  const nextTracking = getAuthoritativeServerParcelTrackingCode();
+  const data = JSON.stringify({
+    ...payload,
+    version: parcelVersion,
+    nextTrackingCode: nextTracking.trackingCode,
+    currentMaxSeq: nextTracking.currentMaxSeq,
+    timestamp: Date.now(),
+  });
+  for (const client of Array.from(parcelSseClients)) {
+    try {
+      client.write(`data: ${data}\n\n`);
+    } catch {
+      parcelSseClients.delete(client);
+    }
   }
 }
 
@@ -1763,6 +1916,51 @@ async function startServer() {
       success: true,
       submissions: inMemorySubmissions,
       count: inMemorySubmissions.length,
+      version: parcelVersion,
+    });
+  });
+
+  // Get next authoritative tracking code across all devices
+  app.get("/api/parcel-next-tracking-code", async (req, res) => {
+    const rawTimestamp = (req.query.timestamp as string) || (req.query.dateTag as string) || "";
+    const clientCandidateSeq = parseInt(req.query.clientMaxSeq as string, 10) || 0;
+    
+    // Ensure Google Sheet tracking codes are synchronized across all devices
+    await syncParcelSheetTrackingCodes(false);
+
+    const trackingInfo = getAuthoritativeServerParcelTrackingCode(rawTimestamp, clientCandidateSeq);
+    res.json({
+      success: true,
+      ...trackingInfo,
+      serverTime: Date.now(),
+    });
+  });
+
+  // Server-Sent Events (SSE) for Real-Time Parcel Delivery & Tracking sync across all devices & users
+  app.get("/api/parcel-sse", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof (res as any).flushHeaders === "function") {
+      (res as any).flushHeaders();
+    }
+
+    const nextTracking = getAuthoritativeServerParcelTrackingCode();
+    const initialPayload = JSON.stringify({
+      type: "INITIAL_STATE",
+      submissions: inMemorySubmissions,
+      nextTrackingCode: nextTracking.trackingCode,
+      currentMaxSeq: nextTracking.currentMaxSeq,
+      version: parcelVersion,
+      timestamp: Date.now(),
+    });
+    res.write(`data: ${initialPayload}\n\n`);
+
+    parcelSseClients.add(res);
+
+    req.on("close", () => {
+      parcelSseClients.delete(res);
     });
   });
 
@@ -1918,6 +2116,13 @@ async function startServer() {
         }
       }
 
+      broadcastParcelUpdate({
+        type: "PARCEL_DELETED",
+        deletedKeys: keysToAdd,
+        id,
+        trackingCode,
+      });
+
       return res.json({
         success: true,
         message: "ลบรายการและลบข้อมูลใน Google Sheet เรียบร้อยแล้ว",
@@ -1982,6 +2187,11 @@ async function startServer() {
         fs.writeFileSync(PARCEL_DELETED_FILE, JSON.stringify(inMemoryParcelDeletedKeys, null, 2), "utf-8");
       } catch {}
 
+      broadcastParcelUpdate({
+        type: "PARCEL_UPDATED",
+        record: targetRecord,
+      });
+
       return res.json({
         success: true,
         message: "บันทึกการแก้ไขเรียบร้อยแล้ว",
@@ -2035,7 +2245,35 @@ async function startServer() {
       }
 
       const actionType = payload.actionType || "รับ";
-      const trackingCode = payload.trackingCode || (actionType === "ส่ง" ? generateServerParcelTrackingCode(payload.timestamp) : "");
+      let trackingCode = payload.trackingCode || "";
+
+      if (actionType === "ส่ง") {
+        await syncParcelSheetTrackingCodes(false);
+        const auth = getAuthoritativeServerParcelTrackingCode(payload.timestamp);
+        if (trackingCode) {
+          const normClient = trackingCode.replace(/[\s\-_]/g, "").toUpperCase();
+          const targetTag = `LKB2${auth.dateTag}`.toUpperCase();
+          if (normClient.startsWith(targetTag)) {
+            const rest = normClient.slice(targetTag.length);
+            const match = rest.match(/^(\d+)/);
+            const clientSeq = match ? parseInt(match[1], 10) : 0;
+            // If client submitted a sequence <= server maxSeq, the client was running an old number!
+            // Upgrade to server's authoritative next sequence so no duplicate occurs across devices
+            if (clientSeq <= auth.currentMaxSeq) {
+              console.log(
+                `[Parcel Tracking] Device submitted stale tracking code "${trackingCode}" (seq ${clientSeq} <= maxSeq ${auth.currentMaxSeq}). Upgrading to authoritative "${auth.trackingCode}"`
+              );
+              trackingCode = auth.trackingCode;
+            } else {
+              trackingCode = `LKB2 - ${auth.dateTag}${String(clientSeq).padStart(2, "0")}`;
+            }
+          } else {
+            trackingCode = auth.trackingCode;
+          }
+        } else {
+          trackingCode = auth.trackingCode;
+        }
+      }
 
       // Duplicate prevention on server for already received codes:
       // (ตั้งค่าเลขรหัส หรือ ข้อมูลที่ถูกรับไปแล้ว ไม่สามารถทำรายการซ้ำได้)
@@ -2155,6 +2393,14 @@ async function startServer() {
         trackingCode,
       };
       saveSubmission(savedRecord);
+
+      // Broadcast real-time parcel submission and updated tracking sequence to all devices
+      broadcastParcelUpdate({
+        type: "PARCEL_SUBMITTED",
+        actionType,
+        record: savedRecord,
+        trackingCode,
+      });
 
       // 4. If a custom external webhook is also configured, mirror asynchronously
       const customWebhook = payload.webhookUrl;
@@ -4753,6 +4999,12 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Immediately synchronize Google Sheet parcel tracking codes across all devices
+    syncParcelSheetTrackingCodes(true).catch(() => {});
+    // Periodic background sync every 10 seconds
+    setInterval(() => {
+      syncParcelSheetTrackingCodes(true).catch(() => {});
+    }, 10000);
   });
 }
 
