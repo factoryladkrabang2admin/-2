@@ -2760,6 +2760,89 @@ async function startServer() {
     }
   });
 
+  const VALID_GOWN_FORM_DEPARTMENTS = [
+    "แผนกความปลอดภัย",
+    "แผนกซ่อมบำรุง",
+    "แผนกเทคนิคการผลิต 4",
+    "แผนกเทคนิคบริการ",
+    "แผนกธุรการลาดกระบัง 2",
+    "แผนกปรับอากาศและทำความเย็น",
+    "แผนกไฟฟ้าและสื่อสาร",
+    "แผนกสุขาภิบาล",
+    "แผนกสต็อก 4",
+    "แผนกวิศวกรรม",
+    "แผนก A/2",
+    "แผนก A/3",
+    "แผนก A/4",
+    "แผนก B/1",
+    "แผนก B/5",
+    "แผนก QC Line",
+    "แผนกการตลาด (ขาย 1)",
+    "แผนกการตลาด (ขาย 2)",
+    "แผนกสารสนเทศ",
+  ] as const;
+
+  function normalizeGownDepartmentForGoogleForm(rawDept: string): string {
+    const d = (rawDept || "").trim();
+    if (!d) return "แผนกธุรการลาดกระบัง 2";
+
+    // Exact match
+    for (const valid of VALID_GOWN_FORM_DEPARTMENTS) {
+      if (d === valid) return valid;
+    }
+
+    // Alpha-numeric slash codes: e.g. "B/1", "B1", "b/1", "แผนก B1", "แผนกB/1" -> "แผนก B/1"
+    const cleanCode = d.replace(/^(?:แผนก|อาคาร|ตึก|ฝ่าย)\s*/i, "").trim().toUpperCase();
+    const alphaMatch = cleanCode.match(/^([AB])\s*[\/\-\.]?\s*(\d+)$/i);
+    if (alphaMatch) {
+      const candidate = `แผนก ${alphaMatch[1]}/${alphaMatch[2]}`;
+      const found = VALID_GOWN_FORM_DEPARTMENTS.find((v) => v.toUpperCase() === candidate.toUpperCase());
+      if (found) return found;
+    }
+
+    // Without "แผนก" prefix match
+    for (const valid of VALID_GOWN_FORM_DEPARTMENTS) {
+      const validClean = valid.replace(/^แผนก\s*/i, "").trim().toLowerCase();
+      if (cleanCode.toLowerCase() === validClean) return valid;
+    }
+
+    // Substring or keyword matches
+    const lower = d.toLowerCase();
+    if (lower.includes("qc") || lower.includes("คิวซี")) return "แผนก QC Line";
+    if (lower.includes("ธุรการ")) return "แผนกธุรการลาดกระบัง 2";
+    if (lower.includes("ความปลอดภัย") || lower.includes("safety") || lower.includes("จป")) return "แผนกความปลอดภัย";
+    if (lower.includes("ซ่อมบำรุง") || lower.includes("maintenance")) return "แผนกซ่อมบำรุง";
+    if (lower.includes("เทคนิคการผลิต")) return "แผนกเทคนิคการผลิต 4";
+    if (lower.includes("เทคนิคบริการ")) return "แผนกเทคนิคบริการ";
+    if (lower.includes("ปรับอากาศ") || lower.includes("ทำความเย็น") || lower.includes("แอร์")) return "แผนกปรับอากาศและทำความเย็น";
+    if (lower.includes("ไฟฟ้า") || lower.includes("สื่อสาร")) return "แผนกไฟฟ้าและสื่อสาร";
+    if (lower.includes("สุขาภิบาล")) return "แผนกสุขาภิบาล";
+    if (lower.includes("สต็อก") || lower.includes("stock")) return "แผนกสต็อก 4";
+    if (lower.includes("วิศวกรรม") || lower.includes("engineer")) return "แผนกวิศวกรรม";
+    if (lower.includes("การตลาด") && lower.includes("2")) return "แผนกการตลาด (ขาย 2)";
+    if (lower.includes("การตลาด") || lower.includes("ขาย")) return "แผนกการตลาด (ขาย 1)";
+    if (lower.includes("สารสนเทศ") || lower.includes("it") || lower.includes("ไอที")) return "แผนกสารสนเทศ";
+
+    // General substring
+    for (const valid of VALID_GOWN_FORM_DEPARTMENTS) {
+      const validClean = valid.replace(/^แผนก\s*/i, "").trim().toLowerCase();
+      if (lower.includes(validClean) || validClean.includes(lower)) {
+        return valid;
+      }
+    }
+
+    return "แผนกธุรการลาดกระบัง 2";
+  }
+
+  // GET recent gown submissions for quick sync across devices
+  app.get("/api/equipment-gown-submissions", (req, res) => {
+    res.json({
+      success: true,
+      submissions: inMemoryGownSubmissions,
+      count: inMemoryGownSubmissions.length,
+    });
+  });
+
   // Equipment Gown (แบบฟอร์มการเบิก-คืน เสื้อกาวน์สีกรมท่า) Google Form & Google Sheet direct submission endpoint
   app.post("/api/equipment-gown-submit", async (req, res) => {
     try {
@@ -2777,8 +2860,8 @@ async function startServer() {
 
       // Date parsing (YYYY-MM-DD or DD/MM/YYYY)
       let year = "2026";
-      let month = "9";
-      let day = "15";
+      let month = "10";
+      let day = "16";
       if (payload.date) {
         const clean = String(payload.date).trim();
         if (clean.includes("-")) {
@@ -2808,18 +2891,15 @@ async function startServer() {
         });
       }
 
-      const department = (payload.department || payload.dept || "").trim();
-      if (!department) {
-        return res.status(400).json({
-          success: false,
-          error: "กรุณาระบุแผนก",
-        });
-      }
+      const rawDept = (payload.department || payload.dept || "").trim();
+      const department = normalizeGownDepartmentForGoogleForm(rawDept);
 
       const formatQty = (v: any) => {
         if (v === undefined || v === null || v === "" || v === 0 || v === "0") return "";
-        const num = parseInt(String(v), 10);
-        return (!isNaN(num) && num > 0) ? String(num) : "";
+        let num = parseInt(String(v), 10);
+        if (isNaN(num) || num <= 0) return "";
+        if (num > 8) num = 8;
+        return String(num);
       };
 
       const sizeL = formatQty(payload.sizeL);
@@ -2849,10 +2929,10 @@ async function startServer() {
       // 3. ชื่อผู้เบิก-คืน
       formParams.append("entry.1775519368", personName);
 
-      // 4. แผนก
+      // 4. แผนก (ตรงกับ Google Form Radio Options)
       formParams.append("entry.422774460", department);
 
-      // 5. ขนาดและจำนวนที่ต้องการ
+      // 5. ขนาดและจำนวนที่ต้องการ (Grid row values 1 to 8)
       if (sizeL) formParams.append("entry.1507729396", sizeL);
       if (sizeXL) formParams.append("entry.1172983301", sizeXL);
       if (size2XL) formParams.append("entry.1185036298", size2XL);
@@ -2881,7 +2961,7 @@ async function startServer() {
       formParams.append("fvv", "1");
       formParams.append("pageHistory", "0");
 
-      // Fetch dynamic fbzx
+      // Fetch dynamic fbzx if available
       let fbzx = "";
       try {
         const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url", {
@@ -2914,10 +2994,44 @@ async function startServer() {
           body: formParams.toString(),
         });
         const formText = await formRes.text();
-        syncedToGoogle = formRes.ok || formRes.status === 200 || formRes.status === 204 ||
-          formText.includes("บันทึกคำตอบของคุณแล้ว") || formText.includes("Your response has been recorded");
+        syncedToGoogle =
+          formText.includes("form_confirm") ||
+          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
+          formText.includes("Your response has been recorded") ||
+          formText.includes("เราได้รับ") ||
+          formText.includes("已經收到") ||
+          formText.includes("vHW8K");
+
+        // If not synced on first try, retry with default fallback department
+        if (!syncedToGoogle) {
+          console.warn("First gown Google Form attempt failed, retrying with fallback department...");
+          formParams.set("entry.422774460", "แผนกธุรการลาดกระบัง 2");
+          const retryRes = await fetch(GOOGLE_GOWN_FORM_ACTION_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            body: formParams.toString(),
+          });
+          const retryText = await retryRes.text();
+          syncedToGoogle =
+            retryText.includes("form_confirm") ||
+            retryText.includes("บันทึกคำตอบของคุณแล้ว") ||
+            retryText.includes("Your response has been recorded") ||
+            retryText.includes("เราได้รับ") ||
+            retryText.includes("已經收到") ||
+            retryText.includes("vHW8K");
+        }
       } catch (err: any) {
         console.warn("Could not post to Google Form directly:", err?.message);
+      }
+
+      if (!syncedToGoogle) {
+        return res.status(502).json({
+          success: false,
+          error: "ไม่สามารถส่งข้อมูลเข้า Google Sheet ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง",
+        });
       }
 
       const totalQuantity = (parseInt(sizeL || "0", 10) + parseInt(sizeXL || "0", 10) + parseInt(size2XL || "0", 10)) || 1;
@@ -2942,13 +3056,11 @@ async function startServer() {
       return res.json({
         success: true,
         googleSheetSynced: syncedToGoogle,
-        message: syncedToGoogle
-          ? (trackingCode
-              ? (isRequisition
-                  ? `ส่งข้อมูลเข้า Google Form และบันทึกรหัสติดตาม (${trackingCode}) ลงใน Google Sheet สำเร็จเรียบร้อยแล้ว`
-                  : `ส่งข้อมูลการคืนเสื้อกาวน์อิงตามรหัสติดตาม (${trackingCode}) ลงใน Google Sheet เรียบร้อยแล้ว`)
-              : "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว")
-          : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว",
+        message: trackingCode
+          ? (isRequisition
+              ? `ส่งข้อมูลเข้า Google Form และบันทึกรหัสติดตาม (${trackingCode}) ลงใน Google Sheet สำเร็จเรียบร้อยแล้ว`
+              : `ส่งข้อมูลการคืนเสื้อกาวน์อิงตามรหัสติดตาม (${trackingCode}) ลงใน Google Sheet เรียบร้อยแล้ว`)
+          : "ส่งข้อมูลเข้า Google Form และบันทึกลงใน Google Sheet สำเร็จเรียบร้อยแล้ว",
         record,
         sheetUrl: "https://docs.google.com/spreadsheets/d/1AQXHNA1gDBXl5gWMeXu_y04ziGi3CDk-z6MbH6DQQ2M/edit?gid=1537050902#gid=1537050902",
         formUrl: "https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url",

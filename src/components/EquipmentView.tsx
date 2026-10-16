@@ -316,6 +316,11 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           nextRecords.push(r);
         }
       }
+      try {
+        localStorage.setItem(`${SUB_CATEGORY_STORAGE_PREFIX}gown`, JSON.stringify(nextRecords));
+      } catch {
+        // ignore
+      }
       return nextRecords;
     });
 
@@ -332,8 +337,8 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
     // 3. โหลดข้อมูลสดจาก Google Sheet เพื่อซิงค์แถวที่บันทึกล่าสุด
     setTimeout(() => {
-      loadData('gown', true);
-    }, 1200);
+      loadData('gown', true, true);
+    }, 2800);
   };
 
   const handleOpenReturnKeyModal = (record: EquipmentRecord) => {
