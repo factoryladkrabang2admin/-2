@@ -72,9 +72,6 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-400/20 text-sky-200 border border-sky-300/30">
-                  #{record.seq}
-                </span>
                 <span 
                   className={`px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${
                     isApproved

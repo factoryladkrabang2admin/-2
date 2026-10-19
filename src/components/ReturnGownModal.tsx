@@ -104,8 +104,12 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
           return clean === dClean || dClean.includes(clean) || clean.includes(dClean);
         });
       }
-      setDepartment(matchedDept || 'แผนกธุรการลาดกระบัง 2');
-      setTrackingCode(record.trackingCode || '');
+      let effectiveTracking = (record.trackingCode || '').trim();
+      if (!effectiveTracking) {
+        const yy = String(yyyy).slice(-2);
+        effectiveTracking = `LKB2 - ${yy}${mm}${dd}01`;
+      }
+      setTrackingCode(effectiveTracking);
 
       let l = '';
       let xl = '';
@@ -119,6 +123,9 @@ export const ReturnGownModal: React.FC<ReturnGownModalProps> = ({
       }
       if (!l && !xl && !xxl && record.totalQuantity) {
         l = String(Math.min(8, record.totalQuantity));
+      }
+      if (!l && !xl && !xxl) {
+        l = '1';
       }
       setSizeL(l);
       setSizeXL(xl);

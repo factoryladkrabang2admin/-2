@@ -41,7 +41,7 @@ import {
   InProgressClockAnimatedIcon
 } from './MaintenanceStatusIcons';
 
-const STORAGE_KEY = 'proworkflow_maintenance_tickets_cache_v4';
+const STORAGE_KEY = 'proworkflow_maintenance_tickets_cache_v5';
 const BACKGROUND_POLL_INTERVAL_MS = 20000; // Auto-update in background every 20s
 const TABLE_ITEMS_PER_PAGE = 20; // 20 รายการต่อหน้าในมุมมองรายการ
 const CARD_ITEMS_PER_PAGE = 6;   // 6 รายการต่อหน้าในมุมมองการ์ด

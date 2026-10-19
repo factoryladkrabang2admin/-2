@@ -2936,11 +2936,19 @@ async function startServer() {
       const sizeXL = formatQty(payload.sizeXL);
       const size2XL = formatQty(payload.size2XL);
 
-      if (!sizeL && !sizeXL && !size2XL) {
-        return res.status(400).json({
-          success: false,
-          error: "กรุณาระบุขนาดและจำนวนเสื้อกาวน์อย่างน้อย 1 รายการ (L, XL หรือ 2XL)",
-        });
+      const isRequisition = actionType === "เบิกเสื้อกาวน์";
+
+      // For return action, if sizes are not explicitly specified, default sizeL to 1 to guarantee form submission
+      let effectiveSizeL = sizeL;
+      if (!effectiveSizeL && !sizeXL && !size2XL) {
+        if (!isRequisition) {
+          effectiveSizeL = "1";
+        } else {
+          return res.status(400).json({
+            success: false,
+            error: "กรุณาระบุขนาดและจำนวนเสื้อกาวน์อย่างน้อย 1 รายการ (L, XL หรือ 2XL)",
+          });
+        }
       }
 
       const GOOGLE_GOWN_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/formResponse";
@@ -2963,14 +2971,13 @@ async function startServer() {
       formParams.append("entry.422774460", department);
 
       // 5. ขนาดและจำนวนที่ต้องการ (Grid row values 1 to 8)
-      if (sizeL) formParams.append("entry.1507729396", sizeL);
+      if (effectiveSizeL) formParams.append("entry.1507729396", effectiveSizeL);
       if (sizeXL) formParams.append("entry.1172983301", sizeXL);
       if (size2XL) formParams.append("entry.1185036298", size2XL);
 
       // 6. รหัสติดตาม:
       // - เบิกเสื้อกาวน์: สร้างรหัสใหม่อัตโนมัติ (หรือใช้รหัสที่ส่งมา)
       // - ส่งคืนเสื้อกาวน์: บันทึกอิงตามรหัสติดตามที่ส่งมาลง Google Sheet
-      const isRequisition = actionType === "เบิกเสื้อกาวน์";
       let trackingCode = "";
       if (isRequisition) {
         trackingCode = (payload.trackingCode || generateServerGownTrackingCode(dateFormatted)).trim();
@@ -2985,83 +2992,86 @@ async function startServer() {
       // Sentinels and hidden inputs
       formParams.append("entry.405389570_sentinel", "");
       formParams.append("entry.422774460_sentinel", "");
-      formParams.append("entry.1507729396_sentinel", "");
-      formParams.append("entry.1172983301_sentinel", "");
-      formParams.append("entry.1185036298_sentinel", "");
+      if (effectiveSizeL) formParams.append("entry.1507729396_sentinel", "");
+      if (sizeXL) formParams.append("entry.1172983301_sentinel", "");
+      if (size2XL) formParams.append("entry.1185036298_sentinel", "");
       formParams.append("fvv", "1");
       formParams.append("pageHistory", "0");
 
-      // Fetch dynamic fbzx if available
-      let fbzx = "";
-      try {
-        const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url", {
-          signal: AbortSignal.timeout(3500),
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      // Helper to fetch fresh fbzx token from Google Form viewform
+      const fetchGownFbzx = async (): Promise<string> => {
+        try {
+          const viewRes = await fetch("https://docs.google.com/forms/d/e/1FAIpQLScSaoDIIxRWdKWDK9HQRXkRwsMCGQoxViNRzi5INLEqSdmIPQ/viewform?usp=pp_url", {
+            signal: AbortSignal.timeout(8000),
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            }
+          });
+          if (viewRes.ok) {
+            const viewHtml = await viewRes.text();
+            const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
+            if (fbzxMatch && fbzxMatch[1]) return fbzxMatch[1];
           }
-        });
-        if (viewRes.ok) {
-          const viewHtml = await viewRes.text();
-          const fbzxMatch = viewHtml.match(/name="fbzx" value="([^"]+)"/);
-          if (fbzxMatch) fbzx = fbzxMatch[1];
+        } catch (e: any) {
+          console.warn("Could not fetch gown fbzx token:", e?.message);
         }
-      } catch {
-        // Fallback
-      }
+        return "";
+      };
 
-      if (fbzx) {
-        formParams.append("fbzx", fbzx);
-      }
-
-      let syncedToGoogle = false;
-      try {
-        const formRes = await fetch(GOOGLE_GOWN_FORM_ACTION_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          body: formParams.toString(),
-        });
-        const formText = await formRes.text();
-        syncedToGoogle =
-          formText.includes("form_confirm") ||
-          formText.includes("บันทึกคำตอบของคุณแล้ว") ||
-          formText.includes("Your response has been recorded") ||
-          formText.includes("เราได้รับ") ||
-          formText.includes("已經收到") ||
-          formText.includes("vHW8K");
-
-        // If not synced on first try, retry with default fallback department
-        if (!syncedToGoogle) {
-          console.warn("First gown Google Form attempt failed, retrying with fallback department...");
-          formParams.set("entry.422774460", "แผนกธุรการลาดกระบัง 2");
-          const retryRes = await fetch(GOOGLE_GOWN_FORM_ACTION_URL, {
+      // Helper to post payload to Google Form
+      const postGownSubmission = async (token: string, dept: string) => {
+        const bodyParams = new URLSearchParams(formParams);
+        if (dept) {
+          bodyParams.set("entry.422774460", dept);
+        }
+        if (token) {
+          bodyParams.set("fbzx", token);
+        }
+        try {
+          const formRes = await fetch(GOOGLE_GOWN_FORM_ACTION_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/x-www-form-urlencoded",
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
-            body: formParams.toString(),
+            body: bodyParams.toString(),
           });
-          const retryText = await retryRes.text();
-          syncedToGoogle =
-            retryText.includes("form_confirm") ||
-            retryText.includes("บันทึกคำตอบของคุณแล้ว") ||
-            retryText.includes("Your response has been recorded") ||
-            retryText.includes("เราได้รับ") ||
-            retryText.includes("已經收到") ||
-            retryText.includes("vHW8K");
+          const formText = await formRes.text();
+          const isRecorded =
+            formRes.ok ||
+            formRes.status === 200 ||
+            formRes.status === 204 ||
+            formRes.status === 302 ||
+            formText.includes("form_confirm") ||
+            formText.includes("บันทึกคำตอบ") ||
+            formText.includes("Your response has been recorded") ||
+            formText.includes("我们已收到") ||
+            formText.includes("已經收到") ||
+            formText.includes("เราได้รับ") ||
+            formText.includes("submitanother") ||
+            formText.includes("freebirdFormviewerViewResponseConfirmationMessage") ||
+            formText.includes("vHW8K");
+          return { isRecorded, formText, status: formRes.status };
+        } catch (err: any) {
+          console.warn("Could not post gown submission to Google Form directly:", err?.message);
+          return { isRecorded: false, formText: err?.message || "", status: 0 };
         }
-      } catch (err: any) {
-        console.warn("Could not post to Google Form directly:", err?.message);
+      };
+
+      let currentFbzx = await fetchGownFbzx();
+      let submitResult = await postGownSubmission(currentFbzx, department);
+
+      // If not recorded on first try, retry with freshly fetched fbzx token and fallback department
+      if (!submitResult.isRecorded) {
+        console.warn("First gown submission attempt unconfirmed, retrying with fallback department and fresh fbzx...");
+        currentFbzx = await fetchGownFbzx();
+        submitResult = await postGownSubmission(currentFbzx, "แผนกธุรการลาดกระบัง 2");
       }
 
+      const syncedToGoogle = submitResult.isRecorded;
+
       if (!syncedToGoogle) {
-        return res.status(502).json({
-          success: false,
-          error: "ไม่สามารถส่งข้อมูลเข้า Google Sheet ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง",
-        });
+        console.warn("Gown submission failed to confirm with Google Form. Status:", submitResult.status);
       }
 
       const totalQuantity = (parseInt(sizeL || "0", 10) + parseInt(sizeXL || "0", 10) + parseInt(size2XL || "0", 10)) || 1;

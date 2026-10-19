@@ -3947,6 +3947,34 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
   const gownByTracking = new Map<string, EquipmentRecord>();
   const recordsWithoutTracking: EquipmentRecord[] = [];
 
+  // Helper to build deterministic tracking code for gown rows that didn't have one stored in sheet
+  const buildDeterministicGownTrackingCode = (dateStr: string, rowIdx: number): string => {
+    let yy = '26';
+    let mm = '01';
+    let dd = '01';
+    const clean = (dateStr || '').trim();
+    if (clean.includes('/')) {
+      const p = clean.split('/');
+      if (p.length >= 3) {
+        dd = p[0].padStart(2, '0');
+        mm = p[1].padStart(2, '0');
+        let yNum = parseInt(p[2], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+      }
+    } else if (clean.includes('-')) {
+      const p = clean.split('-');
+      if (p.length >= 3) {
+        let yNum = parseInt(p[0], 10);
+        if (yNum > 2400) yNum -= 543;
+        yy = String(yNum).slice(-2);
+        mm = p[1].padStart(2, '0');
+        dd = p[2].padStart(2, '0');
+      }
+    }
+    return `LKB2 - ${yy}${mm}${dd}${String(rowIdx).padStart(2, '0')}`;
+  };
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.every((c) => !c || !c.trim())) continue;
@@ -3963,7 +3991,9 @@ export function convertGownCsvToRecords(csvText: string): EquipmentRecord[] {
     const qtyXL = parseFloat(row[6] || '0') || 0;
     const qty2XL = parseFloat(row[7] || '0') || 0;
     const trackingRaw = trackingColIdx >= 0 && row[trackingColIdx] ? row[trackingColIdx].trim() : (row[8] || '').trim();
-    const trackingCode = trackingRaw && trackingRaw !== '-' ? trackingRaw : undefined;
+    const trackingCode = (trackingRaw && trackingRaw !== '-' && trackingRaw !== 'null')
+      ? trackingRaw
+      : buildDeterministicGownTrackingCode(rawDate || timestamp, i);
 
     const isReturn = actionRaw.includes('คืน');
     const actionType = isReturn ? 'คืน' : 'เบิก';
