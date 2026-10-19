@@ -1289,37 +1289,69 @@ async function startServer() {
       const sheetName = req.query.sheet as string | undefined;
       const targetGid = gid || "1327805432";
 
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-
-      let exportUrl = "";
-      const nowTs = Date.now();
-      if (sheetName) {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${nowTs}`;
-      } else {
-        exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${targetGid}&_t=${nowTs}`;
-      }
-
       const isAnnouncementsSheet =
         targetGid === "1228686844" ||
         sheetId === "1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU" ||
         (sheetName && (sheetName.includes("ข่าวประชาสัมพันธ์") || sheetName.includes("announcement")));
 
-      let response: Response;
-      try {
-        response = await fetch(exportUrl, {
-          headers: {
-            Accept: "text/csv, text/plain, */*",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          },
-        });
-      } catch (fetchErr: any) {
-        return res.status(500).json({ error: fetchErr.message || "Failed to fetch Google Sheet" });
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+
+      const nowTs = Date.now();
+      const exportUrls: string[] = [];
+
+      // 1. Direct CSV export endpoint (preserves all alphanumeric text, mixed strings, and numbers verbatim without gviz type inference dropping non-numbers)
+      if (gid) {
+        exportUrls.push(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}&_t=${nowTs}`);
+      } else if (!sheetName) {
+        exportUrls.push(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${targetGid}&_t=${nowTs}`);
+      }
+
+      // 2. Secondary fallback: gviz/tq export
+      if (sheetName) {
+        exportUrls.push(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${nowTs}`);
+      } else {
+        exportUrls.push(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${targetGid}&_t=${nowTs}`);
+      }
+
+      let response: Response | null = null;
+      let csvText = "";
+      let lastErr: any = null;
+
+      for (const url of exportUrls) {
+        try {
+          const resAttempt = await fetch(url, {
+            headers: {
+              Accept: "text/csv, text/plain, */*",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+          if (resAttempt.ok) {
+            const body = await resAttempt.text();
+            if (
+              !body.includes("<!DOCTYPE") &&
+              !body.includes("<html") &&
+              !body.includes("accounts.google.com") &&
+              !body.includes("document-root")
+            ) {
+              response = resAttempt;
+              csvText = body;
+              break;
+            }
+          } else if (resAttempt.status === 401 || resAttempt.status === 403) {
+            response = resAttempt;
+          }
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      if (!response) {
+        return res.status(500).json({ error: lastErr?.message || "Failed to fetch Google Sheet" });
       }
 
       if (!response.ok) {
-
         if (response.status === 401 || response.status === 403) {
           return res.status(response.status).json({
             error: "Google Sheet ยังไม่ได้เปิดสิทธิ์แชร์สาธารณะ (กรุณาตั้งค่าแชร์ใน Google Sheet เป็น 'ทุกคนที่มีลิงก์มีสิทธิ์ดู' / Anyone with the link can view)",
@@ -1329,8 +1361,6 @@ async function startServer() {
         }
         return res.status(response.status).json({ error: `Google Sheets export returned ${response.status}` });
       }
-
-      let csvText = await response.text();
 
       // If Google returned an HTML authentication / login gate instead of CSV data
       if (

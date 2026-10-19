@@ -994,7 +994,7 @@ export interface MaintenanceSyncResult {
 
 export function cleanWorkOrderNo(val: any): string {
   if (val === null || val === undefined) return '';
-  let s = String(val).trim();
+  let s = String(val).replace(/^\uFEFF/, '').trim();
   
   if (s === '-' || s === '--' || s === 'null' || s === 'undefined') return '';
 
@@ -1009,8 +1009,9 @@ export function cleanWorkOrderNo(val: any): string {
   // 2. Strip enclosing single or double quotes
   s = s.replace(/^["']+|["']+$/g, '').trim();
 
-  // 3. Handle scientific notation from number formatting (e.g. 2.5043101500001E+13 or 2.50431E+13)
-  if (/^[0-9.]+[eE][+-]?[0-9]+$/.test(s)) {
+  // 3. Handle actual scientific notation from floating-point export (e.g. 2.5043101500001E+13 or 2.50431E+13)
+  // Must have an explicit decimal point or sign to distinguish from alphanumeric codes like 0M001042 or 0E001042
+  if ((s.includes('.') || s.includes('+') || s.includes('-')) && /^[1-9]\d*(?:\.\d+)?[eE][+-]?\d+$/.test(s)) {
     try {
       const num = Number(s);
       if (!isNaN(num) && isFinite(num)) {
