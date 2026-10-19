@@ -4460,11 +4460,11 @@ export function convertLadderCsvToRecords(csvText: string): EquipmentRecord[] {
       {
         name: ladderType,
         quantity: 1,
-        note: trackingCode ? `รหัสติดตาม: ${trackingCode}` : ladderInspection,
+        note: trackingCode ? `รหัสติดตาม: ${trackingCode}` : '',
       },
     ];
 
-    const itemSummary = `${ladderType} (${ladderInspection || 'พร้อมใช้งาน'})`;
+    const itemSummary = ladderType;
     const normTracking = trackingCode ? trackingCode.replace(/[\s\-_]/g, '').toUpperCase() : '';
 
     if (!normTracking) {

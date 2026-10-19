@@ -9,19 +9,16 @@ import {
   CheckCircle2, 
   AlertCircle, 
   FileText, 
-  Printer, 
   Copy, 
   Check, 
-  ExternalLink,
-  MapPin,
-  Sparkles,
-  ShieldCheck,
-  Tag
-} from 'lucide-react';
-import { MaintenanceTicket, MaintenanceStatus } from '../types';
-import { useLanguage } from '../contexts/LanguageContext';
-import { MAINTENANCE_SHEET_URL } from '../services/googleSheetSyncService';
-import { InProgressClockAnimatedIcon } from './MaintenanceStatusIcons';
+  MapPin, 
+  Sparkles, 
+  ShieldCheck, 
+  Tag 
+} from 'lucide-react'; 
+import { MaintenanceTicket, MaintenanceStatus } from '../types'; 
+import { useLanguage } from '../contexts/LanguageContext'; 
+import { InProgressClockAnimatedIcon } from './MaintenanceStatusIcons'; 
 
 interface MaintenanceDetailModalProps {
   isOpen: boolean;
@@ -46,10 +43,6 @@ export const MaintenanceDetailModal: React.FC<MaintenanceDetailModalProps> = ({
     navigator.clipboard.writeText(textToCopy);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   // Status visual mapping
@@ -247,35 +240,14 @@ export const MaintenanceDetailModal: React.FC<MaintenanceDetailModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
-          <a
-            href={MAINTENANCE_SHEET_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-xl bg-[#002045] hover:bg-[#0b3366] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{language === 'th' ? 'เปิดใน Google Sheet' : 'Open in Sheet'}</span>
-          </a>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-600" />
-              <span>{language === 'th' ? 'พิมพ์ใบงาน' : 'Print Order'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-[#002045] hover:bg-[#0b3366] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
-            >
-              {language === 'th' ? 'ปิด' : 'Close'}
-            </button>
-          </div>
+            {language === 'th' ? 'ปิด' : 'Close'}
+          </button>
         </div>
       </div>
     </div>

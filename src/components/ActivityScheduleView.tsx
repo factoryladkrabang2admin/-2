@@ -246,14 +246,11 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#064e3b] drop-shadow-xs">
                   {language === 'th' ? 'ตารางกิจกรรม' : 'Activity Schedule'}
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-xs font-black shadow-xs">
-                  {activities.length} กิจกรรม
-                </span>
               </div>
               <p className="text-xs sm:text-sm text-emerald-900/80 font-medium mt-0.5">
                 {language === 'th' 
-                  ? 'ตารางกิจกรรม การอบรม และกำหนดการเดินทางของพนักงาน ธุรการลาดกระบัง 2' 
-                  : 'Company activities, training sessions, and travel schedules'}
+                  ? 'ตารางกิจกรรม การอบรม และการประชุม ธุรการลาดกระบัง 2' 
+                  : 'Company activities, training sessions, and meetings'}
               </p>
             </div>
           </div>
@@ -273,6 +270,51 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
                 <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
               </a>
             )}
+
+            {/* View Mode Switcher (ย้ายมาไว้ด้านหลังไอคอนเปิดดู Google sheet ใน header) */}
+            <div className="flex items-center bg-white/85 backdrop-blur-md rounded-xl p-1 border border-emerald-200/80 shadow-xs">
+              {/* 1. รายการ / ตาราง (Table View) */}
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-emerald-700 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-emerald-900 hover:bg-emerald-100/60'
+                }`}
+                title="มุมมองรายการ / ตาราง"
+              >
+                <List className="w-4 h-4" />
+              </button>
+
+              {/* 2. ปฏิทิน (Calendar View) */}
+              <button
+                type="button"
+                onClick={() => setViewMode('calendar')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'calendar'
+                    ? 'bg-emerald-700 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-emerald-900 hover:bg-emerald-100/60'
+                }`}
+                title="มุมมองปฏิทิน"
+              >
+                <CalendarIcon className="w-4 h-4" />
+              </button>
+
+              {/* 3. การ์ด (Card View) */}
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-emerald-700 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-emerald-900 hover:bg-emerald-100/60'
+                }`}
+                title="มุมมองการ์ด"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -379,50 +421,6 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
             <option value="completed">เสร็จสิ้นแล้ว</option>
           </select>
 
-          {/* View Mode Switcher */}
-          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 shadow-2xs">
-            {/* 1. รายการ / ตาราง (Table View) */}
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-emerald-700 text-white shadow-xs font-bold'
-                  : 'text-slate-700 hover:text-emerald-900 hover:bg-slate-200/60'
-              }`}
-              title="มุมมองรายการ / ตาราง"
-            >
-              <List className="w-4 h-4" />
-            </button>
-
-            {/* 2. ปฏิทิน (Calendar View) */}
-            <button
-              type="button"
-              onClick={() => setViewMode('calendar')}
-              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'calendar'
-                  ? 'bg-emerald-700 text-white shadow-xs font-bold'
-                  : 'text-slate-700 hover:text-emerald-900 hover:bg-slate-200/60'
-              }`}
-              title="มุมมองปฏิทิน"
-            >
-              <CalendarIcon className="w-4 h-4" />
-            </button>
-
-            {/* 3. การ์ด (Card View) */}
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-emerald-700 text-white shadow-xs font-bold'
-                  : 'text-slate-700 hover:text-emerald-900 hover:bg-slate-200/60'
-              }`}
-              title="มุมมองการ์ด"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-          </div>
         </div>
       </div>
 

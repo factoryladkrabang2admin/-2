@@ -11,7 +11,6 @@ import {
   Copy, 
   Check, 
   Sparkles,
-  Printer,
   CalendarCheck,
   Timer
 } from 'lucide-react';
@@ -49,10 +48,6 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
     navigator.clipboard.writeText(record.docNo);
     setCopiedDoc(true);
     setTimeout(() => setCopiedDoc(false), 2000);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   return (
@@ -199,16 +194,7 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-white text-slate-700 font-semibold text-sm transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-          >
-            <Printer className="w-4 h-4" />
-            {language === 'th' ? 'พิมพ์รายการ' : 'Print'}
-          </button>
-
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onClose}

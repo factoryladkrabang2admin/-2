@@ -6,7 +6,6 @@ import {
   Building2, 
   ExternalLink, 
   Share2, 
-  Printer, 
   ZoomIn, 
   Check, 
   Megaphone,
@@ -115,10 +114,6 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
     } catch {
       // ignore
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   const handleDetailImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>, originalSrc?: string) => {
@@ -268,14 +263,6 @@ export const AnnouncementDetailModal: React.FC<AnnouncementDetailModalProps> = (
                 title={t.copyLink}
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Share2 className="w-4 h-4" />}
-              </button>
-              <button
-                id="btn-print-announcement"
-                onClick={handlePrint}
-                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-all cursor-pointer hidden sm:flex"
-                title={t.printDoc}
-              >
-                <Printer className="w-4 h-4" />
               </button>
               <button
                 id="btn-close-announcement-detail"

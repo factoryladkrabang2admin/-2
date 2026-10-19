@@ -7,7 +7,6 @@ import {
   User, 
   Clock, 
   CheckCircle2, 
-  Printer, 
   Copy, 
   Check, 
   ExternalLink,
@@ -48,9 +47,6 @@ export const ChlorineDetailModal: React.FC<ChlorineDetailModalProps> = ({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
 
   const isBuildingA = record.building.includes('A');
 
@@ -254,16 +250,7 @@ export const ChlorineDetailModal: React.FC<ChlorineDetailModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-500" />
-              <span>{language === 'th' ? 'พิมพ์ใบรายงาน' : 'Print Report'}</span>
-            </button>
-
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}

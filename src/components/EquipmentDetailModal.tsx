@@ -5,7 +5,6 @@ import {
   User, 
   Building2, 
   Package, 
-  Printer, 
   CheckCircle2, 
   Clock, 
   Key, 
@@ -41,10 +40,6 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
   const { language } = useLanguage();
 
   if (!isOpen || !record) return null;
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   const getSubCategoryTitle = (sub: string) => {
     switch (sub) {
@@ -105,14 +100,6 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-600 border border-orange-200/80 transition-all hover:scale-105 cursor-pointer shadow-2xs"
-              title={language === 'th' ? 'พิมพ์ใบรายการ' : 'Print Record'}
-            >
-              <Printer className="w-4 h-4" />
-            </button>
             <button
               type="button"
               onClick={onClose}
@@ -265,16 +252,12 @@ export const EquipmentDetailModal: React.FC<EquipmentDetailModalProps> = ({
             <div className="space-y-2">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5 text-orange-600" />
-                {language === 'th' ? 'ประเภทบันไดและการตรวจสอบ' : 'Ladder Type & Condition'}
+                {language === 'th' ? 'ข้อมูลบันได' : 'Ladder Information'}
               </h3>
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex justify-between">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <div className="flex justify-between items-center">
                   <span className="text-xs text-slate-500">{language === 'th' ? 'ประเภทบันได:' : 'Ladder Type:'}</span>
                   <span className="font-bold text-slate-800">{record.ladderType || 'บันไดทรง A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-slate-500">{language === 'th' ? 'ผลการตรวจสอบ:' : 'Inspection:'}</span>
-                  <span className="font-semibold text-emerald-700">{record.ladderInspection || 'ไม่พบจุดชำรุด'}</span>
                 </div>
               </div>
             </div>

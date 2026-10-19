@@ -559,7 +559,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
     // 2. Cached equipment records in localStorage
     try {
       const cacheKey = isLadder
-        ? 'proworkflow_equipment_cache_ladder'
+        ? 'proworkflow_equipment_cache_ladder_v2'
         : isKeys
         ? 'proworkflow_equipment_cache_keys'
         : isSoftener

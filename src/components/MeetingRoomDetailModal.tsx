@@ -9,7 +9,6 @@ import {
   Phone, 
   CheckCircle2, 
   AlertCircle, 
-  Printer, 
   Copy, 
   Check, 
   Sparkles,
@@ -41,10 +40,6 @@ export const MeetingRoomDetailModal: React.FC<MeetingRoomDetailModalProps> = ({
     navigator.clipboard.writeText(textToCopy);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   // Status visual mapping
@@ -130,14 +125,6 @@ export const MeetingRoomDetailModal: React.FC<MeetingRoomDetailModalProps> = ({
                 title={language === 'th' ? 'คัดลอกข้อมูลการจอง' : 'Copy details'}
               >
                 {copiedCode ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-                title={language === 'th' ? 'พิมพ์ข้อมูล' : 'Print'}
-              >
-                <Printer className="w-4 h-4" />
               </button>
               <button
                 type="button"
