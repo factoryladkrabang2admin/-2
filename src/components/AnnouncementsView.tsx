@@ -25,7 +25,9 @@ import {
   FileText,
   Sparkles,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  FileSpreadsheet,
+  ExternalLink,
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { AnnouncementDetailModal } from './AnnouncementDetailModal';
@@ -38,7 +40,8 @@ import {
   sortAnnouncementsLatestFirst, 
   getLocalAnnouncements,
   getAnnouncementsWebhookUrl,
-  deleteAnnouncementRecord
+  deleteAnnouncementRecord,
+  ANNOUNCEMENTS_SHEET_URL,
 } from '../services/googleSheetSyncService';
 
 interface AnnouncementsViewProps {
@@ -401,27 +404,30 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Admin Controls */}
-          {isAdmin && (
-            <div className="flex items-center gap-2 self-start sm:self-center">
-              {/* Add Announcement Button (Icon only) */}
-              <button
-                type="button"
-                id="btn-create-announcement-icon"
-                onClick={() => setIsCreateModalOpen(true)}
-                className="relative p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:shadow-indigo-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
-                title={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์ (เฉพาะผู้ดูแลและแอดมินเพจ)' : 'Add Announcement (Admin Only)'}
-                aria-label={language === 'th' ? 'เพิ่มข่าวประชาสัมพันธ์' : 'Add Announcement'}
-              >
-                {/* Shimmer sweep animation */}
-                <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
+          {/* Action Buttons: Open Google Sheet Directly */}
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            {/* Open Google Sheet Button (Icon with Google Sheets styling and direct link) */}
+            <a
+              href={ANNOUNCEMENTS_SHEET_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              id="btn-open-announcements-sheet"
+              className="relative p-2.5 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-green-700 hover:from-emerald-700 hover:via-teal-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl hover:shadow-emerald-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2 group overflow-hidden"
+              title={language === 'th' ? 'เปิดไฟล์จาก Google Sheet (ลิงก์ไปที่ Google Sheet ได้เลย)' : 'Open file from Google Sheet'}
+              aria-label={language === 'th' ? 'เปิดไฟล์จาก Google Sheet ข่าวประชาสัมพันธ์' : 'Open Announcements Google Sheet'}
+            >
+              {/* Shimmer sweep animation */}
+              <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
 
-                <div className="relative flex items-center justify-center">
-                  <Megaphone className="w-5 h-5 text-white group-hover:scale-110 -rotate-12 group-hover:rotate-0 transition-transform duration-300 drop-shadow-xs" />
-                </div>
-              </button>
-            </div>
-          )}
+              <div className="relative flex items-center justify-center">
+                <FileSpreadsheet className="w-5 h-5 text-white group-hover:scale-110 transition-transform duration-300 drop-shadow-xs" />
+              </div>
+              <span className="text-xs sm:text-sm font-bold hidden sm:inline whitespace-nowrap">
+                {language === 'th' ? 'เปิดไฟล์ Google Sheet' : 'Open Google Sheet'}
+              </span>
+              <ExternalLink className="w-3.5 h-3.5 text-white/80 group-hover:text-white transition-colors hidden sm:inline" />
+            </a>
+          </div>
         </div>
       </div>
 

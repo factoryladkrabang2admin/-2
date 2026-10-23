@@ -84,15 +84,38 @@ try {
   // ignore
 }
 
-let serverAnnouncementWebhookUrl: string = process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
-let serverInventoryWebhookUrl: string = process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "";
+function cleanWebhookUrl(url: string | undefined | null): string {
+  if (!url || typeof url !== "string") return "";
+  let clean = url.trim();
+  if (clean.includes("=")) {
+    const parts = clean.split("=");
+    const last = parts[parts.length - 1];
+    if (last.startsWith("http")) {
+      clean = last.trim();
+    }
+  }
+  clean = clean.replace(/^['"]|['"]$/g, "").trim();
+  if (clean.includes("...") || clean.includes("AKfycb...")) {
+    return "";
+  }
+  if (!clean.startsWith("http")) {
+    return "";
+  }
+  return clean;
+}
+
+let serverAnnouncementWebhookUrl: string = cleanWebhookUrl(process.env.ANNOUNCEMENTS_WEBHOOK_URL || "");
+let serverInventoryWebhookUrl: string = cleanWebhookUrl(process.env.EQUIPMENT_INVENTORY_WEBHOOK_URL || "");
 try {
   if (fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
     const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
-      serverAnnouncementWebhookUrl = parsed.webhookUrl.trim();
-      console.log("Loaded server-side announcement webhook URL from file");
+    if (parsed && typeof parsed.webhookUrl === "string") {
+      const cleanFileUrl = cleanWebhookUrl(parsed.webhookUrl);
+      if (cleanFileUrl) {
+        serverAnnouncementWebhookUrl = cleanFileUrl;
+        console.log("Loaded server-side announcement webhook URL from file");
+      }
     }
   }
 } catch (e) {
@@ -1841,7 +1864,7 @@ async function startServer() {
 
   // Get and set global announcement Apps Script webhook URL
   app.get("/api/announcement-webhook", (_req, res) => {
-    const effectiveUrl = serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
+    const effectiveUrl = cleanWebhookUrl(serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "");
     res.json({
       webhookUrl: effectiveUrl,
       connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
@@ -1850,23 +1873,21 @@ async function startServer() {
 
   app.post("/api/announcement-webhook", (req, res) => {
     const { webhookUrl } = req.body || {};
-    if (typeof webhookUrl === "string") {
-      serverAnnouncementWebhookUrl = webhookUrl.trim();
-      try {
-        fs.writeFileSync(
-          ANNOUNCEMENT_WEBHOOK_FILE,
-          JSON.stringify({ webhookUrl: serverAnnouncementWebhookUrl }, null, 2),
-          "utf-8"
-        );
-      } catch (err) {
-        console.warn("Could not persist announcement webhook to disk:", err);
-      }
+    const cleaned = cleanWebhookUrl(webhookUrl);
+    serverAnnouncementWebhookUrl = cleaned;
+    try {
+      fs.writeFileSync(
+        ANNOUNCEMENT_WEBHOOK_FILE,
+        JSON.stringify({ webhookUrl: cleaned }, null, 2),
+        "utf-8"
+      );
+    } catch (err) {
+      console.warn("Could not persist announcement webhook to disk:", err);
     }
-    const effectiveUrl = serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "";
     res.json({
       success: true,
-      webhookUrl: effectiveUrl,
-      connected: !!(effectiveUrl && effectiveUrl.startsWith("http")),
+      webhookUrl: cleaned,
+      connected: !!(cleaned && cleaned.startsWith("http")),
     });
   });
 
@@ -4746,19 +4767,34 @@ async function startServer() {
       const endDate = formatToSheetDate(rawEndDate) || "";
 
       // Try Google Apps Script Webhook or Google Form Submission if accessible
-      let webhookUrl = (payload.webhookUrl || serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "").trim();
+      let webhookUrl = cleanWebhookUrl(payload.webhookUrl || serverAnnouncementWebhookUrl || process.env.ANNOUNCEMENTS_WEBHOOK_URL || "");
       if (!webhookUrl && fs.existsSync(ANNOUNCEMENT_WEBHOOK_FILE)) {
         try {
           const raw = fs.readFileSync(ANNOUNCEMENT_WEBHOOK_FILE, "utf-8");
           const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed.webhookUrl === "string" && parsed.webhookUrl.trim()) {
-            webhookUrl = parsed.webhookUrl.trim();
-            serverAnnouncementWebhookUrl = webhookUrl;
+          if (parsed && typeof parsed.webhookUrl === "string") {
+            const cleanSaved = cleanWebhookUrl(parsed.webhookUrl);
+            if (cleanSaved) {
+              webhookUrl = cleanSaved;
+              serverAnnouncementWebhookUrl = cleanSaved;
+            }
           }
         } catch (wReadErr) {
           console.warn("Could not read webhook from disk:", wReadErr);
         }
       }
+
+      // If client supplied a valid webhook URL, persist it for future server usage
+      const cleanWb = cleanWebhookUrl(payload.webhookUrl);
+      if (cleanWb) {
+        serverAnnouncementWebhookUrl = cleanWb;
+        try {
+          fs.writeFileSync(ANNOUNCEMENT_WEBHOOK_FILE, JSON.stringify({ webhookUrl: cleanWb }, null, 2), "utf-8");
+        } catch (wSaveErr) {
+          console.warn("Could not save announcement webhook to disk:", wSaveErr);
+        }
+      }
+
       let syncedToGoogle = false;
       let driveUploaded = false;
       let webhookErrorDetails: string | null = null;
@@ -4911,21 +4947,21 @@ async function startServer() {
         rawImageUrls: resolvedUrls.length > 0 ? resolvedUrls : undefined,
         operatorName: operatorName || undefined,
         createdAt: Date.now(),
-        syncedToGoogle: true,
+        syncedToGoogle: syncedToGoogle,
       };
 
       saveAnnouncementSubmission(record);
 
       return res.json({
         success: true,
-        googleSheetSynced: true,
+        googleSheetSynced: syncedToGoogle,
         driveUploaded,
         driveUrl: driveUploaded ? finalImg1 : undefined,
         imageUrl: finalImg1,
         imageUrl2: finalImg2,
         imageUrl3: finalImg3,
         imageUrls: resolvedUrls,
-        syncMethod: syncedToGoogle ? "webhook" : "sheet_integrated",
+        syncMethod: syncedToGoogle ? "webhook" : "local_only",
         sheetRowTsv,
         googleFormRowTsv,
         driveFolderId,
@@ -4935,7 +4971,9 @@ async function startServer() {
           ? (driveUploaded
               ? "บันทึกข้อมูลและอัปโหลดรูปภาพลง Google Drive และ Google Sheet สำเร็จเรียบร้อยแล้ว"
               : "บันทึกและส่งข้อมูลเข้า Google Sheet สำเร็จเรียบร้อยแล้ว")
-          : "บันทึกข้อมูลข่าวประชาสัมพันธ์และบันทึกข้อมูลไปใน Google Sheet สำเร็จเรียบร้อยแล้ว",
+          : (webhookUrl
+              ? `บันทึกข้อมูลในระบบเรียบร้อยแล้ว แต่การส่งไปยัง Google Sheet ไม่สำเร็จ (${webhookErrorDetails || "Webhook Error"})`
+              : "บันทึกข้อมูลในระบบเรียบร้อยแล้ว (ยังไม่ได้ส่งเข้า Google Sheet เนื่องจากยังไม่ได้ตั้งค่า Webhook URL)"),
         sheetUrl: "https://docs.google.com/spreadsheets/d/1cfsHq0UnSl6cwUgX7DQXeyDbnwDvIb01Y3Xb01PgxyU/edit?resourcekey=&gid=1228686844#gid=1228686844",
         record,
       });

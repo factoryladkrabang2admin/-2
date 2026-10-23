@@ -2737,12 +2737,33 @@ export const ANNOUNCEMENTS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/fo
 
 export const ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY = 'proworkflow_announcements_webhook_url_v1';
 
+export function cleanWebhookUrl(url: string | undefined | null): string {
+  if (!url || typeof url !== 'string') return '';
+  let clean = url.trim();
+  if (clean.includes('=')) {
+    const parts = clean.split('=');
+    const last = parts[parts.length - 1];
+    if (last.startsWith('http')) {
+      clean = last.trim();
+    }
+  }
+  clean = clean.replace(/^['"]|['"]$/g, '').trim();
+  if (clean.includes('...') || clean.includes('AKfycb...')) {
+    return '';
+  }
+  if (!clean.startsWith('http')) {
+    return '';
+  }
+  return clean;
+}
+
 export function getAnnouncementsWebhookUrl(): string {
   if (typeof window === 'undefined') return '';
   try {
     const saved = localStorage.getItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY);
-    if (saved && saved.trim().startsWith('http')) {
-      return saved.trim();
+    const cleaned = cleanWebhookUrl(saved);
+    if (cleaned) {
+      return cleaned;
     }
   } catch (err) {
     console.warn('Could not read announcements webhook from localStorage:', err);
@@ -2753,7 +2774,7 @@ export function getAnnouncementsWebhookUrl(): string {
 export function setAnnouncementsWebhookUrl(url: string): void {
   if (typeof window === 'undefined') return;
   try {
-    const cleanUrl = url ? url.trim() : '';
+    const cleanUrl = cleanWebhookUrl(url);
     if (!cleanUrl) {
       localStorage.removeItem(ANNOUNCEMENTS_WEBHOOK_STORAGE_KEY);
     } else {
@@ -3110,16 +3131,16 @@ export async function submitAnnouncementRecord(
       return {
         success: true,
         announcement: localItem,
-        googleSheetSynced: true,
+        googleSheetSynced: !!data.googleSheetSynced,
         driveUploaded: !!data.driveUploaded,
         driveUrl: data.driveUrl,
         imageUrl: data.imageUrl,
-        syncMethod: data.syncMethod || 'sheet_integrated',
+        syncMethod: data.syncMethod || (data.googleSheetSynced ? 'sheet_integrated' : 'local_prepared'),
         sheetRowTsv: data.sheetRowTsv || clientFallbackTsv,
         googleFormRowTsv: data.googleFormRowTsv || clientFallbackGoogleFormTsv,
         driveFolderUrl: data.driveFolderUrl || ANNOUNCEMENTS_DRIVE_FOLDER_URL,
         driveFolderId: targetDriveFolderId,
-        message: data.message || 'บันทึกข้อมูลข่าวประชาสัมพันธ์และบันทึกข้อมูลไปใน Google Sheet สำเร็จเรียบร้อยแล้ว',
+        message: data.message || (data.googleSheetSynced ? 'บันทึกข้อมูลข่าวประชาสัมพันธ์และบันทึกข้อมูลไปใน Google Sheet สำเร็จเรียบร้อยแล้ว' : 'บันทึกข้อมูลในระบบเรียบร้อยแล้ว (ยังไม่ได้ส่งเข้า Google Sheet)'),
         formViewUrl: data.formViewUrl || ANNOUNCEMENTS_FORM_VIEW_URL,
         formEditUrl: data.formEditUrl || ANNOUNCEMENTS_FORM_EDIT_URL,
         sheetUrl: data.sheetUrl || ANNOUNCEMENTS_SHEET_URL,
