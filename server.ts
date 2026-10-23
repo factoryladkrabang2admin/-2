@@ -179,7 +179,19 @@ try {
   console.warn("Could not load equipment inventory products from file:", e);
 }
 if (!inMemoryInventoryProducts || inMemoryInventoryProducts.length === 0) {
-  inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS;
+  if (equipmentInventoryResetState && equipmentInventoryResetState.isReset) {
+    inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS.map((p) => ({
+      ...p,
+      initialStock: 0,
+      stockIn: 0,
+      soldCount: 0,
+      currentStock: 0,
+      stockValue: 0,
+      lastUpdatedDate: equipmentInventoryResetState.resetDate || "23/09/2026",
+    }));
+  } else {
+    inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS;
+  }
   try {
     fs.writeFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, JSON.stringify(inMemoryInventoryProducts, null, 2), "utf-8");
   } catch {}
@@ -247,10 +259,14 @@ try {
 }
 
 if (!inMemoryInventoryTransactions || inMemoryInventoryTransactions.length === 0) {
-  inMemoryInventoryTransactions = [...DEFAULT_SERVER_INVENTORY_TRANSACTIONS];
-  try {
-    fs.writeFileSync(EQUIPMENT_INVENTORY_DATA_FILE, JSON.stringify(inMemoryInventoryTransactions, null, 2), "utf-8");
-  } catch {}
+  if (!equipmentInventoryResetState || !equipmentInventoryResetState.isReset) {
+    inMemoryInventoryTransactions = [...DEFAULT_SERVER_INVENTORY_TRANSACTIONS];
+    try {
+      fs.writeFileSync(EQUIPMENT_INVENTORY_DATA_FILE, JSON.stringify(inMemoryInventoryTransactions, null, 2), "utf-8");
+    } catch {}
+  } else {
+    inMemoryInventoryTransactions = [];
+  }
 }
 
 for (const item of inMemoryInventoryTransactions) {
@@ -4525,7 +4541,7 @@ async function startServer() {
         isReset: true,
         resetTime: Date.now(),
         resetDate: todayStr,
-        mode: mode || "cycle",
+        mode: "zero",
       };
       try {
         fs.writeFileSync(
@@ -4549,20 +4565,21 @@ async function startServer() {
         console.warn("Could not clear equipment inventory submissions file:", err);
       }
 
-      // Reset server-side products
-      if (Array.isArray(payload.products) && payload.products.length > 0) {
-        inMemoryInventoryProducts = payload.products;
-        saveEquipmentInventoryProducts();
-      } else {
-        inMemoryInventoryProducts = inMemoryInventoryProducts.map((p: any) => ({
-          ...p,
-          soldCount: 0,
-          stockIn: 0,
-          currentStock: p.initialStock,
-          stockValue: p.initialStock * p.price,
-        }));
-        saveEquipmentInventoryProducts();
-      }
+      // Reset server-side products: ensure all counts are 0 online across all devices
+      const sourceCatalog = Array.isArray(payload.products) && payload.products.length > 0 
+        ? payload.products 
+        : (inMemoryInventoryProducts.length > 0 ? inMemoryInventoryProducts : DEFAULT_SERVER_INVENTORY_PRODUCTS);
+
+      inMemoryInventoryProducts = sourceCatalog.map((p: any) => ({
+        ...p,
+        initialStock: 0,
+        stockIn: 0,
+        soldCount: 0,
+        currentStock: 0,
+        stockValue: 0,
+        lastUpdatedDate: todayStr,
+      }));
+      saveEquipmentInventoryProducts();
 
       broadcastEquipmentInventoryUpdate({
         type: "RESET_COMPLETED",

@@ -36,7 +36,7 @@ import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { MaintenanceDetailModal } from './MaintenanceDetailModal';
 import { MaintenanceCalendarView } from './MaintenanceCalendarView';
 import { MaintenanceAnalyticsModal } from './MaintenanceAnalyticsModal';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { 
   AllTicketsAnimatedIcon, 
   RepairingActiveIcon, 
@@ -304,74 +304,137 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setCardCurrentPage(1);
   };
 
-  // Direct 1-click download Excel (.xlsx) matching Google Sheet format and rows
-  const handleDownloadExcel = () => {
+  // Direct 1-click download Excel (.xlsx) formatted with TH Sarabun PSK size 16 font
+  const handleDownloadExcel = async () => {
+    if (!canAccessGoogleSheet) return;
     if (!tickets || tickets.length === 0) return;
 
-    // Exact 10 headers matching the original Google Sheet
-    const headers = [
-      'ลำดับ',
-      'เลขที่ใบแจ้งงาน',
-      'หน่วยงานที่รับแจ้ง',
-      'ปัญหา / รายละเอียด',
-      'วันที่แจ้ง',
-      'สถานะใบงาน',
-      'วันดำเนินการ',
-      'ผู้แจ้ง',
-      'วันที่แล้วเสร็จ',
-      'หมายเหตุุ'
+    // Create workbook with ExcelJS for high-fidelity Sarabun PSK font styling
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ProWorkflow Maintenance';
+    workbook.lastModifiedBy = 'ProWorkflow Maintenance';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    const worksheet = workbook.addWorksheet('งานแจ้งซ่อม', {
+      views: [{ showGridLines: true }]
+    });
+
+    // 10 columns matching original Google Sheet layout
+    worksheet.columns = [
+      { header: 'ลำดับ', key: 'seq', width: 9 },
+      { header: 'เลขที่ใบแจ้งงาน', key: 'workOrderNo', width: 22 },
+      { header: 'หน่วยงานที่รับแจ้ง', key: 'department', width: 34 },
+      { header: 'ปัญหา / รายละเอียด', key: 'issueDetail', width: 48 },
+      { header: 'วันที่แจ้ง', key: 'reportedDate', width: 16 },
+      { header: 'สถานะใบงาน', key: 'status', width: 24 },
+      { header: 'วันดำเนินการ', key: 'actionDate', width: 16 },
+      { header: 'ผู้แจ้ง', key: 'requester', width: 22 },
+      { header: 'วันที่แล้วเสร็จ', key: 'completedDate', width: 16 },
+      { header: 'หมายเหตุุ', key: 'note', width: 24 }
     ];
 
     // Sort ascending by seq (1, 2, 3...) to match the Google Sheet row-by-row exactly
     const sortedTickets = [...tickets].sort((a, b) => a.seq - b.seq);
 
-    const rows = sortedTickets.map((t) => [
-      t.seq,
-      String(t.workOrderNo || ''),
-      t.department || '',
-      t.issueDetail || '',
-      t.reportedDate || '',
-      t.status || '',
-      t.actionDate || '',
-      t.requester || '',
-      t.completedDate || '',
-      t.note || ''
-    ]);
+    // Populate data rows
+    sortedTickets.forEach((t) => {
+      worksheet.addRow({
+        seq: t.seq,
+        workOrderNo: String(t.workOrderNo || ''),
+        department: t.department || '',
+        issueDetail: t.issueDetail || '',
+        reportedDate: t.reportedDate || '',
+        status: t.status || '',
+        actionDate: t.actionDate || '',
+        requester: t.requester || '',
+        completedDate: t.completedDate || '',
+        note: t.note || ''
+      });
+    });
 
-    const aoa = [headers, ...rows];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // 1. Header row styling: Font TH Sarabun PSK, size 10, bold
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 22;
+    headerRow.eachCell((cell) => {
+      cell.font = {
+        name: 'TH Sarabun PSK',
+        size: 10,
+        bold: true,
+        color: { argb: 'FF1E293B' }
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F5F9' }
+      };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'center',
+        wrapText: true
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        bottom: { style: 'medium', color: { argb: 'FF94A3B8' } },
+        right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+      };
+    });
 
-    // Set column widths matching original Google Sheet layout
-    ws['!cols'] = [
-      { wch: 8 },  // ลำดับ
-      { wch: 22 }, // เลขที่ใบแจ้งงาน
-      { wch: 38 }, // หน่วยงานที่รับแจ้ง
-      { wch: 48 }, // ปัญหา / รายละเอียด
-      { wch: 14 }, // วันที่แจ้ง
-      { wch: 22 }, // สถานะใบงาน
-      { wch: 14 }, // วันดำเนินการ
-      { wch: 18 }, // ผู้แจ้ง
-      { wch: 14 }, // วันที่แล้วเสร็จ
-      { wch: 22 }  // หมายเหตุุ
-    ];
+    // 2. Data rows styling: Font TH Sarabun PSK, size 10, regular
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.height = 19; // 19pt height for clean Thai text display at 10pt
 
-    // Format workOrderNo column (col 1 / B) as string/text so Excel preserves full IDs and leading zeroes
-    for (let r = 1; r <= sortedTickets.length; r++) {
-      const cellRef = XLSX.utils.encode_cell({ r, c: 1 });
-      if (ws[cellRef]) {
-        ws[cellRef].t = 's';
-        ws[cellRef].z = '@';
-      }
-    }
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        cell.font = {
+          name: 'TH Sarabun PSK',
+          size: 10,
+          bold: false,
+          color: { argb: 'FF0F172A' }
+        };
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'งานแจ้งซ่อม');
+        // Text format for workOrderNo column
+        if (colNumber === 2) {
+          cell.numFmt = '@';
+        }
+
+        let hAlign: 'center' | 'left' = 'left';
+        if (colNumber === 1 || colNumber === 5 || colNumber === 6 || colNumber === 7 || colNumber === 9) {
+          hAlign = 'center';
+        }
+
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: hAlign,
+          wrapText: colNumber === 4
+        };
+
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+        };
+      });
+    });
 
     const now = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    
+
     // Direct immediate download as .xlsx without popup or toast
-    XLSX.writeFile(wb, `งานแจ้งซ่อม_GoogleSheet_${dateStr}.xlsx`);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `งานแจ้งซ่อม_GoogleSheet_${dateStr}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
   };
 
   // Pagination calculation for Table View (20 items/page)
@@ -488,16 +551,18 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <BarChart3 className="w-5 h-5 text-orange-600 stroke-[2]" />
             </button>
 
-            {/* 2. ปุ่มดาวน์โหลดไฟล์ Excel (.xlsx) งานแจ้งซ่อม (กดแล้วดาวน์โหลดได้เลยทันทีโดยไม่มี popup หรือข้อความเด้ง) */}
-            <button
-              type="button"
-              onClick={handleDownloadExcel}
-              className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-orange-300"
-              title={language === 'th' ? 'ดาวน์โหลดไฟล์ Excel (.xlsx) รูปแบบ Google Sheet' : 'Download Excel (.xlsx)'}
-              aria-label="Download Excel"
-            >
-              <Download className="w-5 h-5 text-orange-600 stroke-[2]" />
-            </button>
+            {/* 2. ปุ่มดาวน์โหลดไฟล์ Excel (.xlsx) งานแจ้งซ่อม (จำกัดสิทธิ์การมองเห็นเฉพาะผู้ดูแลและแอดมินเท่านั้น) */}
+            {canAccessGoogleSheet && (
+              <button
+                type="button"
+                onClick={handleDownloadExcel}
+                className="p-2.5 rounded-xl bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-orange-300"
+                title={language === 'th' ? 'ดาวน์โหลดไฟล์ Excel (.xlsx) รูปแบบ Google Sheet (ฟอนต์ Sarabun PSK ขนาด 10)' : 'Download Excel (.xlsx)'}
+                aria-label="Download Excel"
+              >
+                <Download className="w-5 h-5 text-orange-600 stroke-[2]" />
+              </button>
+            )}
 
             {/* 3. ลิงก์ Google Sheet */}
             {canAccessGoogleSheet && (

@@ -316,7 +316,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
   // Reset to default modal state
   const [resetModalOpen, setResetModalOpen] = useState<boolean>(false);
-  const [resetMode, setResetMode] = useState<'cycle' | 'factory'>('cycle');
+  const [resetMode, setResetMode] = useState<'zero' | 'cycle' | 'factory'>('zero');
   const [resetClearTransactions, setResetClearTransactions] = useState<boolean>(true);
   const [isResetting, setIsResetting] = useState<boolean>(false);
 
@@ -336,8 +336,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       if (res.googleSheetSynced) {
         setSyncStatusMsg({
           text: isEn
-            ? 'Reset completed! Old data permanently deleted from system and Google Sheet (will not return).'
-            : 'รีเซ็ตสำเร็จ! ลบข้อมูลเดิมออกจากระบบและ Google Sheet เรียบร้อยแล้ว (ระบบจะไม่นำข้อมูลเดิมกลับมาอีก)',
+            ? 'Reset completed! All equipment data set to 0 online across all users and Google Sheet updated.'
+            : 'รีเซ็ตสำเร็จ! ข้อมูลคลังอุปกรณ์เป็น 0 ออนไลน์ทั้งหมดเรียบร้อยแล้ว แม้ User อื่นจะเข้ามาตามหลังก็จะเป็นข้อมูลล่าสุด (0)',
           isError: false,
         });
       } else {
@@ -353,8 +353,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
         setSyncStatusMsg({
           text: isEn
-            ? 'Reset completed! System locked into fresh cycle with clean data. Clean table copied to clipboard.'
-            : 'รีเซ็ตข้อมูลสำเร็จ! ระบบลบข้อมูลเดิมทั้งหมดเรียบร้อยแล้วและเริ่มรอบใหม่ คัดลอกตารางเริ่มรอบใหม่ลงคลิปบอร์ดแล้ว',
+            ? 'Reset completed! All equipment data set to 0 online across all users.'
+            : 'รีเซ็ตสำเร็จ! ข้อมูลคลังอุปกรณ์เป็น 0 ออนไลน์ทั้งหมดเรียบร้อยแล้ว แม้ User อื่นจะเข้ามาตามหลังก็จะเป็นข้อมูลล่าสุด (0)',
           isError: false,
         });
       }
@@ -390,6 +390,10 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       if (shared.transactions) {
         setTransactions(shared.transactions);
       }
+      // If reset is active, keep zeroed data and DO NOT overwrite with old Google Sheet numbers!
+      if (!shared.resetState?.isReset) {
+        handleSyncGoogleSheet(true);
+      }
     });
 
     // 3. Subscribe to real-time updates (SSE + BroadcastChannel + background sync)
@@ -404,9 +408,6 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
       setLastSyncTime(`อัปเดตข้อมูลสดแล้ว (${timeStr})`);
     });
-
-    // 4. Initial Google Sheet sync if live sheet is configured
-    handleSyncGoogleSheet(true);
 
     return () => {
       unsubscribe();
@@ -3613,11 +3614,11 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 {isEn ? 'Select Reset Mode:' : 'เลือกรูปแบบการรีเซ็ต:'}
               </span>
 
-              {/* Mode 1: Cycle Reset (Weekly / Monthly) */}
+              {/* Mode 1: Zero Online Reset */}
               <label
-                onClick={() => setResetMode('cycle')}
+                onClick={() => setResetMode('zero')}
                 className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
-                  resetMode === 'cycle'
+                  resetMode === 'zero' || resetMode === 'cycle'
                     ? 'border-amber-600 bg-amber-50/60 dark:bg-amber-950/30'
                     : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                 }`}
@@ -3625,19 +3626,19 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 <input
                   type="radio"
                   name="resetMode"
-                  checked={resetMode === 'cycle'}
-                  onChange={() => setResetMode('cycle')}
+                  checked={resetMode === 'zero' || resetMode === 'cycle'}
+                  onChange={() => setResetMode('zero')}
                   className="mt-1 text-amber-600 focus:ring-amber-500"
                 />
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span>{isEn ? 'New Cycle (Weekly / Monthly)' : 'เริ่มรอบใหม่ประจำสัปดาห์ / ประจำเดือน (แนะนำ)'}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">นิยม</span>
+                    <span>{isEn ? 'Reset All Data to 0 Online (Recommended)' : 'รีเซ็ตข้อมูลเป็น 0 ออนไลน์ทั้งหมด (แนะนำ)'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">ออนไลน์ทุกคน</span>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     {isEn
-                      ? 'Reset sold count to 0 and added stock to 0. Restore current stock back to original starting stock (ยอดตั้งต้น), keeping catalog items and prices.'
-                      : 'เคลียร์ยอดขายสะสมเป็น 0 และยอดเพิ่มสต็อกเป็น 0 แล้วปรับยอดคงเหลือคืนตามยอดตั้งต้นเดิม (ยอดยกมา) โดยยังคงรักษารายการสินค้าและราคาขายเดิมไว้'}
+                      ? 'Reset starting stock, restocks, sold counts, current stock, and stock value to 0 across all products online. Even when other users visit or log in later, they will receive the latest zeroed state.'
+                      : 'ปรับยอดตั้งต้น, ยอดเพิ่มสต็อก, จำนวนขาย, ยอดคงเหลือ และมูลค่าคงเหลือ ให้เป็น 0 ทั้งหมดออนไลน์ โดยบันทึกลงเซิร์ฟเวอร์แบบเรียลไทม์ แม้ User อื่นจะเข้ามาตามหลังก็จะได้ข้อมูลล่าสุดเป็น 0 ตรงกัน'}
                   </p>
                 </div>
               </label>
@@ -3664,8 +3665,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     {isEn
-                      ? 'Restore all 27 original equipment products, standard prices, and initial stock quantities according to master config.'
-                      : 'คืนค่าสินค้าทั้ง 27 รายการเดิม, ราคาขายมาตรฐาน และจำนวนสต็อกเริ่มต้นตามชุดข้อมูลมาตรฐานของระบบ'}
+                      ? 'Restore all original equipment products, standard prices, and clear stock movements to 0.'
+                      : 'คืนค่ารายการสินค้าทั้ง 28 รายการ, ราคาขายมาตรฐาน และรีเซ็ตจำนวนสต็อกเป็น 0 ออนไลน์'}
                   </p>
                 </div>
               </label>
