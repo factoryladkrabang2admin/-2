@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Wrench, 
   Search, 
   Filter, 
   FileSpreadsheet, 
   BarChart3, 
+  Download,
+  ChevronDown,
   List, 
   LayoutGrid, 
   Columns, 
@@ -34,6 +36,11 @@ import { AdminUserAccount, isUserAdminOrSupervisor } from '../data/mockData';
 import { MaintenanceDetailModal } from './MaintenanceDetailModal';
 import { MaintenanceCalendarView } from './MaintenanceCalendarView';
 import { MaintenanceAnalyticsModal } from './MaintenanceAnalyticsModal';
+import { 
+  MaintenanceExportModal, 
+  exportTicketsToGoogleSheetCsv, 
+  triggerDownload 
+} from './MaintenanceExportModal';
 import { 
   AllTicketsAnimatedIcon, 
   RepairingActiveIcon, 
@@ -137,6 +144,25 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   // Modals
   const [showAnalyticsModal, setShowAnalyticsModal] = useState<boolean>(false);
   const [showFilterModal, setShowFilterModal] = useState<boolean>(false);
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [showDownloadDropdown, setShowDownloadDropdown] = useState<boolean>(false);
+  const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
+  const downloadDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close download dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (downloadDropdownRef.current && !downloadDropdownRef.current.contains(event.target as Node)) {
+        setShowDownloadDropdown(false);
+      }
+    }
+    if (showDownloadDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDownloadDropdown]);
 
   // Sorting
   const [sortBy, setSortBy] = useState<'seq_desc' | 'seq_asc' | 'status'>('seq_desc');
@@ -301,6 +327,27 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setCardCurrentPage(1);
   };
 
+  // Quick download helper for Google Sheet CSV export
+  const handleQuickDownload = (mode: 'all' | 'filtered') => {
+    const list = mode === 'all' ? tickets : filteredTickets;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const filename = mode === 'all' 
+      ? `การแจ้งซ่อม_GoogleSheet_ต้นฉบับ_${dateStr}.csv` 
+      : `การแจ้งซ่อม_ตามตัวกรอง_${dateStr}.csv`;
+
+    const csvContent = exportTicketsToGoogleSheetCsv(list, mode);
+    triggerDownload(csvContent, filename);
+
+    const msg = mode === 'all'
+      ? `ดาวน์โหลดข้อมูลต้นฉบับ Google Sheet สำเร็จ (${list.length} รายการ)`
+      : `ดาวน์โหลดข้อมูลตามตัวกรองสำเร็จ (${list.length} รายการ)`;
+    setDownloadToastMessage(msg);
+    setTimeout(() => {
+      setDownloadToastMessage(null);
+    }, 3500);
+  };
+
   // Pagination calculation for Table View (20 items/page)
   const tableTotalPages = Math.max(1, Math.ceil(filteredTickets.length / TABLE_ITEMS_PER_PAGE));
   const validTablePage = Math.min(Math.max(1, tableCurrentPage), tableTotalPages);
@@ -412,7 +459,111 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <BarChart3 className="w-5 h-5 text-orange-600 stroke-[2]" />
             </button>
 
-            {/* 2. ลิงก์ Google Sheet */}
+            {/* 2. ปุ่มดาวน์โหลดข้อมูล (Download Maintenance Data - รูปแบบต้นฉบับ Google Sheet) */}
+            <div className="relative" ref={downloadDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowDownloadDropdown((prev) => !prev)}
+                className={`p-2.5 rounded-xl border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center shadow-xs hover:border-orange-300 ${
+                  showDownloadDropdown
+                    ? 'bg-orange-600 text-white border-orange-400 shadow-md ring-2 ring-orange-300'
+                    : 'bg-white/85 hover:bg-white text-orange-950 border border-orange-200/80'
+                }`}
+                title={language === 'th' ? 'ดาวน์โหลดข้อมูลแจ้งซ่อม (รูปแบบต้นฉบับ Google Sheet)' : 'Download (Google Sheet Format)'}
+                aria-label="Download Maintenance Data"
+              >
+                <Download className={`w-5 h-5 stroke-[2] ${showDownloadDropdown ? 'text-white' : 'text-orange-600'}`} />
+              </button>
+
+              {/* Quick Dropdown Menu */}
+              {showDownloadDropdown && (
+                <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-72 sm:w-80 bg-white/95 backdrop-blur-xl border border-orange-200/90 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-orange-100">
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span className="font-bold text-xs text-orange-950">
+                        {language === 'th' ? 'ดาวน์โหลดข้อมูลแจ้งซ่อม' : 'Download Maintenance'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                      Google Sheet
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {/* Option 1: All Original Google Sheet Data */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleQuickDownload('all');
+                        setShowDownloadDropdown(false);
+                      }}
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-orange-50 border border-transparent hover:border-orange-200 transition-colors flex items-start gap-3 group/btn cursor-pointer"
+                    >
+                      <div className="p-2 rounded-lg bg-orange-100/70 text-orange-700 group-hover/btn:bg-orange-600 group-hover/btn:text-white transition-colors shrink-0 mt-0.5">
+                        <Download className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-gray-900 flex items-center justify-between">
+                          <span>{language === 'th' ? 'ดาวน์โหลดทั้งหมด (ต้นฉบับ)' : 'Download All (Original)'}</span>
+                          <span className="text-[10px] text-orange-700 font-bold bg-orange-100 px-1.5 py-0.5 rounded-full">
+                            {tickets.length} รายการ
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                          {language === 'th' ? '10 คอลัมน์ตรงตาม Google Sheet เรียงลำดับ 1 ถึงล่าสุด' : '10 columns matching Google Sheet row-for-row'}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Option 2: Filtered Data (if filtered) */}
+                    {activeFiltersCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleQuickDownload('filtered');
+                          setShowDownloadDropdown(false);
+                        }}
+                        className="w-full text-left p-2.5 rounded-xl hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-colors flex items-start gap-3 group/btn cursor-pointer"
+                      >
+                        <div className="p-2 rounded-lg bg-amber-100/70 text-amber-700 group-hover/btn:bg-amber-600 group-hover/btn:text-white transition-colors shrink-0 mt-0.5">
+                          <Filter className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-gray-900 flex items-center justify-between">
+                            <span>{language === 'th' ? 'ดาวน์โหลดตามตัวกรอง' : 'Download Filtered'}</span>
+                            <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-1.5 py-0.5 rounded-full">
+                              {filteredTickets.length} รายการ
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                            {language === 'th' ? 'เฉพาะรายการที่ค้นหา/กรองอยู่ในปัจจุบัน' : 'Filtered subset currently displayed'}
+                          </p>
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Option 3: Full Modal with Table Preview */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowExportModal(true);
+                        setShowDownloadDropdown(false);
+                      }}
+                      className="w-full text-left p-2 rounded-lg hover:bg-gray-50 text-[11px] font-medium text-gray-600 flex items-center justify-between transition-colors pt-2 border-t border-gray-100 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5 text-orange-700 font-semibold">
+                        <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                        {language === 'th' ? 'ดูตัวอย่าง 10 คอลัมน์ / ตัวเลือกเพิ่มเติม' : 'Preview 10 Columns & Details'}
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. ลิงก์ Google Sheet */}
             {canAccessGoogleSheet && (
               <a
                 href={MAINTENANCE_SHEET_URL}
@@ -1068,6 +1219,19 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
         tickets={tickets}
       />
 
+      {/* 4.1 Maintenance Export & Download Modal (รูปแบบต้นฉบับ Google Sheet 10 คอลัมน์) */}
+      <MaintenanceExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        tickets={tickets}
+        filteredTickets={filteredTickets}
+        activeFiltersCount={activeFiltersCount}
+        onSuccessToast={(msg) => {
+          setDownloadToastMessage(msg);
+          setTimeout(() => setDownloadToastMessage(null), 3500);
+        }}
+      />
+
       {/* 5. Enhanced Filter & Search Modal (with Search text, Year, Date-Date range, Dept, Status) */}
       {showFilterModal && (
         <div 
@@ -1252,6 +1416,26 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Download Success Toast */}
+      {downloadToastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-500/40 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="text-xs font-semibold leading-tight flex-1">
+            {downloadToastMessage}
+          </div>
+          <button
+            type="button"
+            onClick={() => setDownloadToastMessage(null)}
+            className="p-1 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+            aria-label="Close notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
