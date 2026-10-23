@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Clock, 
   Search, 
@@ -8,7 +8,7 @@ import {
   List, 
   LayoutGrid, 
   Columns, 
-  CalendarDays,
+  CalendarDays, 
   CheckCircle2, 
   AlertCircle, 
   User, 
@@ -16,9 +16,11 @@ import {
   Calendar, 
   X, 
   Layers, 
-  Sparkles,
-  ChevronLeft,
-  ChevronRight,
+  Sparkles, 
+  ChevronLeft, 
+  ChevronRight, 
+  ChevronDown,
+  Check,
   TrendingUp,
   FileText,
   Timer,
@@ -228,7 +230,12 @@ export const OtView: React.FC<OtViewProps> = ({
   const permissionScopedRecords = useMemo(() => {
     if (isAdmin) {
       if (selectedAdminEmployeeFilter !== 'all') {
-        return allRecords.filter(r => (r.employeeId || '').toUpperCase() === selectedAdminEmployeeFilter.toUpperCase());
+        const target = selectedAdminEmployeeFilter.trim().toUpperCase();
+        return allRecords.filter(r => {
+          const empId = (r.employeeId || '').trim().toUpperCase();
+          const empName = (r.employeeName || '').trim().toUpperCase();
+          return empId === target || empName === target;
+        });
       }
       return allRecords;
     }
@@ -259,24 +266,55 @@ export const OtView: React.FC<OtViewProps> = ({
     return Array.from(depts);
   }, [permissionScopedRecords]);
 
-  // Unique employees list for Admin filtering
+  // Unique employees list for Admin filtering (Names sorted alphabetically in Thai ก-ฮ, ID hidden)
   const allUniqueEmployees = useMemo(() => {
     if (!isAdmin) return [];
     const empMap = new Map<string, { id: string; name: string; dept: string }>();
     allRecords.forEach(r => {
-      if (r.employeeId && r.employeeId !== '-') {
-        const cleanId = r.employeeId.trim().toUpperCase();
+      const name = (r.employeeName || '').trim();
+      if (name && name !== '-' && name !== 'ทั่วไป') {
+        const cleanId = (r.employeeId && r.employeeId !== '-') ? r.employeeId.trim().toUpperCase() : name;
         if (!empMap.has(cleanId)) {
           empMap.set(cleanId, {
             id: cleanId,
-            name: r.employeeName || cleanId,
+            name: name,
             dept: r.department || 'ทั่วไป'
           });
         }
       }
     });
-    return Array.from(empMap.values()).sort((a, b) => a.id.localeCompare(b.id));
+    // Sort strictly alphabetically by Thai name (ก-ฮ)
+    return Array.from(empMap.values()).sort((a, b) => 
+      a.name.localeCompare(b.name, 'th', { sensitivity: 'base' })
+    );
   }, [isAdmin, allRecords]);
+
+  // Search and dropdown state for "ช่องค้นหาพนักงานทุกคนในระบบ"
+  const [empSearchText, setEmpSearchText] = useState<string>('');
+  const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState<boolean>(false);
+  const employeeSearchRef = useRef<HTMLDivElement>(null);
+
+  // Close employee search dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (employeeSearchRef.current && !employeeSearchRef.current.contains(event.target as Node)) {
+        setIsEmpDropdownOpen(false);
+      }
+    }
+    if (isEmpDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEmpDropdownOpen]);
+
+  // Filtered list of employees matching typed query (sorted alphabetically)
+  const filteredEmployeeList = useMemo(() => {
+    if (!empSearchText.trim()) return allUniqueEmployees;
+    const q = empSearchText.trim().toLowerCase();
+    return allUniqueEmployees.filter(emp => emp.name.toLowerCase().includes(q));
+  }, [allUniqueEmployees, empSearchText]);
 
   // 2. Base Filtered Records (based on search query, department, admin employee filter, date range, and month scope)
   const baseFilteredRecords = useMemo(() => {
@@ -440,6 +478,8 @@ export const OtView: React.FC<OtViewProps> = ({
     setSelectedStatus('all');
     setSelectedDepartment('all');
     setSelectedAdminEmployeeFilter('all');
+    setEmpSearchText('');
+    setIsEmpDropdownOpen(false);
     setStartDate('');
     setEndDate('');
     setTableCurrentPage(1);
@@ -641,35 +681,137 @@ export const OtView: React.FC<OtViewProps> = ({
           </div>
         </div>
 
-        {/* Admin Quick Employee Switcher (Shown ONLY for Admins) */}
+        {/* Admin Quick Employee Switcher (ช่องค้นหาพนักงานทุกคนในระบบ แสดงแค่ชื่อ ซ่อนรหัส เรียงตามตัวอักษร) */}
         {isAdmin && allUniqueEmployees.length > 0 && (
-          <div className="relative z-10 pt-2 border-t border-amber-200/60 flex items-center justify-between gap-3 flex-wrap">
+          <div className="relative z-20 pt-2 border-t border-amber-200/60 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-xs font-bold text-[#713f12]">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>{language === 'th' ? 'โหมดผู้ดูแลระบบ: กรองดูข้อมูลพนักงาน' : 'Admin Filter by Staff:'}</span>
+              <User className="w-4 h-4 text-amber-700" />
+              <span>{language === 'th' ? 'ค้นหาพนักงานในระบบ:' : 'Search Employee:'}</span>
             </div>
 
             <div className="flex items-center gap-2 flex-1 max-w-md">
-              <select
-                value={selectedAdminEmployeeFilter}
-                onChange={(e) => setSelectedAdminEmployeeFilter(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-xl bg-white/95 border border-amber-300 text-xs font-semibold text-[#713f12] outline-hidden focus:ring-2 focus:ring-amber-400 shadow-2xs"
-              >
-                <option value="all">
-                  {language === 'th' ? `พนักงานทุกคนในระบบ (${allRecords.length} รายการทั้งหมด)` : `All Employees (${allRecords.length} total records)`}
-                </option>
-                {allUniqueEmployees.map(emp => (
-                  <option key={emp.id} value={emp.id}>
-                    รหัส {emp.id} - {emp.name} ({emp.dept})
-                  </option>
-                ))}
-              </select>
+              <div className="relative flex-1" ref={employeeSearchRef}>
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-amber-700 absolute left-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={
+                      isEmpDropdownOpen 
+                        ? empSearchText 
+                        : selectedAdminEmployeeFilter === 'all' 
+                          ? '' 
+                          : (allUniqueEmployees.find(e => e.id === selectedAdminEmployeeFilter)?.name || selectedAdminEmployeeFilter)
+                    }
+                    onChange={(e) => {
+                      setEmpSearchText(e.target.value);
+                      if (!isEmpDropdownOpen) setIsEmpDropdownOpen(true);
+                    }}
+                    onFocus={() => {
+                      setEmpSearchText('');
+                      setIsEmpDropdownOpen(true);
+                    }}
+                    onClick={() => {
+                      if (!isEmpDropdownOpen) setIsEmpDropdownOpen(true);
+                    }}
+                    placeholder={
+                      selectedAdminEmployeeFilter === 'all'
+                        ? (language === 'th' ? `พนักงานทุกคนในระบบ (${allRecords.length} รายการทั้งหมด)` : `All Employees (${allRecords.length} records)`)
+                        : (allUniqueEmployees.find(e => e.id === selectedAdminEmployeeFilter)?.name || (language === 'th' ? 'พนักงานทุกคนในระบบ' : 'All Employees'))
+                    }
+                    className="w-full pl-9 pr-14 py-2 rounded-xl bg-white/95 border border-amber-300 text-xs font-bold text-[#713f12] placeholder:text-[#713f12]/75 outline-hidden focus:ring-2 focus:ring-amber-400 focus:bg-white shadow-2xs transition-all"
+                  />
+
+                  <div className="absolute right-2 flex items-center gap-1">
+                    {selectedAdminEmployeeFilter !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAdminEmployeeFilter('all');
+                          setEmpSearchText('');
+                          setIsEmpDropdownOpen(false);
+                        }}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                        title={language === 'th' ? 'ล้างการค้นหา' : 'Clear'}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEmpDropdownOpen(prev => !prev);
+                      }}
+                      className="p-1 text-amber-700 hover:text-amber-900 rounded-lg transition-colors cursor-pointer"
+                      title={language === 'th' ? 'แสดงรายชื่อพนักงาน' : 'Toggle employee list'}
+                    >
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dropdown list of employees: Sorted alphabetically (ก-ฮ) & only showing name (ID hidden) */}
+                {isEmpDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white/98 backdrop-blur-xl border border-amber-300 rounded-2xl shadow-xl max-h-60 overflow-y-auto z-50 p-1.5 space-y-0.5 divide-y divide-amber-100/60 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100">
+                    {/* Option 1: All Employees (Default) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAdminEmployeeFilter('all');
+                        setEmpSearchText('');
+                        setIsEmpDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between cursor-pointer ${
+                        selectedAdminEmployeeFilter === 'all'
+                          ? 'bg-amber-100/90 text-amber-950 font-black'
+                          : 'hover:bg-amber-50/90 text-slate-700'
+                      }`}
+                    >
+                      <span>{language === 'th' ? `พนักงานทุกคนในระบบ (${allRecords.length} รายการทั้งหมด)` : `All Employees (${allRecords.length} total records)`}</span>
+                      {selectedAdminEmployeeFilter === 'all' && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />}
+                    </button>
+
+                    {/* Filtered list of unique employees sorted strictly alphabetically (A-Z / ก-ฮ) with IDs hidden */}
+                    {filteredEmployeeList.length > 0 ? (
+                      filteredEmployeeList.map(emp => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAdminEmployeeFilter(emp.id);
+                            setEmpSearchText('');
+                            setIsEmpDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                            selectedAdminEmployeeFilter === emp.id
+                              ? 'bg-amber-100/90 text-amber-950 font-bold'
+                              : 'hover:bg-amber-50/90 text-slate-800'
+                          }`}
+                        >
+                          <span className="truncate">{emp.name}</span>
+                          {selectedAdminEmployeeFilter === emp.id && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 ml-2" />}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-3 text-xs text-slate-500 text-center font-medium">
+                        {language === 'th' ? `ไม่พบชื่อพนักงานที่ตรงกับ "${empSearchText}"` : `No employee matching "${empSearchText}"`}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {selectedAdminEmployeeFilter !== 'all' && (
                 <button
                   type="button"
-                  onClick={() => setSelectedAdminEmployeeFilter('all')}
-                  className="px-2.5 py-1.5 rounded-xl bg-white text-xs font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all shrink-0 cursor-pointer"
+                  onClick={() => {
+                    setSelectedAdminEmployeeFilter('all');
+                    setEmpSearchText('');
+                    setIsEmpDropdownOpen(false);
+                  }}
+                  className="px-2.5 py-2 rounded-xl bg-white text-xs font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-all shrink-0 cursor-pointer shadow-2xs"
                 >
                   {language === 'th' ? 'ดูทุกคน' : 'Show All'}
                 </button>
@@ -1022,10 +1164,16 @@ export const OtView: React.FC<OtViewProps> = ({
 
             {selectedAdminEmployeeFilter !== 'all' && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white border border-sky-200 text-xs font-semibold text-sky-900 shadow-2xs">
-                <span>{language === 'th' ? 'พนักงาน:' : 'Staff ID:'} {selectedAdminEmployeeFilter}</span>
+                <span>
+                  {language === 'th' ? 'พนักงาน:' : 'Staff:'}{' '}
+                  {allUniqueEmployees.find(e => e.id === selectedAdminEmployeeFilter)?.name || selectedAdminEmployeeFilter}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setSelectedAdminEmployeeFilter('all')}
+                  onClick={() => {
+                    setSelectedAdminEmployeeFilter('all');
+                    setEmpSearchText('');
+                  }}
                   className="hover:text-red-500 cursor-pointer ml-0.5 p-0.5"
                   title="Remove employee filter"
                 >
