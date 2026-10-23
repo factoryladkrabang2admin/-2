@@ -404,28 +404,24 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Open Google Sheet Directly */}
+          {/* Action Buttons: Open Google Sheet Directly (Icon Only) */}
           <div className="flex items-center gap-2 self-start sm:self-center">
-            {/* Open Google Sheet Button (Icon with Google Sheets styling and direct link) */}
+            {/* Open Google Sheet Button (Icon Only with Google Sheets emerald/teal styling) */}
             <a
               href={ANNOUNCEMENTS_SHEET_URL}
               target="_blank"
               rel="noopener noreferrer"
               id="btn-open-announcements-sheet"
-              className="relative p-2.5 sm:px-3.5 sm:py-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-green-700 hover:from-emerald-700 hover:via-teal-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl hover:shadow-emerald-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-2 group overflow-hidden"
-              title={language === 'th' ? 'เปิดไฟล์จาก Google Sheet (ลิงก์ไปที่ Google Sheet ได้เลย)' : 'Open file from Google Sheet'}
+              className="relative p-2.5 sm:p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-green-700 hover:from-emerald-700 hover:via-teal-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl hover:shadow-emerald-500/40 transition-all border border-white/50 backdrop-blur-md cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center group overflow-hidden"
+              title={language === 'th' ? 'เปิดไฟล์ Google Sheet' : 'Open Google Sheet'}
               aria-label={language === 'th' ? 'เปิดไฟล์จาก Google Sheet ข่าวประชาสัมพันธ์' : 'Open Announcements Google Sheet'}
             >
               {/* Shimmer sweep animation */}
               <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
 
               <div className="relative flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5 text-white group-hover:scale-110 transition-transform duration-300 drop-shadow-xs" />
+                <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:scale-110 transition-transform duration-300 drop-shadow-xs" />
               </div>
-              <span className="text-xs sm:text-sm font-bold hidden sm:inline whitespace-nowrap">
-                {language === 'th' ? 'เปิดไฟล์ Google Sheet' : 'Open Google Sheet'}
-              </span>
-              <ExternalLink className="w-3.5 h-3.5 text-white/80 group-hover:text-white transition-colors hidden sm:inline" />
             </a>
           </div>
         </div>
