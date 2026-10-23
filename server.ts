@@ -179,19 +179,28 @@ try {
   console.warn("Could not load equipment inventory products from file:", e);
 }
 if (!inMemoryInventoryProducts || inMemoryInventoryProducts.length === 0) {
-  if (equipmentInventoryResetState && equipmentInventoryResetState.isReset) {
-    inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS.map((p) => ({
+  inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS;
+  try {
+    fs.writeFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, JSON.stringify(inMemoryInventoryProducts, null, 2), "utf-8");
+  } catch {}
+} else {
+  // Reconcile initialStock in case it was zeroed, ensuring starting stock remains intact
+  const defaultMap = new Map(DEFAULT_SERVER_INVENTORY_PRODUCTS.map((p) => [p.id, p]));
+  inMemoryInventoryProducts = inMemoryInventoryProducts.map((p: any) => {
+    const def = defaultMap.get(p.id) || DEFAULT_SERVER_INVENTORY_PRODUCTS.find((d) => d.name === p.name);
+    const initialStock = (p.initialStock !== undefined && p.initialStock > 0)
+      ? p.initialStock
+      : (def ? def.initialStock : (p.initialStock || 0));
+    const price = p.price !== undefined ? p.price : (def ? def.price : 0);
+    const currentStock = Math.max(0, initialStock + (p.stockIn || 0) - (p.soldCount || 0));
+    const stockValue = Math.round(currentStock * price);
+    return {
       ...p,
-      initialStock: 0,
-      stockIn: 0,
-      soldCount: 0,
-      currentStock: 0,
-      stockValue: 0,
-      lastUpdatedDate: equipmentInventoryResetState.resetDate || "23/09/2026",
-    }));
-  } else {
-    inMemoryInventoryProducts = DEFAULT_SERVER_INVENTORY_PRODUCTS;
-  }
+      initialStock,
+      currentStock,
+      stockValue,
+    };
+  });
   try {
     fs.writeFileSync(EQUIPMENT_INVENTORY_PRODUCTS_FILE, JSON.stringify(inMemoryInventoryProducts, null, 2), "utf-8");
   } catch {}
@@ -4534,14 +4543,14 @@ async function startServer() {
         }
       }
 
-      // 1. Reset server in-memory & file state
+      // 1. Reset server in-memory & file state (Preserving initialStock)
       const now = new Date();
       const todayStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
       equipmentInventoryResetState = {
         isReset: true,
         resetTime: Date.now(),
         resetDate: todayStr,
-        mode: "zero",
+        mode: "cycle",
       };
       try {
         fs.writeFileSync(
@@ -4565,20 +4574,30 @@ async function startServer() {
         console.warn("Could not clear equipment inventory submissions file:", err);
       }
 
-      // Reset server-side products: ensure all counts are 0 online across all devices
+      // Reset server-side products: preserve initialStock, reset stockIn to 0, soldCount to 0, currentStock to initialStock
       const sourceCatalog = Array.isArray(payload.products) && payload.products.length > 0 
         ? payload.products 
         : (inMemoryInventoryProducts.length > 0 ? inMemoryInventoryProducts : DEFAULT_SERVER_INVENTORY_PRODUCTS);
 
-      inMemoryInventoryProducts = sourceCatalog.map((p: any) => ({
-        ...p,
-        initialStock: 0,
-        stockIn: 0,
-        soldCount: 0,
-        currentStock: 0,
-        stockValue: 0,
-        lastUpdatedDate: todayStr,
-      }));
+      const defaultMap = new Map(DEFAULT_SERVER_INVENTORY_PRODUCTS.map((d) => [d.id, d]));
+      inMemoryInventoryProducts = sourceCatalog.map((p: any) => {
+        const def = defaultMap.get(p.id) || DEFAULT_SERVER_INVENTORY_PRODUCTS.find((d) => d.name === p.name);
+        const initialStock = (p.initialStock !== undefined && p.initialStock > 0)
+          ? p.initialStock
+          : (def ? def.initialStock : (p.initialStock || 0));
+        const price = p.price !== undefined ? p.price : (def ? def.price : 0);
+        const currentStock = initialStock;
+        const stockValue = Math.round(currentStock * price);
+        return {
+          ...p,
+          initialStock,
+          stockIn: 0,
+          soldCount: 0,
+          currentStock,
+          stockValue,
+          lastUpdatedDate: todayStr,
+        };
+      });
       saveEquipmentInventoryProducts();
 
       broadcastEquipmentInventoryUpdate({

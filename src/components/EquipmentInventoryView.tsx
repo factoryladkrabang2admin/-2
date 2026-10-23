@@ -316,7 +316,7 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
   // Reset to default modal state
   const [resetModalOpen, setResetModalOpen] = useState<boolean>(false);
-  const [resetMode, setResetMode] = useState<'zero' | 'cycle' | 'factory'>('zero');
+  const [resetMode, setResetMode] = useState<'cycle' | 'factory'>('cycle');
   const [resetClearTransactions, setResetClearTransactions] = useState<boolean>(true);
   const [isResetting, setIsResetting] = useState<boolean>(false);
 
@@ -336,8 +336,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
       if (res.googleSheetSynced) {
         setSyncStatusMsg({
           text: isEn
-            ? 'Reset completed! All equipment data set to 0 online across all users and Google Sheet updated.'
-            : 'รีเซ็ตสำเร็จ! ข้อมูลคลังอุปกรณ์เป็น 0 ออนไลน์ทั้งหมดเรียบร้อยแล้ว แม้ User อื่นจะเข้ามาตามหลังก็จะเป็นข้อมูลล่าสุด (0)',
+            ? 'Reset completed! Initial starting stock remains intact, with sales and restocks reset to 0 online.'
+            : 'รีเซ็ตสำเร็จ! ยอดตั้งต้นยังคงอยู่ครบถ้วน ยอดคงเหลือปรับคืนตามยอดตั้งต้นเดิม และยอดขาย/เพิ่มสต็อกเป็น 0 ออนไลน์ทั้งหมด',
           isError: false,
         });
       } else {
@@ -353,8 +353,8 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
 
         setSyncStatusMsg({
           text: isEn
-            ? 'Reset completed! All equipment data set to 0 online across all users.'
-            : 'รีเซ็ตสำเร็จ! ข้อมูลคลังอุปกรณ์เป็น 0 ออนไลน์ทั้งหมดเรียบร้อยแล้ว แม้ User อื่นจะเข้ามาตามหลังก็จะเป็นข้อมูลล่าสุด (0)',
+            ? 'Reset completed! Initial starting stock remains intact, with sales and restocks reset to 0 online.'
+            : 'รีเซ็ตสำเร็จ! ยอดตั้งต้นยังคงอยู่ครบถ้วน ยอดคงเหลือปรับคืนตามยอดตั้งต้นเดิม และยอดขาย/เพิ่มสต็อกเป็น 0 ออนไลน์ทั้งหมด',
           isError: false,
         });
       }
@@ -3614,11 +3614,11 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 {isEn ? 'Select Reset Mode:' : 'เลือกรูปแบบการรีเซ็ต:'}
               </span>
 
-              {/* Mode 1: Zero Online Reset */}
+              {/* Mode 1: Cycle Reset (Keeping Initial Stock) */}
               <label
-                onClick={() => setResetMode('zero')}
+                onClick={() => setResetMode('cycle')}
                 className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
-                  resetMode === 'zero' || resetMode === 'cycle'
+                  resetMode === 'cycle'
                     ? 'border-amber-600 bg-amber-50/60 dark:bg-amber-950/30'
                     : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                 }`}
@@ -3626,19 +3626,19 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 <input
                   type="radio"
                   name="resetMode"
-                  checked={resetMode === 'zero' || resetMode === 'cycle'}
-                  onChange={() => setResetMode('zero')}
+                  checked={resetMode === 'cycle'}
+                  onChange={() => setResetMode('cycle')}
                   className="mt-1 text-amber-600 focus:ring-amber-500"
                 />
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <span>{isEn ? 'Reset All Data to 0 Online (Recommended)' : 'รีเซ็ตข้อมูลเป็น 0 ออนไลน์ทั้งหมด (แนะนำ)'}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">ออนไลน์ทุกคน</span>
+                    <span>{isEn ? 'Start New Cycle (Keep Initial Stock Intact)' : 'รีเซ็ตเริ่มต้นรอบใหม่ (คงยอดตั้งต้นไว้ - แนะนำ)'}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">ยอดตั้งต้นคงอยู่</span>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     {isEn
-                      ? 'Reset starting stock, restocks, sold counts, current stock, and stock value to 0 across all products online. Even when other users visit or log in later, they will receive the latest zeroed state.'
-                      : 'ปรับยอดตั้งต้น, ยอดเพิ่มสต็อก, จำนวนขาย, ยอดคงเหลือ และมูลค่าคงเหลือ ให้เป็น 0 ทั้งหมดออนไลน์ โดยบันทึกลงเซิร์ฟเวอร์แบบเรียลไทม์ แม้ User อื่นจะเข้ามาตามหลังก็จะได้ข้อมูลล่าสุดเป็น 0 ตรงกัน'}
+                      ? 'Keep initial starting stock (ยอดตั้งต้น) intact. Reset sold count and added stock to 0, restoring remaining stock back to initial starting stock.'
+                      : 'ยอดตั้งต้น (ยอดยกมา) ยังคงอยู่ครบถ้วน โดยเคลียร์ยอดขายสะสมเป็น 0 และยอดเพิ่มสต็อกเป็น 0 ทำให้ยอดคงเหลือปรับคืนตามยอดตั้งต้นเดิม'}
                   </p>
                 </div>
               </label>
@@ -3661,12 +3661,12 @@ export const EquipmentInventoryView: React.FC<EquipmentInventoryViewProps> = ({
                 />
                 <div className="space-y-1">
                   <div className="font-bold text-xs text-slate-900 dark:text-white">
-                    {isEn ? 'Full Factory Reset' : 'รีเซ็ตกลับเป็นค่าเริ่มต้นระบบทั้งหมด (Factory Default)'}
+                    {isEn ? 'Full Factory Reset' : 'รีเซ็ตกลับเป็นค่าเริ่มต้นมาตรฐานระบบ (Factory Default)'}
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     {isEn
-                      ? 'Restore all original equipment products, standard prices, and clear stock movements to 0.'
-                      : 'คืนค่ารายการสินค้าทั้ง 28 รายการ, ราคาขายมาตรฐาน และรีเซ็ตจำนวนสต็อกเป็น 0 ออนไลน์'}
+                      ? 'Restore all 28 original equipment products with standard initial stock and standard prices.'
+                      : 'คืนค่าสินค้าทั้ง 28 รายการด้วยยอดตั้งต้นมาตรฐานเดิม (เช่น เอี๊ยมแดง 50, หมวกกระดาษ 500, หน้ากาก 300 เป็นต้น) และรีเซ็ตการเคลื่อนไหวสต็อก'}
                   </p>
                 </div>
               </label>
