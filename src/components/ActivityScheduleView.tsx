@@ -17,7 +17,8 @@ import {
   Sparkles,
   ChevronRight,
   X,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { ActivityScheduleRecord } from '../types';
 import {
@@ -44,6 +45,7 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
     return getCachedActivitySchedules();
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // สิทธิ์การมองเห็นไอคอน Google sheet: เฉพาะผู้ดูแลและแอดมินเพจเท่านั้น
   const hasSheetAccess = useMemo(() => {
@@ -66,7 +68,7 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
     return Array.from(set).sort();
   }, [activities]);
 
-  // ค้นหารหัสเดือนปัจจุบัน เช่น "10/2026" หรือ "10/2569" เพื่อแสดงข้อมูลเดือนปัจจุบันก่อน
+  // ค้นหารหัสเดือนปัจจุบัน เช่น "10/2026" หรือ "10/2569" เพื่อเป็นตัวเลือกอ้างอิง
   const currentMonthKey = useMemo(() => {
     const now = new Date();
     const curM = now.getMonth() + 1;
@@ -84,28 +86,25 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
     }) || null;
   }, [monthOptions]);
 
-  // Filters: แสดงข้อมูลเดือนปัจจุบันก่อนเป็นค่าเริ่มต้น
+  // Filters: ค่าเริ่มต้นแสดงข้อมูลทั้งหมดรวมถึงกิจกรรมล่วงหน้า (selectedMonth = 'all')
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [hasUserChangedMonth, setHasUserChangedMonth] = useState<boolean>(false);
 
-  // เมื่อข้อมูลเดือนปัจจุบันพร้อม ให้ตั้งเป็นเดือนปัจจุบันถ้าผู้ใช้ยังไม่ได้เลือกเอง
-  useEffect(() => {
-    if (!hasUserChangedMonth && currentMonthKey) {
-      setSelectedMonth(currentMonthKey);
-    }
-  }, [currentMonthKey, hasUserChangedMonth]);
-
-  const loadData = async () => {
+  const loadData = async (force = false) => {
+    if (force) setIsRefreshing(true);
     try {
-      const res = await fetchGoogleSheetActivitySchedule();
+      const res = await fetchGoogleSheetActivitySchedule({ forceRefresh: force });
       if (res.success && res.activities.length > 0) {
         setActivities(res.activities);
         setLastUpdated(res.lastSyncedAt);
       }
     } catch {
       // keep current data
+    } finally {
+      if (force) {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
     }
   };
 
@@ -177,7 +176,6 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
     setSearchQuery('');
     setSelectedMonth('all');
     setSelectedStatus('all');
-    setHasUserChangedMonth(true);
   };
 
   const getDayBadge = (day: string) => {
@@ -257,6 +255,20 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
 
           {/* Action Buttons Toolbar in Header */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            {/* ปุ่มรีเฟรชข้อมูลจาก Google Sheet */}
+            <button
+              type="button"
+              onClick={() => loadData(true)}
+              disabled={isRefreshing}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white/85 hover:bg-white text-emerald-800 border border-emerald-200/80 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-60"
+              title="รีเฟรชซิงค์ข้อมูลล่าสุดจาก Google Sheet ทันที"
+            >
+              <RefreshCw className={`w-4 h-4 text-emerald-700 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline font-bold text-xs">
+                {isRefreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูล'}
+              </span>
+            </button>
+
             {/* ไอคอน เปิด google sheet, จำกัดสิทธิ์การมองเห็นเฉพาะ ผู้ดูแลและแอดมินเพจเท่านั้น */}
             {hasSheetAccess && (
               <a
@@ -319,16 +331,29 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Three Metric Summary Boxes */}
+      {/* 2. Three Metric Summary Boxes (คลิกเพื่อกรองได้ทันที) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Box 1: กิจกรรมวันนี้ */}
-        <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+        <div
+          onClick={() => setSelectedStatus(selectedStatus === 'today' ? 'all' : 'today')}
+          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+            selectedStatus === 'today'
+              ? 'ring-2 ring-amber-400 border-amber-300 bg-amber-50/40'
+              : 'border-emerald-200/90 hover:border-amber-300'
+          }`}
+          title="คลิกเพื่อแสดงเฉพาะกิจกรรมวันนี้"
+        >
           <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-emerald-900/70 font-semibold truncate">
-              กิจกรรมวันนี้ (Today)
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+              <span>กิจกรรมวันนี้ (Today)</span>
+              {selectedStatus === 'today' && (
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md">
+                  กำลังเลือก
+                </span>
+              )}
             </div>
             <div className="text-xl font-black text-amber-950">
               {stats.todayCount} กิจกรรม
@@ -336,14 +361,27 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
           </div>
         </div>
 
-        {/* Box 2: กิจกรรมที่กำลังจะมาถึง */}
-        <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+        {/* Box 2: กิจกรรมที่กำลังจะมาถึง / ล่วงหน้า */}
+        <div
+          onClick={() => setSelectedStatus(selectedStatus === 'upcoming' ? 'all' : 'upcoming')}
+          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+            selectedStatus === 'upcoming'
+              ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50/40'
+              : 'border-emerald-200/90 hover:border-blue-300'
+          }`}
+          title="คลิกเพื่อแสดงเฉพาะกิจกรรมที่กำลังจะมาถึงและล่วงหน้า"
+        >
           <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
             <CalendarCheck className="w-5 h-5" />
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-emerald-900/70 font-semibold truncate">
-              กำลังจะมาถึง (Upcoming)
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+              <span>กำลังจะมาถึง / ล่วงหน้า</span>
+              {selectedStatus === 'upcoming' && (
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-md">
+                  กำลังเลือก
+                </span>
+              )}
             </div>
             <div className="text-xl font-black text-blue-950">
               {stats.upcomingCount} กิจกรรม
@@ -352,13 +390,29 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
         </div>
 
         {/* Box 3: กิจกรรมทั้งหมดในระบบ */}
-        <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+        <div
+          onClick={() => {
+            setSelectedStatus('all');
+            setSelectedMonth('all');
+          }}
+          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+            selectedStatus === 'all' && selectedMonth === 'all'
+              ? 'ring-2 ring-emerald-500 border-emerald-400 bg-emerald-50/40'
+              : 'border-emerald-200/90 hover:border-emerald-300'
+          }`}
+          title="คลิกเพื่อแสดงกิจกรรมทั้งหมดในระบบ"
+        >
           <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
             <CalendarClock className="w-5 h-5" />
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-emerald-900/70 font-semibold truncate">
-              กิจกรรมทั้งหมดในระบบ
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+              <span>กิจกรรมทั้งหมดในระบบ</span>
+              {selectedStatus === 'all' && selectedMonth === 'all' && (
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
+                  ทั้งหมด
+                </span>
+              )}
             </div>
             <div className="text-xl font-black text-emerald-950">
               {stats.total} กิจกรรม
@@ -395,13 +449,10 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
           {/* Month Dropdown */}
           <select
             value={selectedMonth}
-            onChange={(e) => {
-              setSelectedMonth(e.target.value);
-              setHasUserChangedMonth(true);
-            }}
+            onChange={(e) => setSelectedMonth(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-50 border border-emerald-200 text-xs font-semibold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
           >
-            <option value="all">ทุกเดือน (ทั้งหมด {activities.length} รายการ)</option>
+            <option value="all">ทุกเดือน (แสดงกิจกรรมทั้งหมด {activities.length} รายการ รวมกิจกรรมล่วงหน้า)</option>
             {monthOptions.map((mY) => (
               <option key={mY} value={mY}>
                 เดือน {mY} {mY === currentMonthKey ? '(เดือนปัจจุบัน)' : ''}
@@ -415,9 +466,9 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-50 border border-emerald-200 text-xs font-semibold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
           >
-            <option value="all">ทุกสถานะ</option>
+            <option value="all">ทุกสถานะ (ทั้งหมด)</option>
+            <option value="upcoming">กิจกรรมที่กำลังจะมาถึง / ล่วงหน้า</option>
             <option value="today">เฉพาะวันนี้</option>
-            <option value="upcoming">กำลังจะมาถึง</option>
             <option value="completed">เสร็จสิ้นแล้ว</option>
           </select>
 
@@ -443,7 +494,7 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
           )}
           {selectedStatus !== 'all' && (
             <span className="px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-900 font-medium">
-              สถานะ: {selectedStatus === 'today' ? 'เฉพาะวันนี้' : selectedStatus === 'upcoming' ? 'กำลังจะมาถึง' : 'เสร็จสิ้นแล้ว'}
+              สถานะ: {selectedStatus === 'today' ? 'เฉพาะวันนี้' : selectedStatus === 'upcoming' ? 'กำลังจะมาถึง / ล่วงหน้า' : 'เสร็จสิ้นแล้ว'}
             </span>
           )}
           <button
@@ -468,7 +519,7 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
             </h3>
             <p className="text-xs text-slate-500">
               {selectedMonth !== 'all'
-                ? `ไม่พบกิจกรรมในเดือน ${selectedMonth} ลองเลือก "ทุกเดือน" เพื่อดูกิจกรรมทั้งหมด`
+                ? `ไม่พบกิจกรรมในเดือน ${selectedMonth} ลองเลือก "ทุกเดือน" เพื่อดูกิจกรรมทั้งหมดรวมถึงกิจกรรมล่วงหน้า`
                 : 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น'}
             </p>
           </div>
@@ -485,7 +536,7 @@ export const ActivityScheduleView: React.FC<ActivityScheduleViewProps> = ({
       ) : viewMode === 'calendar' ? (
         /* CALENDAR VIEW */
         <ActivityCalendarView
-          activities={filteredActivities}
+          activities={activities}
           onSelectActivity={(act) => setSelectedActivity(act)}
         />
       ) : viewMode === 'grid' ? (

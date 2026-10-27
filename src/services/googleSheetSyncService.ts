@@ -2105,7 +2105,23 @@ export const ACTIVITY_SCHEDULE_SHEET_CSV_URL = 'https://docs.google.com/spreadsh
 export const ACTIVITY_SCHEDULE_FALLBACK_CSV = `วันที่,เรื่อง,เวลาเริ่มต้น,เวลาสิ้นสุด,สถานที่,เวลารถออก,เวลารถกลับ,ชื่อพนักงาน
 14/9/2026,ซ้อมอพยพหนีไฟ,13.00,17.00,โรงงานลาดกระบัง 2,,,ทุกคน
 15/9/2026,อพยพหนีไฟ,13.00,17.00,โรงงานลาดกระบัง 2,,,ทุกคน
-22/9/2026,OJT พนักงาน,8.30,12.30,TPM 2,7.10,12.30,"ยุพา, นพเก้า"`;
+22/9/2026,อบรมมนุษยชน,8.00,12.00,TPM 2 โรงงานลาดกระบัง 2,,,ยุพา
+12/10/2026,ตรวจป้ายเพื่อความปลอดภัย,10.00,11.30,พื้นที่ดูแลธุรการและแม่บ้าน,,,ทุกคน
+15/10/2026,ตรวจ GMP,8.00,12.00,พื้นที่ดูแลธุรการและแม่บ้าน,,,ทุกคน
+16/10/2026,ประชุมแผนก,6.00,16.00,TPM 2 โรงงานลาดกระบัง 2,,,ทุกคน
+20/10/2026,ทักษะการบริหารการเงินสำหรับพนักงาน,9.00,12.00,ห้องประชุม เสรีไทย 2 (โรงงานบางชัน),8.00,12.00,"ยุพา, พงศกร"
+21/10/2026,อบรมระบบคุณภาพและความปลอดภัยทางอาหาร,8.00,12.00,TPM 2 โรงงานลาดกระบัง 2,,,ยุพา
+26/10/2026,OJT พนักงาน,8.30,12.30,TPM 2 โรงงานลาดกระบัง 2,,,ยุพา
+27/10/2026,"ล้างตู้ทำน้ำแข็ง, ตู้กดน้ำดื่มโรงอาหาร",13.00,14.00,ห้องอาหารโรงงานลาดกระบัง 2,,,ธุรการ
+28/10/2026,Food safety day,6.00,16.00,ลานจอดรถยนต์ข้างอาคาร B,,,ทุกคน
+28/10/2026,เตรียมสถานที่ตรวจสุขภาพ,13.00,17.00,"TPM 1,2 โรงงานลาดกระบัง 2",,,ทุกคน
+29/10/2026,ตรวจสุขภาพประจำปี,8.00,17.00,"TPM 1,2 โรงงานลาดกระบัง 2",,,ทุกคน
+30/10/2026,Save the earth day,6.00,16.00,ลานจอดรถยนต์ข้างอาคาร B,,,ทุกคน
+30/10/2026,"ตัดหญ้าหน้าโรงงาน, ล้างพื้นทางเดิน",10.00,11.00,โรงงานลาดกระบัง 2,,,ธุรการ
+2/11/2026,เตรียมพื้นที่ทำลายเอกสาร,13.00,17.00,TPM 1 โรงงานลาดกระบัง 2,,,ทุกคน
+3/11/2026,ทำลายเอกสาร,13.00,17.00,"TPM 1,2 โรงงานลาดกระบัง 2",,,ทุกคน
+11/11/2026,ตรวจ GMPs,8.00,12.00,พื้นที่ดูแลธุรการและแม่บ้าน,,,ทุกคน
+12/11/2026,ตรวจ 7 ส.,8.00,16.00,พื้นที่ดูแลธุรการและแม่บ้าน,,,ทุกคน`;
 
 function formatActivityTimeStr(val: string): string {
   if (!val || !val.trim()) return '';
@@ -2156,16 +2172,37 @@ export function convertSheetRowsToActivitySchedule(csvText: string): ActivitySch
     const vehicleDepartureTime = formatActivityTimeStr(vehicleDepRaw);
     const vehicleReturnTime = formatActivityTimeStr(vehicleRetRaw);
 
-    // Parse date components
+    // Parse date components robustly
     let dayOfWeek = '';
     let formattedDate = dateRaw;
     let rawDate = '';
 
     const dateParts = dateRaw.split(/[-/.]/);
     if (dateParts.length === 3) {
-      const d = parseInt(dateParts[0], 10);
-      const m = parseInt(dateParts[1], 10);
-      let y = parseInt(dateParts[2], 10);
+      let d = 1;
+      let m = 1;
+      let y = now.getFullYear();
+
+      // Check if format is YYYY-MM-DD or DD/MM/YYYY
+      if (dateParts[0].length === 4 || parseInt(dateParts[0], 10) > 1000) {
+        y = parseInt(dateParts[0], 10);
+        m = parseInt(dateParts[1], 10);
+        d = parseInt(dateParts[2], 10);
+      } else {
+        d = parseInt(dateParts[0], 10);
+        m = parseInt(dateParts[1], 10);
+        y = parseInt(dateParts[2], 10);
+      }
+
+      // Handle 2-digit years
+      if (y < 100) {
+        if (y > 50) {
+          y = y + 2500; // Buddhist Era shorthand
+        } else {
+          y = y + 2000;
+        }
+      }
+
       let adYear = y;
       let thYear = y;
       if (y > 2500) {
@@ -2182,7 +2219,7 @@ export function convertSheetRowsToActivitySchedule(csvText: string): ActivitySch
       rawDate = `${adYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
 
-    // Determine status
+    // Determine status (today, upcoming, or completed)
     let status: 'today' | 'upcoming' | 'completed' = 'upcoming';
     if (rawDate) {
       if (rawDate === todayKey) {
@@ -2218,7 +2255,7 @@ export function convertSheetRowsToActivitySchedule(csvText: string): ActivitySch
     seq++;
   }
 
-  // Sort by rawDate ascending
+  // Sort by rawDate ascending so upcoming and future activities are ordered cleanly
   records.sort((a, b) => {
     if (a.rawDate && b.rawDate) {
       return a.rawDate.localeCompare(b.rawDate);
@@ -2254,20 +2291,26 @@ export function getCachedActivitySchedules(): ActivityScheduleRecord[] {
   return convertSheetRowsToActivitySchedule(ACTIVITY_SCHEDULE_FALLBACK_CSV);
 }
 
-export async function fetchGoogleSheetActivitySchedule(): Promise<{
+export async function fetchGoogleSheetActivitySchedule(options?: { forceRefresh?: boolean }): Promise<{
   success: boolean;
   activities: ActivityScheduleRecord[];
   rawRowsCount: number;
   lastSyncedAt: Date;
 }> {
+  if (options?.forceRefresh) {
+    inFlightActivityPromise = null;
+  }
+
   if (inFlightActivityPromise) {
     return inFlightActivityPromise;
   }
 
   const executeFetch = async () => {
+    const nowTs = Date.now();
     const endpoints = [
-      ACTIVITY_SCHEDULE_SHEET_CSV_URL,
-      `https://docs.google.com/spreadsheets/d/1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0/gviz/tq?tqx=out:csv&gid=0`,
+      `/api/sheet-csv?sheetId=1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0&gid=0&_t=${nowTs}`,
+      `${ACTIVITY_SCHEDULE_SHEET_CSV_URL}&_t=${nowTs}`,
+      `https://docs.google.com/spreadsheets/d/1MMGxM24V4tU5AYf6yXyZeLLY4ZlfztgbyJJxRVevln0/gviz/tq?tqx=out:csv&gid=0&_t=${nowTs}`,
     ];
 
     const fetchSingleEndpoint = async (url: string): Promise<ActivityScheduleRecord[]> => {
@@ -2296,10 +2339,10 @@ export async function fetchGoogleSheetActivitySchedule(): Promise<{
     let activities: ActivityScheduleRecord[] = [];
 
     try {
-      const results = await Promise.all(endpoints.map(url => fetchSingleEndpoint(url)));
-      for (const res of results) {
-        if (res && res.length > 0) {
-          activities = res;
+      for (const url of endpoints) {
+        const parsed = await fetchSingleEndpoint(url);
+        if (parsed && parsed.length > 0) {
+          activities = parsed;
           break;
         }
       }

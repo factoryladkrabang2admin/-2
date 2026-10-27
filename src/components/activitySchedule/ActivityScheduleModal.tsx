@@ -16,7 +16,8 @@ import {
   Sparkles,
   ChevronRight,
   X,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { ActivityScheduleRecord } from '../../types';
 import {
@@ -47,6 +48,7 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
     return getCachedActivitySchedules();
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // 1. จำกัดสิทธิ์การมองเห็นไอคอน Google sheet เฉพาะ ผู้ดูแลและแอดมินเพจเท่านั้น
   const hasSheetAccess = useMemo(() => {
@@ -60,20 +62,25 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
   const [viewMode, setViewMode] = useState<'calendar' | 'table' | 'grid'>('calendar');
   const [selectedActivity, setSelectedActivity] = useState<ActivityScheduleRecord | null>(null);
 
-  // Filters
+  // Filters: ค่าเริ่มต้นแสดงกิจกรรมทั้งหมดรวมถึงกิจกรรมล่วงหน้า (selectedMonth = 'all')
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
+    if (force) setIsRefreshing(true);
     try {
-      const res = await fetchGoogleSheetActivitySchedule();
+      const res = await fetchGoogleSheetActivitySchedule({ forceRefresh: force });
       if (res.success && res.activities.length > 0) {
         setActivities(res.activities);
         setLastUpdated(res.lastSyncedAt);
       }
     } catch {
       // keep current data
+    } finally {
+      if (force) {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
     }
   };
 
@@ -107,15 +114,13 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
     }) || null;
   }, [monthOptions]);
 
-  // 3. นำปุ่ม รีเฟรชข้อมูล ออก แต่ให้อัพเดทข้อมูลเรียลไทม์เบื้องหลัง
-  // และรีเซ็ตเป็นมุมมองปฏิทิน และแสดงข้อมูลเดือนปัจจุบันก่อนทุกครั้งที่เปิด modal
+  // เมื่อเปิด modal โหลดข้อมูลเรียลไทม์ และค่าเริ่มต้นแสดงข้อมูลทั้งหมดรวมถึงกิจกรรมล่วงหน้า
   useEffect(() => {
     if (isOpen) {
       setViewMode('calendar');
-      loadData();
-      if (currentMonthKey) {
-        setSelectedMonth(currentMonthKey);
-      }
+      loadData(true);
+      setSelectedMonth('all');
+      setSelectedStatus('all');
 
       // Background realtime polling every 15 seconds while modal is open
       const interval = setInterval(() => {
@@ -124,7 +129,7 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
 
       return () => clearInterval(interval);
     }
-  }, [isOpen, currentMonthKey]);
+  }, [isOpen]);
 
   // Filter activities
   const filteredActivities = useMemo(() => {
@@ -256,7 +261,21 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {/* ปุ่มรีเฟรชข้อมูลจาก Google Sheet */}
+              <button
+                type="button"
+                onClick={() => loadData(true)}
+                disabled={isRefreshing}
+                className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-60"
+                title="รีเฟรชซิงค์ข้อมูลล่าสุดจาก Google Sheet ทันที"
+              >
+                <RefreshCw className={`w-4 h-4 text-emerald-200 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline font-bold text-xs text-white">
+                  {isRefreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูล'}
+                </span>
+              </button>
+
               {/* 1. ไอคอน เปิด google sheet, จำกัดสิทธิ์การมองเห็นเฉพาะ ผู้ดูแลและแอดมินเพจเท่านั้น (แสดงเฉพาะไอคอน) */}
               {hasSheetAccess && (
                 <a
@@ -331,16 +350,29 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
 
         {/* Scrollable Content Container */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-          {/* 3 Metric Summary Boxes (เหมือนตารางทำงาน) */}
+          {/* 3 Metric Summary Boxes (คลิกเพื่อกรองได้ทันที) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Box 1: กิจกรรมวันนี้ */}
-            <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+            <div
+              onClick={() => setSelectedStatus(selectedStatus === 'today' ? 'all' : 'today')}
+              className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+                selectedStatus === 'today'
+                  ? 'ring-2 ring-amber-400 border-amber-300 bg-amber-50/40'
+                  : 'border-emerald-200/90 hover:border-amber-300'
+              }`}
+              title="คลิกเพื่อแสดงเฉพาะกิจกรรมวันนี้"
+            >
               <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <div className="min-w-0">
-                <div className="text-xs text-emerald-900/70 font-semibold truncate">
-                  กิจกรรมวันนี้ (Today)
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+                  <span>กิจกรรมวันนี้ (Today)</span>
+                  {selectedStatus === 'today' && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md">
+                      กำลังเลือก
+                    </span>
+                  )}
                 </div>
                 <div className="text-xl font-black text-amber-950">
                   {stats.todayCount} กิจกรรม
@@ -348,14 +380,27 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
               </div>
             </div>
 
-            {/* Box 2: กิจกรรมที่กำลังจะมาถึง */}
-            <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+            {/* Box 2: กิจกรรมที่กำลังจะมาถึง / ล่วงหน้า */}
+            <div
+              onClick={() => setSelectedStatus(selectedStatus === 'upcoming' ? 'all' : 'upcoming')}
+              className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+                selectedStatus === 'upcoming'
+                  ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50/40'
+                  : 'border-emerald-200/90 hover:border-blue-300'
+              }`}
+              title="คลิกเพื่อแสดงเฉพาะกิจกรรมที่กำลังจะมาถึงและล่วงหน้า"
+            >
               <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
                 <CalendarCheck className="w-5 h-5" />
               </div>
-              <div className="min-w-0">
-                <div className="text-xs text-emerald-900/70 font-semibold truncate">
-                  กำลังจะมาถึง (Upcoming)
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+                  <span>กำลังจะมาถึง / ล่วงหน้า</span>
+                  {selectedStatus === 'upcoming' && (
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-md">
+                      กำลังเลือก
+                    </span>
+                  )}
                 </div>
                 <div className="text-xl font-black text-blue-950">
                   {stats.upcomingCount} กิจกรรม
@@ -364,13 +409,29 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
             </div>
 
             {/* Box 3: กิจกรรมทั้งหมดในระบบ */}
-            <div className="bg-white rounded-2xl p-4 border border-emerald-200/90 shadow-xs flex items-center gap-3">
+            <div
+              onClick={() => {
+                setSelectedStatus('all');
+                setSelectedMonth('all');
+              }}
+              className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-xs hover:shadow-md flex items-center gap-3 ${
+                selectedStatus === 'all' && selectedMonth === 'all'
+                  ? 'ring-2 ring-emerald-500 border-emerald-400 bg-emerald-50/40'
+                  : 'border-emerald-200/90 hover:border-emerald-300'
+              }`}
+              title="คลิกเพื่อแสดงกิจกรรมทั้งหมดในระบบ"
+            >
               <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
                 <CalendarClock className="w-5 h-5" />
               </div>
-              <div className="min-w-0">
-                <div className="text-xs text-emerald-900/70 font-semibold truncate">
-                  กิจกรรมทั้งหมดในระบบ
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-emerald-900/70 font-semibold truncate flex items-center justify-between">
+                  <span>กิจกรรมทั้งหมดในระบบ</span>
+                  {selectedStatus === 'all' && selectedMonth === 'all' && (
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">
+                      ทั้งหมด
+                    </span>
+                  )}
                 </div>
                 <div className="text-xl font-black text-emerald-950">
                   {stats.total} กิจกรรม
@@ -379,7 +440,7 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
             </div>
           </div>
 
-          {/* Filter & View Switcher Bar */}
+          {/* Filter & Search Bar */}
           <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-emerald-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Search Input */}
             <div className="relative flex-1 min-w-[200px]">
@@ -410,7 +471,7 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="px-3 py-2 rounded-xl bg-slate-50 border border-emerald-200 text-xs font-semibold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
-                <option value="all">ทุกเดือน (ทั้งหมด {activities.length} รายการ)</option>
+                <option value="all">ทุกเดือน (แสดงกิจกรรมทั้งหมด {activities.length} รายการ รวมกิจกรรมล่วงหน้า)</option>
                 {monthOptions.map((mY) => (
                   <option key={mY} value={mY}>
                     เดือน {mY} {mY === currentMonthKey ? '(เดือนปัจจุบัน)' : ''}
@@ -424,9 +485,9 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 className="px-3 py-2 rounded-xl bg-slate-50 border border-emerald-200 text-xs font-semibold text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
-                <option value="all">ทุกสถานะ</option>
+                <option value="all">ทุกสถานะ (ทั้งหมด)</option>
+                <option value="upcoming">กิจกรรมที่กำลังจะมาถึง / ล่วงหน้า</option>
                 <option value="today">เฉพาะวันนี้</option>
-                <option value="upcoming">กำลังจะมาถึง</option>
                 <option value="completed">เสร็จสิ้นแล้ว</option>
               </select>
 
@@ -452,7 +513,7 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
               )}
               {selectedStatus !== 'all' && (
                 <span className="px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-900 font-medium">
-                  สถานะ: {selectedStatus === 'today' ? 'เฉพาะวันนี้' : selectedStatus === 'upcoming' ? 'กำลังจะมาถึง' : 'เสร็จสิ้นแล้ว'}
+                  สถานะ: {selectedStatus === 'today' ? 'เฉพาะวันนี้' : selectedStatus === 'upcoming' ? 'กำลังจะมาถึง / ล่วงหน้า' : 'เสร็จสิ้นแล้ว'}
                 </span>
               )}
               <button
@@ -476,7 +537,9 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
                   ไม่พบข้อมูลกิจกรรมตามเงื่อนไขที่เลือก
                 </h3>
                 <p className="text-xs text-slate-500">
-                  ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น
+                  {selectedMonth !== 'all'
+                    ? `ไม่พบกิจกรรมในเดือน ${selectedMonth} ลองเลือก "ทุกเดือน" เพื่อดูกิจกรรมทั้งหมดรวมถึงกิจกรรมล่วงหน้า`
+                    : 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น'}
                 </p>
               </div>
               {activeFiltersCount > 0 && (
@@ -485,14 +548,14 @@ export const ActivityScheduleModal: React.FC<ActivityScheduleModalProps> = ({
                   onClick={handleResetFilters}
                   className="px-4 py-1.5 rounded-xl bg-emerald-700 text-white font-bold text-xs hover:bg-emerald-800 transition-colors cursor-pointer"
                 >
-                  ล้างตัวกรองทั้งหมด
+                  แสดงกิจกรรมทุกเดือน / ล้างตัวกรอง
                 </button>
               )}
             </div>
           ) : viewMode === 'calendar' ? (
             /* CALENDAR VIEW */
             <ActivityCalendarView
-              activities={filteredActivities}
+              activities={activities}
               onSelectActivity={(act) => setSelectedActivity(act)}
             />
           ) : viewMode === 'grid' ? (
