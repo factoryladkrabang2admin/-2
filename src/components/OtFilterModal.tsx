@@ -153,11 +153,12 @@ export const OtFilterModal: React.FC<OtFilterModalProps> = ({
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               {language === 'th' ? 'สถานะการอนุมัติ (Status)' : 'Approval Status'}
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 { id: 'all', label: language === 'th' ? 'ทั้งหมด' : 'All' },
                 { id: 'Approved', label: 'Approved' },
                 { id: 'Confirm', label: 'Confirm' },
+                { id: 'waiting status', label: 'waiting status' },
               ].map(st => (
                 <button
                   key={st.id}

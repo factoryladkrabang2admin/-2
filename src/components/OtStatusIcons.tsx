@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, TrendingUp, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { Layers, TrendingUp, CheckCircle2, AlertCircle, Sparkles, Clock } from 'lucide-react';
 
 interface IconProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -87,6 +87,23 @@ export const OtConfirmAnimatedIcon: React.FC<IconProps> = ({
   return (
     <div className={`relative inline-flex items-center justify-center shrink-0 ${s.box} ${className}`}>
       <AlertCircle className={`${s.icon} animate-ot-confirm-sway ${iconClassName}`} />
+    </div>
+  );
+};
+
+/**
+ * 5. สถานะไอคอน "รออนุมัติ / waiting status"
+ * ชีพจรนาฬิกานุ่มนวล (animate-pulse) สื่อถึงเอกสารที่กำลังรออนุมัติ
+ */
+export const OtWaitingAnimatedIcon: React.FC<IconProps> = ({
+  size = 'md',
+  className = '',
+  iconClassName = ''
+}) => {
+  const s = sizeMap[size];
+  return (
+    <div className={`relative inline-flex items-center justify-center shrink-0 ${s.box} ${className}`}>
+      <Clock className={`${s.icon} animate-pulse ${iconClassName}`} />
     </div>
   );
 };

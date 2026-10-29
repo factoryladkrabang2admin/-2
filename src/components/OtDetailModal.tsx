@@ -17,7 +17,7 @@ import {
 import { OtRecord } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { formatOtHoursDisplay } from '../services/googleSheetSyncService';
-import { OtApprovedAnimatedIcon, OtConfirmAnimatedIcon } from './OtStatusIcons';
+import { OtApprovedAnimatedIcon, OtConfirmAnimatedIcon, OtWaitingAnimatedIcon } from './OtStatusIcons';
 
 interface OtDetailModalProps {
   record: OtRecord | null;
@@ -41,7 +41,9 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
 
   if (!record) return null;
 
-  const isApproved = record.status.toLowerCase().includes('approved') || record.status.includes('อนุมัติ');
+  const statusLower = record.status.toLowerCase();
+  const isApproved = statusLower.includes('approved') || record.status.includes('อนุมัติ');
+  const isWaiting = statusLower.includes('waiting') || record.status.includes('รอ');
 
   const handleCopyDoc = () => {
     if (!record.docNo || record.docNo === '-') return;
@@ -71,11 +73,15 @@ export const OtDetailModal: React.FC<OtDetailModalProps> = ({ record, onClose })
                   className={`px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${
                     isApproved
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                      : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                      : isWaiting
+                        ? 'bg-sky-500/25 text-sky-200 border border-sky-400/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
                   }`}
                 >
                   {isApproved ? (
                     <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-300" showSparkle={false} />
+                  ) : isWaiting ? (
+                    <OtWaitingAnimatedIcon size="xs" iconClassName="text-sky-300" />
                   ) : (
                     <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-300" />
                   )}

@@ -277,7 +277,11 @@ export const OtCalendarView: React.FC<OtCalendarViewProps> = ({ records, onSelec
                   </div>
 
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${
-                    record.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    record.status.toLowerCase().includes('approved') || record.status.includes('อนุมัติ')
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : record.status.toLowerCase().includes('waiting') || record.status.includes('รอ')
+                        ? 'bg-sky-100 text-sky-800 border border-sky-200'
+                        : 'bg-amber-100 text-amber-800'
                   }`}>
                     {record.status}
                   </span>

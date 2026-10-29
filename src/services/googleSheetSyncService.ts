@@ -1428,7 +1428,11 @@ export const OT_FALLBACK_CSV = `วันที่บันทึกข้อม
 11/8/2026,359110,พรนิภา บุติพันคา,แม่บ้าน,30/8/2026,6.00,14.30,44270,Confirm,OT. วันหยุดประจำสัปดาห์
 11/8/2026,358167,สงกรานต์ สุริยแสง,แม่บ้าน,30/8/2026,14.30,19.30,44271,Confirm,ไปช่วยงานแผนกผลิต B5
 11/8/2026,358167,สงกรานต์ สุริยแสง,แม่บ้าน,31/8/2026,14.30,18.30,45897,Confirm,ไปช่วยงานแผนกผลิต B5
-,359110,พรนิภา บุติพันคา,แม่บ้าน,31/8/2026,14.30,18.30,,Confirm,ไปช่วยงานแผนกผลิต B5`;
+,359110,พรนิภา บุติพันคา,แม่บ้าน,31/8/2026,14.30,18.30,,Confirm,ไปช่วยงานแผนกผลิต B5
+29/10/2026,359110,พรนิภา บุติพันคา,แม่บ้าน,1/11/2026,6.00,14.30,60262,,OT. วันหยุดประจำสัปดาห์
+,358167,สงกรานต์ สุริยแสง,แม่บ้าน,1/11/2026,14.30,20.30,60263,,ไปช่วยงานแผนกผลิต B5
+29/10/2026,358167,สงกรานต์ สุริยแสง,แม่บ้าน,2/11/2026,14.30,20.30,60265,,ไปช่วยงานแผนกผลิต B5
+,359110,พรนิภา บุติพันคา,แม่บ้าน,2/11/2026,14.30,20.30,,,ไปช่วยงานแผนกผลิต B5`;
 
 export interface OtSyncResult {
   success: boolean;
@@ -1522,6 +1526,7 @@ export function convertSheetRowsToOtRecords(csvText: string): OtRecord[] {
   const records: OtRecord[] = [];
   let lastRecordedDate = '';
   let lastDocNo = '';
+  let lastStatus = '';
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const r = rows[i];
@@ -1555,10 +1560,21 @@ export function convertSheetRowsToOtRecords(csvText: string): OtRecord[] {
     const seq = records.length + 1;
     const totalHours = calcOtHours(startTimeRaw, endTimeRaw);
 
+    // สถานะของแต่ละเลขที่เอกสาร: หากใน google sheet ว่างยังไม่มีสถานะ approve หรือ confirm เมื่อแสดงบนเว็บไซต์แล้วให้แสดงเป็น waiting status
     let status = statusRaw;
-    if (!status) {
-      status = 'Approved';
+    if (!status && !docNoRaw && lastStatus) {
+      status = lastStatus;
     }
+
+    const sLower = status.toLowerCase();
+    if (sLower.includes('approve') || sLower.includes('อนุมัติ')) {
+      status = 'Approved';
+    } else if (sLower.includes('confirm') || sLower.includes('ยืนยัน')) {
+      status = 'Confirm';
+    } else {
+      status = 'waiting status';
+    }
+    lastStatus = status;
 
     records.push({
       id: `ot-${seq}-${empIdRaw || 'no-id'}-${docNoRaw || lastDocNo || 'nodoc'}`,
@@ -1594,6 +1610,7 @@ export function parseGvizJsonOtRecords(jsonStr: string): OtRecord[] {
     const parsedRecords: OtRecord[] = [];
     let lastRecordedDate = '';
     let lastDocNo = '';
+    let lastStatus = '';
 
     gvizRows.forEach((rowObj: { c: Array<{ v: unknown; f?: string } | null> }) => {
       const getVal = (idx: number): string => {
@@ -1622,6 +1639,22 @@ export function parseGvizJsonOtRecords(jsonStr: string): OtRecord[] {
       const seq = parsedRecords.length + 1;
       const totalHours = calcOtHours(startTimeRaw, endTimeRaw);
 
+      // สถานะของแต่ละเลขที่เอกสาร: หากใน google sheet ว่างยังไม่มีสถานะ approve หรือ confirm เมื่อแสดงบนเว็บไซต์แล้วให้แสดงเป็น waiting status
+      let status = (statusRaw || '').trim();
+      if (!status && !docNoRaw && lastStatus) {
+        status = lastStatus;
+      }
+
+      const sLower = status.toLowerCase();
+      if (sLower.includes('approve') || sLower.includes('อนุมัติ')) {
+        status = 'Approved';
+      } else if (sLower.includes('confirm') || sLower.includes('ยืนยัน')) {
+        status = 'Confirm';
+      } else {
+        status = 'waiting status';
+      }
+      lastStatus = status;
+
       parsedRecords.push({
         id: `ot-${seq}-${empIdRaw || 'no-id'}-${docNoRaw || lastDocNo || 'nodoc'}`,
         seq,
@@ -1634,7 +1667,7 @@ export function parseGvizJsonOtRecords(jsonStr: string): OtRecord[] {
         endTime: endTimeRaw || '-',
         totalHours,
         docNo: docNoRaw || lastDocNo || '-',
-        status: statusRaw || 'Approved',
+        status,
         note: noteRaw || undefined,
       });
     });

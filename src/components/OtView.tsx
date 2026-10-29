@@ -55,7 +55,8 @@ import {
   OtRecordsAnimatedIcon, 
   OtHoursAnimatedIcon, 
   OtApprovedAnimatedIcon, 
-  OtConfirmAnimatedIcon 
+  OtConfirmAnimatedIcon,
+  OtWaitingAnimatedIcon
 } from './OtStatusIcons';
 
 const STORAGE_KEY = 'proworkflow_ot_records_cache_v2';
@@ -385,24 +386,32 @@ export const OtView: React.FC<OtViewProps> = ({
     approvedCount, 
     confirmCount,
     approvedHours,
-    confirmHours 
+    confirmHours,
+    waitingCount,
+    waitingHours
   } = useMemo(() => {
     const totalCount = baseFilteredRecords.length;
     let totalHours = 0;
     let approvedCount = 0;
     let confirmCount = 0;
+    let waitingCount = 0;
     let approvedHours = 0;
     let confirmHours = 0;
+    let waitingHours = 0;
 
     baseFilteredRecords.forEach((r) => {
       const h = r.totalHours || 0;
       totalHours += h;
-      if (r.status.toLowerCase().includes('approved') || r.status.includes('อนุมัติ')) {
+      const s = (r.status || '').toLowerCase();
+      if (s.includes('approved') || r.status.includes('อนุมัติ')) {
         approvedCount++;
         approvedHours += h;
-      } else if (r.status.toLowerCase().includes('confirm') || r.status.includes('ยืนยัน')) {
+      } else if (s.includes('confirm') || r.status.includes('ยืนยัน')) {
         confirmCount++;
         confirmHours += h;
+      } else {
+        waitingCount++;
+        waitingHours += h;
       }
     });
 
@@ -411,23 +420,27 @@ export const OtView: React.FC<OtViewProps> = ({
       totalHours: Math.round(totalHours * 10) / 10,
       approvedCount,
       confirmCount,
+      waitingCount,
       approvedHours: Math.round(approvedHours * 10) / 10,
       confirmHours: Math.round(confirmHours * 10) / 10,
+      waitingHours: Math.round(waitingHours * 10) / 10,
     };
   }, [baseFilteredRecords]);
 
-  // Requirement 7: เมื่อคลิกที่กล่อง อนุมัติแล้ว (Approved) หรือ รอยืนยัน (Confirm) กล่อง รายการ OT ที่แสดง ให้แสดงตามที่เลือก
+  // Requirement 7 & Waiting status: เมื่อคลิกที่กล่อง อนุมัติแล้ว (Approved), รอยืนยัน (Confirm) หรือ รออนุมัติ (waiting status) ให้แสดงตามที่เลือก
   const displayedCount = useMemo(() => {
     if (selectedStatus === 'Approved') return approvedCount;
     if (selectedStatus === 'Confirm') return confirmCount;
+    if (selectedStatus === 'waiting status' || selectedStatus === 'waiting') return waitingCount;
     return totalCount;
-  }, [selectedStatus, approvedCount, confirmCount, totalCount]);
+  }, [selectedStatus, approvedCount, confirmCount, waitingCount, totalCount]);
 
   const displayedHours = useMemo(() => {
     if (selectedStatus === 'Approved') return approvedHours;
     if (selectedStatus === 'Confirm') return confirmHours;
+    if (selectedStatus === 'waiting status' || selectedStatus === 'waiting') return waitingHours;
     return totalHours;
-  }, [selectedStatus, approvedHours, confirmHours, totalHours]);
+  }, [selectedStatus, approvedHours, confirmHours, waitingHours, totalHours]);
 
   // 3. Filtered & Sorted Records based on Status and Sorting criteria
   const filteredRecords = useMemo(() => {
@@ -436,11 +449,15 @@ export const OtView: React.FC<OtViewProps> = ({
     // Status filter
     if (selectedStatus !== 'all') {
       list = list.filter((r) => {
+        const s = (r.status || '').toLowerCase();
         if (selectedStatus === 'Approved') {
-          return r.status.toLowerCase().includes('approved') || r.status.includes('อนุมัติ');
+          return s.includes('approved') || r.status.includes('อนุมัติ');
         }
         if (selectedStatus === 'Confirm') {
-          return r.status.toLowerCase().includes('confirm') || r.status.includes('ยืนยัน');
+          return s.includes('confirm') || r.status.includes('ยืนยัน');
+        }
+        if (selectedStatus === 'waiting status' || selectedStatus === 'waiting') {
+          return s.includes('waiting') || (!s.includes('approve') && !s.includes('อนุมัติ') && !s.includes('confirm') && !s.includes('ยืนยัน'));
         }
         return r.status === selectedStatus;
       });
@@ -865,7 +882,7 @@ export const OtView: React.FC<OtViewProps> = ({
         </div>
 
         {/* Integrated Metric KPI Cards Row */}
-        <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-3 border-t border-amber-200/60">
+        <div className="relative z-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 pt-3 border-t border-amber-200/60">
           {/* Card 1: รายการ OT ที่แสดง (Animated Icon + Requirement 7: แสดงตามที่เลือก) */}
           <div 
             onClick={() => setSelectedStatus('all')}
@@ -888,6 +905,8 @@ export const OtView: React.FC<OtViewProps> = ({
                 ? (language === 'th' ? '✓ อนุมัติแล้ว (ตามที่เลือก)' : '✓ Approved (Selected)')
                 : selectedStatus === 'Confirm'
                 ? (language === 'th' ? '⏳ รอยืนยัน (ตามที่เลือก)' : '⏳ Confirm (Selected)')
+                : selectedStatus === 'waiting status' || selectedStatus === 'waiting'
+                ? (language === 'th' ? '⏱ รออนุมัติ (ตามที่เลือก)' : '⏱ Waiting (Selected)')
                 : (monthScope === 'current'
                   ? (language === 'th' ? `ทั้งหมดในเดือนปัจจุบัน (${currentMonthShortLabel})` : `This Month (${currentMonthShortLabel})`)
                   : (language === 'th' ? 'ทั้งหมดทุกเดือน' : 'All Months'))}
@@ -917,6 +936,8 @@ export const OtView: React.FC<OtViewProps> = ({
                   ? (language === 'th' ? 'ชั่วโมงที่อนุมัติแล้ว' : 'Approved Hours')
                   : selectedStatus === 'Confirm'
                   ? (language === 'th' ? 'ชั่วโมงที่รอยืนยัน' : 'Confirm Hours')
+                  : selectedStatus === 'waiting status' || selectedStatus === 'waiting'
+                  ? (language === 'th' ? 'ชั่วโมงรออนุมัติ' : 'Waiting Hours')
                   : (language === 'th' ? 'คลิกดูกราฟวงกลม' : 'Click for Donut Chart')}
               </span>
               <Sparkles className="w-3 h-3 text-emerald-600" />
@@ -964,6 +985,28 @@ export const OtView: React.FC<OtViewProps> = ({
             <p className="text-2xl sm:text-3xl font-black text-amber-800">{confirmCount}</p>
             <span className="text-[11px] text-amber-700/90">
               {language === 'th' ? 'รอยืนยัน' : 'Pending confirmation'}
+            </span>
+          </div>
+
+          {/* Card 5: waiting status (Animated Icon: คลิกเพื่อเลือก / ยกเลิก) */}
+          <div 
+            onClick={() => setSelectedStatus(selectedStatus === 'waiting status' ? 'all' : 'waiting status')}
+            className={`p-4 rounded-2xl backdrop-blur-md border transition-all cursor-pointer ${
+              selectedStatus === 'waiting status' || selectedStatus === 'waiting'
+                ? 'bg-sky-50/95 border-sky-400 shadow-md ring-2 ring-sky-300 scale-[1.02]'
+                : 'bg-white/75 hover:bg-white/90 border-sky-200/80 shadow-xs'
+            }`}
+            title={language === 'th' ? 'คลิกเพื่อกรองเฉพาะรายการรออนุมัติ (waiting status)' : 'Click to filter waiting status records'}
+          >
+            <div className="flex items-center justify-between text-sky-900 text-xs font-bold mb-1.5">
+              <span>{language === 'th' ? 'รออนุมัติ (Waiting)' : 'Waiting Status'}</span>
+              <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center">
+                <OtWaitingAnimatedIcon size="md" iconClassName="text-sky-600" />
+              </div>
+            </div>
+            <p className="text-2xl sm:text-3xl font-black text-sky-800">{waitingCount}</p>
+            <span className="text-[11px] text-sky-700/90 font-medium">
+              waiting status
             </span>
           </div>
         </div>
@@ -1246,7 +1289,7 @@ export const OtView: React.FC<OtViewProps> = ({
           )}
 
           {viewMode === 'board' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Column 1: Approved */}
               <div className="bg-slate-50/80 rounded-3xl p-5 border border-slate-200 flex flex-col space-y-4 min-h-[500px]">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -1330,6 +1373,48 @@ export const OtView: React.FC<OtViewProps> = ({
                     ))}
                 </div>
               </div>
+
+              {/* Column 3: waiting status */}
+              <div className="bg-slate-50/80 rounded-3xl p-5 border border-slate-200 flex flex-col space-y-4 min-h-[500px]">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <OtWaitingAnimatedIcon size="xs" iconClassName="text-sky-600" />
+                    <h2 className="font-bold text-[#002045] text-base">waiting status (รออนุมัติ)</h2>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-xs font-bold">
+                    {filteredRecords.filter(r => r.status.toLowerCase().includes('waiting') || r.status.includes('รอ')).length}
+                  </span>
+                </div>
+
+                <div className="space-y-3 overflow-y-auto flex-1 max-h-[650px] pr-1">
+                  {filteredRecords
+                    .filter(r => r.status.toLowerCase().includes('waiting') || r.status.includes('รอ'))
+                    .map((r) => (
+                      <div
+                        key={r.id}
+                        onClick={() => setSelectedRecord(r)}
+                        className="bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold text-sm text-[#002045]">{r.employeeName}</h4>
+                          <span className="px-2 py-0.5 rounded-lg bg-sky-100 text-sky-900 font-bold text-xs">
+                            {formatOtHoursDisplay(r.startTime, r.endTime, r.totalHours)} ชม.
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{r.department}</span>
+                        </p>
+
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                          <span>{r.otDate}</span>
+                          <span className="font-semibold text-sky-800">{r.startTime} - {r.endTime} น.</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1337,7 +1422,9 @@ export const OtView: React.FC<OtViewProps> = ({
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {paginatedCardRecords.map((r) => {
-                  const isApproved = r.status.toLowerCase().includes('approved') || r.status.includes('อนุมัติ');
+                  const statusLower = r.status.toLowerCase();
+                  const isApproved = statusLower.includes('approved') || r.status.includes('อนุมัติ');
+                  const isWaiting = statusLower.includes('waiting') || r.status.includes('รอ');
                   return (
                     <div
                       key={r.id}
@@ -1347,10 +1434,16 @@ export const OtView: React.FC<OtViewProps> = ({
                       <div className="space-y-3">
                         <div className="flex items-center justify-end">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                            isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            isApproved 
+                              ? 'bg-emerald-100 text-emerald-800' 
+                              : isWaiting 
+                                ? 'bg-sky-100 text-sky-800 border border-sky-200' 
+                                : 'bg-amber-100 text-amber-800'
                           }`}>
                             {isApproved ? (
                               <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-700" showSparkle={false} />
+                            ) : isWaiting ? (
+                              <OtWaitingAnimatedIcon size="xs" iconClassName="text-sky-700" />
                             ) : (
                               <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-700" />
                             )}
@@ -1460,7 +1553,9 @@ export const OtView: React.FC<OtViewProps> = ({
                       </tr>
                     ) : (
                       paginatedTableRecords.map((r) => {
-                        const isApproved = r.status.toLowerCase().includes('approved') || r.status.includes('อนุมัติ');
+                        const statusLower = r.status.toLowerCase();
+                        const isApproved = statusLower.includes('approved') || r.status.includes('อนุมัติ');
+                        const isWaiting = statusLower.includes('waiting') || r.status.includes('รอ');
                         return (
                           <tr
                             key={r.id}
@@ -1491,10 +1586,16 @@ export const OtView: React.FC<OtViewProps> = ({
                             </td>
                             <td className="py-3 px-4 text-center whitespace-nowrap">
                               <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
-                                isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                isApproved 
+                                  ? 'bg-emerald-100 text-emerald-800' 
+                                  : isWaiting 
+                                    ? 'bg-sky-100 text-sky-800 border border-sky-200' 
+                                    : 'bg-amber-100 text-amber-800'
                               }`}>
                                 {isApproved ? (
                                   <OtApprovedAnimatedIcon size="xs" iconClassName="text-emerald-700" showSparkle={false} />
+                                ) : isWaiting ? (
+                                  <OtWaitingAnimatedIcon size="xs" iconClassName="text-sky-700" />
                                 ) : (
                                   <OtConfirmAnimatedIcon size="xs" iconClassName="text-amber-700" />
                                 )}

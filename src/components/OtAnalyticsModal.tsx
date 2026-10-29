@@ -222,6 +222,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
         const s = (r.status || '').toLowerCase();
         if (selectedStatus === 'approved' && !s.includes('approved') && !r.status.includes('อนุมัติ')) return false;
         if (selectedStatus === 'confirm' && !s.includes('confirm') && !r.status.includes('ยืนยัน')) return false;
+        if (selectedStatus === 'waiting' && !s.includes('waiting') && !r.status.includes('รอ')) return false;
       }
 
       // 4. Employee (strictly by Name)
@@ -343,6 +344,8 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
         statKey = 'Approved (อนุมัติแล้ว)';
       } else if (r.status.toLowerCase().includes('confirm') || r.status.includes('ยืนยัน')) {
         statKey = 'Confirm (รอยืนยัน)';
+      } else if (r.status.toLowerCase().includes('waiting') || r.status.includes('รอ')) {
+        statKey = 'waiting status (รออนุมัติ)';
       } else {
         statKey = r.status || 'อื่นๆ';
       }
@@ -380,9 +383,10 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
 
     // Generate Status Donut Items
     const statusDonutData: DonutChartItem[] = Array.from(statusMap.entries()).map(([stat, data]) => {
-      let color = '#3b82f6';
+      let color = '#0284c7';
       if (stat.includes('Approved') || stat.includes('อนุมัติ')) color = '#10b981';
       else if (stat.includes('Confirm') || stat.includes('ยืนยัน')) color = '#f59e0b';
+      else if (stat.includes('waiting') || stat.includes('รอ')) color = '#0284c7';
       return {
         id: `status-${stat}`,
         label: stat,
@@ -570,6 +574,7 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
                   <option value="all">{language === 'th' ? 'ทุกสถานะ (All)' : 'All Statuses'}</option>
                   <option value="approved">{language === 'th' ? 'อนุมัติแล้ว (Approved)' : 'Approved'}</option>
                   <option value="confirm">{language === 'th' ? 'รอยืนยัน (Confirm)' : 'Pending Confirmation'}</option>
+                  <option value="waiting">{language === 'th' ? 'waiting status (รออนุมัติ)' : 'waiting status'}</option>
                 </select>
               </div>
 
@@ -767,7 +772,11 @@ export const OtAnalyticsModal: React.FC<OtAnalyticsModalProps> = ({
 
               {selectedStatus !== 'all' && (
                 <span className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-950 font-semibold shadow-2xs">
-                  ⚡ {selectedStatus === 'approved' ? (language === 'th' ? 'อนุมัติแล้ว' : 'Approved') : (language === 'th' ? 'รอยืนยัน' : 'Confirm')}
+                  ⚡ {selectedStatus === 'approved' 
+                    ? (language === 'th' ? 'อนุมัติแล้ว' : 'Approved') 
+                    : selectedStatus === 'confirm' 
+                      ? (language === 'th' ? 'รอยืนยัน' : 'Confirm') 
+                      : 'waiting status'}
                 </span>
               )}
 
